@@ -1,0 +1,23 @@
+Fix: export ResourceDictionary classes for MEF discovery
+
+NINA's PluginLoader discovers DataTemplates via MEF using
+[ImportMany(typeof(ResourceDictionary))] and merges them into
+Application.Current.Resources. Without [Export(typeof(ResourceDictionary))]
+on our XAML code-behind partial classes, neither the Options template
+("Astro Coverage Planner (ACP)_Options" key) nor the Dockable template
+were registered with NINA's app-level resources, so they didn't render.
+
+PluginOptionsDataTemplateSelector does an Application.Resources lookup
+on plugin.Name + "_Options"; if the key is missing it falls through to
+DefaultPluginOption (empty grid). Matches what we saw -- plugin loaded
+cleanly per NINA log, but Options panel was blank.
+
+Same fix needed on AcpDockableTemplate.xaml.cs so the dockable's UI
+template gets registered too.
+
+Confirmed by reading isbeorn/nina source (DataTemplatePostfix.cs +
+PluginOptionsDataTemplateSelector.cs + PluginLoader.cs) and the TS
+plugin's Options.xaml.cs / ImagingDockableTemplate.xaml.cs which both
+carry the same Export attribute.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
