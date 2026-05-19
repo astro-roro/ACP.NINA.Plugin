@@ -20,3 +20,7 @@ TestResults/
 # OS
 Thumbs.db
 .DS_Store
+
+# Scratch / temp files
+.tmp_*
+
