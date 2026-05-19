@@ -1,15 +1,16 @@
 using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services;
+using NINA.Astrometry;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Profile.Interfaces;
+using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Composition;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -20,22 +21,23 @@ namespace ACP.NINA.Plugin.Dockables {
 
     /// Main dockable panel for the ACP plugin. Lists plans fetched from ACP,
     /// shows the currently-selected plan's geometry, and exposes the v1.0
-    /// action buttons (Push to Framing, Sync All to TS).
+    /// action buttons: Push to Framing (Framing Wizard) and Sync All to TS
+    /// (POSTs to the private nina_ts_sync extension).
     ///
-    /// Iteration 3: real HTTP wiring — Refresh actually fetches /api/plans
-    /// (joined with /api/gear for human-readable telescope/camera labels),
-    /// connection status reflects probe results. Actions still stubs.
-    /// Iteration 4: wire Push to Framing (IFramingAssistantVM.SetCoordinates)
-    /// and Sync All to TS (POST /api/ext/nina-ts-sync/sync).
+    /// Iteration 4 (this file): wires real Framing push + TS sync. Plans
+    /// list and connection probing came in iteration 3.
     [Export(typeof(IDockableVM))]
     public partial class AcpDockableVM : DockableVM {
 
+        private readonly IFramingAssistantVM framingAssistantVM;
         private readonly AcpSettings settings;
 
         [ImportingConstructor]
-        public AcpDockableVM(IProfileService profileService) : base(profileService) {
-            // `profileService` is exposed by the BaseVM via its protected field
-            // of the same name; no need to keep a duplicate reference here.
+        public AcpDockableVM(
+            IProfileService profileService,
+            IFramingAssistantVM framingAssistantVM
+        ) : base(profileService) {
+            this.framingAssistantVM = framingAssistantVM;
             Title = "Astro Coverage Planner";
 
             var resourceDict = new ResourceDictionary();
@@ -49,16 +51,19 @@ namespace ACP.NINA.Plugin.Dockables {
             settings = AcpSettings.Load();
 
             RefreshCommand = new RelayCommand(async () => await RefreshAsync());
-            PushToFramingCommand = new RelayCommand(PushToFramingStub, () => SelectedPlan != null);
-            SyncAllToTsCommand = new RelayCommand(SyncAllToTsStub);
+            PushToFramingCommand = new RelayCommand(
+                async () => await PushToFramingAsync(),
+                () => SelectedPlan != null && IsConnected
+            );
+            SyncAllToTsCommand = new RelayCommand(
+                async () => await SyncAllToTsAsync(),
+                () => IsConnected && Plans.Count > 0
+            );
 
             ActiveProfileName = profileService?.ActiveProfile?.Name ?? "(no active profile)";
             ConnectionStatus = "Probing...";
             IsConnected = false;
 
-            // Kick off an initial probe + plans fetch on construction.
-            // Fire-and-forget — UI updates via INotifyPropertyChanged as the
-            // task completes; surfacing exceptions in LastActionResult.
             _ = RefreshAsync();
         }
 
@@ -67,7 +72,12 @@ namespace ACP.NINA.Plugin.Dockables {
         private bool isConnected;
         public bool IsConnected {
             get => isConnected;
-            set { isConnected = value; RaisePropertyChanged(nameof(IsConnected)); }
+            set {
+                isConnected = value;
+                RaisePropertyChanged(nameof(IsConnected));
+                ((RelayCommand)PushToFramingCommand).NotifyCanExecuteChanged();
+                ((RelayCommand)SyncAllToTsCommand).NotifyCanExecuteChanged();
+            }
         }
 
         private string connectionStatus;
@@ -131,10 +141,6 @@ namespace ACP.NINA.Plugin.Dockables {
             var url = settings.ServerUrl;
             var client = new AcpApiClient(url);
             try {
-                // Probe + fetch in one shot — Probe already hits /api/plans,
-                // so we can also use that response. Calling them separately
-                // for clarity; the HttpClient cache is shared so this is one
-                // round-trip in practice on a warm server.
                 await client.ProbeAsync().ConfigureAwait(false);
                 var plans = await client.GetPlansAsync().ConfigureAwait(false);
                 var gear = await client.GetGearAsync().ConfigureAwait(false);
@@ -178,6 +184,13 @@ namespace ACP.NINA.Plugin.Dockables {
                 var cam = (p.CameraId != null && camsById.TryGetValue(p.CameraId, out var c)) ? c : null;
 
                 rows.Add(new PlanRowVM {
+                    // Underlying records — kept so Push to Framing has the
+                    // raw RA/Dec/FOV data without a re-fetch.
+                    Plan = p,
+                    Telescope = scope,
+                    Camera = cam,
+
+                    // Display strings
                     ProjectName = p.ProjectName ?? p.Id ?? "(unnamed)",
                     TargetName = tg?.Name ?? "(no target)",
                     State = p.State ?? "",
@@ -193,7 +206,6 @@ namespace ACP.NINA.Plugin.Dockables {
 
         private static string FormatFilters(Dictionary<string, FilterGoal> goals) {
             if (goals == null || goals.Count == 0) return "(no filter goals)";
-            // Sort high → low hours so the dominant filter leads.
             var parts = goals
                 .Where(kv => kv.Value != null && kv.Value.TargetHours > 0)
                 .OrderByDescending(kv => kv.Value.TargetHours)
@@ -208,7 +220,6 @@ namespace ACP.NINA.Plugin.Dockables {
         }
 
         private static string FormatCoords(double raDeg, double decDeg) {
-            // RA: degrees → hours (HMS), Dec: degrees (DMS, signed).
             var raHours = raDeg / 15.0;
             var raH = (int)raHours;
             var raMins = (raHours - raH) * 60.0;
@@ -225,23 +236,106 @@ namespace ACP.NINA.Plugin.Dockables {
             return $"{raH:00}h {raM:00}m {raS:00}s · {sign}{decD:00}° {decM:00}' {decS:00}\"";
         }
 
-        // ── Action stubs (iteration 4) ────────────────────────────────────────
+        // ── Action: Push to Framing ───────────────────────────────────────────
 
-        private void PushToFramingStub() {
-            if (SelectedPlan == null) return;
-            LastActionResult = $"Push to Framing stub — would push '{SelectedPlan.TargetName}'. (Iteration 4.)";
-            Logger.Info($"ACP: PushToFraming stub for {SelectedPlan.TargetName}");
+        private async Task PushToFramingAsync() {
+            if (SelectedPlan?.Plan?.Target == null) return;
+            var plan = SelectedPlan.Plan;
+            var target = plan.Target;
+
+            try {
+                LastActionResult = $"Pushing '{target.Name}' to Framing Wizard...";
+
+                // The DeepSkyObject + Coordinates work happens on whatever thread
+                // the command fires from, but property setters on the framing
+                // VM need to land on the UI thread. Dispatcher.Invoke wraps the
+                // whole sequence to keep it tidy.
+                await Application.Current.Dispatcher.InvokeAsync(async () => {
+                    var coords = new Coordinates(
+                        Angle.ByDegree(target.CenterRaDeg),
+                        Angle.ByDegree(target.CenterDecDeg),
+                        Epoch.J2000
+                    );
+                    var dso = new DeepSkyObject(
+                        target.Name ?? plan.ProjectName ?? plan.Id ?? "",
+                        coords,
+                        string.Empty,
+                        null
+                    );
+                    var ok = await framingAssistantVM.SetCoordinates(dso);
+                    if (!ok) {
+                        LastActionResult = $"Framing rejected the coordinates for '{target.Name}'.";
+                        return;
+                    }
+
+                    // Optics (only set when ACP has the data; partial pushes are
+                    // valid — Framing falls back to the active NINA profile).
+                    var cam = SelectedPlan.Camera;
+                    var scope = SelectedPlan.Telescope;
+                    if (cam?.SensorWidthPx is int w) framingAssistantVM.CameraWidth = w;
+                    if (cam?.SensorHeightPx is int h) framingAssistantVM.CameraHeight = h;
+                    if (cam?.PixelSizeUm is double px) framingAssistantVM.CameraPixelSize = px;
+                    if (scope?.FocalLengthMm is double fl) framingAssistantVM.FocalLength = fl;
+
+                    // Mosaic
+                    var m = target.Mosaic ?? new Mosaic();
+                    framingAssistantVM.HorizontalPanels = Math.Max(1, m.Cols);
+                    framingAssistantVM.VerticalPanels = Math.Max(1, m.Rows);
+                    framingAssistantVM.OverlapPercentage = m.OverlapPct;
+
+                    // Rotation. NINA's TotalRotation runs opposite-sense from
+                    // the deg-east-of-north convention plans store, so flip.
+                    // Matches the ninaAPI reference implementation.
+                    if (framingAssistantVM.Rectangle != null) {
+                        framingAssistantVM.Rectangle.TotalRotation = 360 - target.RotationDeg;
+                    }
+                });
+
+                LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
+                Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
+            } catch (Exception ex) {
+                LastActionResult = $"✗ Push failed: {ex.Message}";
+                Logger.Error($"ACP: PushToFraming failed for '{target?.Name}': {ex}");
+            }
         }
 
-        private void SyncAllToTsStub() {
-            LastActionResult = $"Sync All to TS stub — would sync {Plans.Count} plans to profile '{ActiveProfileName}'. (Iteration 4.)";
-            Logger.Info($"ACP: SyncAllToTs stub");
+        // ── Action: Sync All to TS ────────────────────────────────────────────
+
+        private async Task SyncAllToTsAsync() {
+            var profile = profileService?.ActiveProfile;
+            if (profile == null) {
+                LastActionResult = "✗ No active NINA profile — can't sync to TS.";
+                return;
+            }
+            var profileId = profile.Id.ToString();
+
+            try {
+                LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
+
+                var client = new AcpApiClient(settings.ServerUrl);
+                var resp = await client.SyncToTsAsync(profileId).ConfigureAwait(false);
+
+                Application.Current?.Dispatcher.Invoke(() => {
+                    LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");
+                });
+                Logger.Info($"ACP: TS sync OK — {resp?.Report?.ToShortString()}");
+            } catch (Exception ex) {
+                Application.Current?.Dispatcher.Invoke(() => {
+                    LastActionResult = $"✗ TS sync failed: {ex.Message}";
+                });
+                Logger.Error($"ACP: TS sync failed: {ex}");
+            }
         }
     }
 
-    /// Per-row view-model for the plans list. Flattened from the full Plan
-    /// model so XAML bindings don't have to chase nested target/mosaic objects.
+    /// Per-row view-model. Carries the underlying Plan + matched Telescope +
+    /// Camera so Push to Framing has access to optics/sensor data without
+    /// re-fetching. Display strings are pre-computed for the ItemTemplate.
     public class PlanRowVM {
+        public Plan Plan { get; set; }
+        public Telescope Telescope { get; set; }
+        public Camera Camera { get; set; }
+
         public string ProjectName { get; set; }
         public string TargetName { get; set; }
         public string State { get; set; }
