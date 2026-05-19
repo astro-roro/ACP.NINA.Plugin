@@ -282,22 +282,28 @@ namespace ACP.NINA.Plugin.Dockables {
                     framingAssistantVM.HorizontalPanels = Math.Max(1, m.Cols);
                     framingAssistantVM.VerticalPanels = Math.Max(1, m.Rows);
                     framingAssistantVM.OverlapPercentage = m.OverlapPct;
-
                 });
 
-                // Rotation needs special handling: NINA's Rectangle is a 0x0
-                // placeholder until the sky-survey image loads, and SetCoordinates
-                // triggers an async image fetch that replaces the Rectangle when
-                // it completes. Setting Rectangle.TotalRotation before that
-                // happens is silently wiped.
-                //
-                // Use the VM's RectangleTotalRotation proxy property (which gates
-                // on RectangleCalculated, raises PropertyChanged, persists
-                // LastRotationAngle, and calls DragMove() to trigger redraw).
-                // It's on the concrete FramingAssistantVM, not IFramingAssistantVM,
-                // so reflection.
+                // Phase 2 — explicitly trigger LoadImage and await it.
+                // This is the pattern NINA's own DSO import path uses:
+                //   await LoadImageCommand.ExecuteAsync(null);
+                //   RectangleRotation = 360 - dso.RotationPositionAngle;
+                // Waiting for LoadImage to fully complete means all the
+                // cascading CalculateRectangle tasks queued by the camera/
+                // mosaic setters have finished, the sky-survey image is
+                // drawn, the viewport FoV is populated, and CameraRectangles
+                // is properly populated with the mosaic panel outlines.
+                // Setting rotation after this point sticks; no retry loop
+                // needed (and a retry loop turned out to race against the
+                // CameraRectangles build, hiding the mosaic outlines).
+                await Application.Current.Dispatcher.InvokeAsync(async () => {
+                    if (framingAssistantVM.LoadImageCommand?.CanExecute(null) == true) {
+                        await framingAssistantVM.LoadImageCommand.ExecuteAsync(null);
+                    }
+                });
+
                 if (Math.Abs(target.RotationDeg) > 0.001) {
-                    await ApplyRotationWhenReadyAsync(target.RotationDeg);
+                    await ApplyRotationOnceAsync(target.RotationDeg);
                 }
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
@@ -308,73 +314,37 @@ namespace ACP.NINA.Plugin.Dockables {
             }
         }
 
-        /// Apply rotation to the Framing rectangle. Two problems make this
-        /// trickier than it looks:
+        /// Set rotation once. Caller is responsible for ensuring everything
+        /// has settled (i.e. LoadImageCommand has been awaited) — the retry
+        /// loop the previous version of this method ran turned out to race
+        /// against the CameraRectangles build, hiding mosaic panel outlines.
         ///
-        ///   1. Rectangle is a 0×0 placeholder until the sky-survey image
-        ///      loads (RectangleCalculated == false until then).
-        ///   2. Every camera/mosaic property setter (CameraWidth/Height/
-        ///      PixelSize/FocalLength, HorizontalPanels/VerticalPanels/
-        ///      OverlapPercentage) fires a fire-and-forget
-        ///      Task.Run(() => CalculateRectangle(...)). The 7 setters queue
-        ///      7 concurrent recalcs; each completion resets the rectangle's
-        ///      rotation. A single set just before they complete gets wiped.
-        ///
-        /// Approach: wait for the rectangle to exist, then apply rotation
-        /// repeatedly over a few seconds via the RectangleRotation proxy
-        /// (Rectangle.Rotation — the "user rotation" field NINA's own DSO
-        /// load path uses, not TotalRotation which adds framing transforms).
-        /// The proxy gates on RectangleCalculated, raises PropertyChanged,
-        /// persists LastRotationAngle, and calls DragMove() for the redraw.
-        /// Reflection because the proxy lives on the concrete VM, not the
-        /// IFramingAssistantVM interface.
-        private async Task ApplyRotationWhenReadyAsync(double rotationDeg) {
-            const int initialPollAttempts = 40;   // 10s at 250ms
-            const int initialPollDelayMs = 250;
-
-            for (int i = 0; i < initialPollAttempts; i++) {
-                if (framingAssistantVM.RectangleCalculated) break;
-                await Task.Delay(initialPollDelayMs);
-            }
-
+        /// Uses the RectangleRotation proxy (Rectangle.Rotation, the
+        /// user-rotation field NINA's own DSO load path writes to). Falls
+        /// back to RectangleTotalRotation, then to the bare
+        /// Rectangle.TotalRotation, in case a future NINA version renames
+        /// the proxy.
+        private async Task ApplyRotationOnceAsync(double rotationDeg) {
             if (!framingAssistantVM.RectangleCalculated) {
-                Logger.Warning("ACP: Framing rectangle did not calculate within 10s; rotation not applied");
+                Logger.Warning("ACP: Rectangle not calculated; rotation skipped");
                 LastActionResult = "✓ Pushed (rotation skipped — Framing image didn't load in time).";
                 return;
             }
 
-            // Prefer RectangleRotation (= Rectangle.Rotation, what NINA's own
-            // DSO load path sets via `RectangleRotation = 360 - dso.RotationPositionAngle`).
-            // Fall back to RectangleTotalRotation if that doesn't exist.
             var vmType = framingAssistantVM.GetType();
             var proxy = vmType.GetProperty("RectangleRotation")
                      ?? vmType.GetProperty("RectangleTotalRotation");
-            if (proxy == null || !proxy.CanWrite) {
-                Logger.Warning("ACP: No rotation proxy property on FramingAssistantVM; using Rectangle.TotalRotation direct");
-                if (framingAssistantVM.Rectangle != null) {
-                    framingAssistantVM.Rectangle.TotalRotation = 360 - rotationDeg;
-                }
-                return;
-            }
-
-            // NINA's rotation convention is opposite-sense from deg-east-of-north.
             var inverted = 360 - rotationDeg;
 
-            // Reapply several times to outlast the cascade of background
-            // CalculateRectangle tasks that the earlier camera/mosaic setters
-            // queued. Each call is cheap (just sets a property + raises
-            // events); the loop ends well after NINA has settled.
-            const int retries = 10;
-            const int retryDelayMs = 350;
-            for (int i = 0; i < retries; i++) {
-                await Application.Current.Dispatcher.InvokeAsync(() => {
-                    if (framingAssistantVM.RectangleCalculated) {
-                        proxy.SetValue(framingAssistantVM, inverted);
-                    }
-                });
-                await Task.Delay(retryDelayMs);
-            }
-            Logger.Info($"ACP: rotation {rotationDeg}° applied via {proxy.Name} (×{retries} over {retries * retryDelayMs}ms to fight cascade recalcs)");
+            await Application.Current.Dispatcher.InvokeAsync(() => {
+                if (proxy != null && proxy.CanWrite) {
+                    proxy.SetValue(framingAssistantVM, inverted);
+                    Logger.Info($"ACP: rotation {rotationDeg}° applied via {proxy.Name}");
+                } else if (framingAssistantVM.Rectangle != null) {
+                    framingAssistantVM.Rectangle.TotalRotation = inverted;
+                    Logger.Warning("ACP: no rotation proxy property; used Rectangle.TotalRotation fallback");
+                }
+            });
         }
 
         // ── Action: Sync All to TS ────────────────────────────────────────────
