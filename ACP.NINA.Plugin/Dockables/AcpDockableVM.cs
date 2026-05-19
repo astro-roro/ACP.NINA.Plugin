@@ -281,26 +281,40 @@ namespace ACP.NINA.Plugin.Dockables {
                     var m = target.Mosaic ?? new Mosaic();
                     framingAssistantVM.HorizontalPanels = Math.Max(1, m.Cols);
                     framingAssistantVM.VerticalPanels = Math.Max(1, m.Rows);
-                    framingAssistantVM.OverlapPercentage = m.OverlapPct;
+                    // NINA stores OverlapPercentage as a fraction 0.0-1.0
+                    // (default 0.2 = 20% in the UI). ACP stores 0-99 as a
+                    // percentage integer (per its plan validator). Without
+                    // the /100 conversion, NINA reads e.g. 15 as 1500%
+                    // overlap, which silently produces unrendered rectangles
+                    // until the user nudges the slider.
+                    framingAssistantVM.OverlapPercentage = m.OverlapPct / 100.0;
                 });
 
                 // Phase 2 — explicitly trigger LoadImage and await it.
-                // This is the pattern NINA's own DSO import path uses:
-                //   await LoadImageCommand.ExecuteAsync(null);
-                //   RectangleRotation = 360 - dso.RotationPositionAngle;
-                // Waiting for LoadImage to fully complete means all the
-                // cascading CalculateRectangle tasks queued by the camera/
-                // mosaic setters have finished, the sky-survey image is
-                // drawn, the viewport FoV is populated, and CameraRectangles
-                // is properly populated with the mosaic panel outlines.
-                // Setting rotation after this point sticks; no retry loop
-                // needed (and a retry loop turned out to race against the
-                // CameraRectangles build, hiding the mosaic outlines).
+                // Mirrors NINA's own DSO import path. Waiting here means
+                // the sky-survey image fetch + cascading CalculateRectangle
+                // tasks are done by the time we return.
                 await Application.Current.Dispatcher.InvokeAsync(async () => {
                     if (framingAssistantVM.LoadImageCommand?.CanExecute(null) == true) {
                         await framingAssistantVM.LoadImageCommand.ExecuteAsync(null);
                     }
                 });
+
+                // Diagnostic: log the framing state after LoadImage. Helps
+                // us pinpoint whether CameraRectangles is being populated
+                // (mosaic rectangles built, possibly invisible due to
+                // rendering issue) or not (mosaic rectangles never built).
+                Logger.Info(
+                    $"ACP: post-LoadImage state — RectangleCalculated={framingAssistantVM.RectangleCalculated}, " +
+                    $"CameraRectangles.Count={framingAssistantVM.CameraRectangles?.Count ?? -1}, " +
+                    $"HorizontalPanels={framingAssistantVM.HorizontalPanels}, " +
+                    $"VerticalPanels={framingAssistantVM.VerticalPanels}, " +
+                    $"CameraWidth={framingAssistantVM.CameraWidth}, " +
+                    $"CameraHeight={framingAssistantVM.CameraHeight}, " +
+                    $"CameraPixelSize={framingAssistantVM.CameraPixelSize}, " +
+                    $"FocalLength={framingAssistantVM.FocalLength}, " +
+                    $"FieldOfView={framingAssistantVM.FieldOfView}"
+                );
 
                 if (Math.Abs(target.RotationDeg) > 0.001) {
                     await ApplyRotationOnceAsync(target.RotationDeg);
