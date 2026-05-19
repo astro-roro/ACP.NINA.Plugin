@@ -15,11 +15,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NINA.Plugin" Version="3.1.2.9001" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y" />
+    <Exec Command="if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;if exist &quot;$(TargetDir)Newtonsoft.Json.dll&quot; xcopy &quot;$(TargetDir)Newtonsoft.Json.dll&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;if exist &quot;$(TargetDir)CommunityToolkit.Mvvm.dll&quot; xcopy &quot;$(TargetDir)CommunityToolkit.Mvvm.dll&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;for %25%25d in (ca-ES cs-CZ da-DK de-DE el-GR en-GB en-US es-ES eu-ES fr-FR gl-ES hu-HU it-IT ja-JP ko-KR nb-NO nl-NL pl-PL pt-PT ru-RU tr-TR uk-UA zh-CN zh-HK zh-TW runtimes) do if exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\%25%25d&quot; rd /s /q &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\%25%25d&quot;" />
   </Target>
 
 </Project>

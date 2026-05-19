@@ -1,0 +1,24 @@
+<ResourceDictionary x:Class="ACP.NINA.Plugin.Dockables.AcpDockableIcon"
+                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Stylized "coverage grid + target" icon: a 3x3 grid suggesting a sky map,
+         with a target reticle centered on the middle cell. Placeholder for v0.x;
+         can be replaced with a designed icon before v1.0 ships. -->
+    <GeometryGroup x:Key="AcpDockableIcon">
+        <!-- Outer rounded square frame -->
+        <RectangleGeometry RadiusX="2" RadiusY="2" Rect="2,2,20,20" />
+        <!-- Grid lines -->
+        <LineGeometry StartPoint="9,2" EndPoint="9,22" />
+        <LineGeometry StartPoint="15,2" EndPoint="15,22" />
+        <LineGeometry StartPoint="2,9" EndPoint="22,9" />
+        <LineGeometry StartPoint="2,15" EndPoint="22,15" />
+        <!-- Target reticle center -->
+        <EllipseGeometry Center="12,12" RadiusX="2.5" RadiusY="2.5" />
+        <LineGeometry StartPoint="12,6" EndPoint="12,9" />
+        <LineGeometry StartPoint="12,15" EndPoint="12,18" />
+        <LineGeometry StartPoint="6,12" EndPoint="9,12" />
+        <LineGeometry StartPoint="15,12" EndPoint="18,12" />
+    </GeometryGroup>
+
+</ResourceDictionary>
