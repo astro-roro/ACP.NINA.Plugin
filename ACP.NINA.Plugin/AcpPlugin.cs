@@ -1,15 +1,16 @@
 using ACP.NINA.Plugin.Services;
 using NINA.Core.Utility;
-using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.ViewModel;
+using System;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
 
 namespace ACP.NINA.Plugin {
 
@@ -34,7 +35,7 @@ namespace ACP.NINA.Plugin {
 
             settings = AcpSettings.Load();
 
-            TestConnectionCommand = new RelayCommand(TestConnection);
+            TestConnectionCommand = new RelayCommand(async () => await TestConnectionAsync());
         }
 
         public override Task Initialize() {
@@ -98,9 +99,18 @@ namespace ACP.NINA.Plugin {
 
         public ICommand TestConnectionCommand { get; }
 
-        private void TestConnection() {
-            // Iteration 3: replace with AcpApiClient.GetVersionAsync()
-            ConnectionTestResult = $"Test stub — HTTP wiring lands in iteration 3. URL: {settings.ServerUrl}";
+        private async Task TestConnectionAsync() {
+            var url = settings.ServerUrl;
+            ConnectionTestResult = $"Probing {url}...";
+            try {
+                var client = new AcpApiClient(url);
+                var status = await client.ProbeAsync().ConfigureAwait(false);
+                ConnectionTestResult = $"✓ {status}";
+                Logger.Info($"ACP: test connection OK against {url}");
+            } catch (Exception ex) {
+                ConnectionTestResult = $"✗ Failed: {ex.Message}";
+                Logger.Warning($"ACP: test connection failed against {url}: {ex.Message}");
+            }
         }
 
         // ── INotifyPropertyChanged plumbing ───────────────────────────────────
