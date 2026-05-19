@@ -283,13 +283,22 @@ namespace ACP.NINA.Plugin.Dockables {
                     framingAssistantVM.VerticalPanels = Math.Max(1, m.Rows);
                     framingAssistantVM.OverlapPercentage = m.OverlapPct;
 
-                    // Rotation. NINA's TotalRotation runs opposite-sense from
-                    // the deg-east-of-north convention plans store, so flip.
-                    // Matches the ninaAPI reference implementation.
-                    if (framingAssistantVM.Rectangle != null) {
-                        framingAssistantVM.Rectangle.TotalRotation = 360 - target.RotationDeg;
-                    }
                 });
+
+                // Rotation needs special handling: NINA's Rectangle is a 0x0
+                // placeholder until the sky-survey image loads, and SetCoordinates
+                // triggers an async image fetch that replaces the Rectangle when
+                // it completes. Setting Rectangle.TotalRotation before that
+                // happens is silently wiped.
+                //
+                // Use the VM's RectangleTotalRotation proxy property (which gates
+                // on RectangleCalculated, raises PropertyChanged, persists
+                // LastRotationAngle, and calls DragMove() to trigger redraw).
+                // It's on the concrete FramingAssistantVM, not IFramingAssistantVM,
+                // so reflection.
+                if (Math.Abs(target.RotationDeg) > 0.001) {
+                    await ApplyRotationWhenReadyAsync(target.RotationDeg);
+                }
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
                 Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
@@ -297,6 +306,45 @@ namespace ACP.NINA.Plugin.Dockables {
                 LastActionResult = $"✗ Push failed: {ex.Message}";
                 Logger.Error($"ACP: PushToFraming failed for '{target?.Name}': {ex}");
             }
+        }
+
+        /// Polls RectangleCalculated up to ~10s, then sets the rotation through
+        /// NINA's RectangleTotalRotation proxy. Reflection is the cheapest way
+        /// to reach a property that exists on the concrete VM but isn't on the
+        /// IFramingAssistantVM interface — alternatives (casting, depending on
+        /// the concrete type) couple us harder to NINA's internals.
+        private async Task ApplyRotationWhenReadyAsync(double rotationDeg) {
+            const int maxAttempts = 40;        // 10 seconds at 250ms intervals
+            const int pollDelayMs = 250;
+
+            for (int i = 0; i < maxAttempts; i++) {
+                if (framingAssistantVM.RectangleCalculated) break;
+                await Task.Delay(pollDelayMs);
+            }
+
+            if (!framingAssistantVM.RectangleCalculated) {
+                Logger.Warning("ACP: Framing rectangle did not calculate within 10s; rotation not applied");
+                LastActionResult = "✓ Pushed (rotation skipped — Framing image didn't load in time).";
+                return;
+            }
+
+            await Application.Current.Dispatcher.InvokeAsync(() => {
+                // NINA's TotalRotation runs opposite-sense from deg-east-of-north,
+                // so flip. Matches the ninaAPI reference implementation.
+                var inverted = 360 - rotationDeg;
+
+                var proxy = framingAssistantVM.GetType().GetProperty("RectangleTotalRotation");
+                if (proxy != null && proxy.CanWrite) {
+                    proxy.SetValue(framingAssistantVM, inverted);
+                    Logger.Info($"ACP: rotation {rotationDeg}° applied via RectangleTotalRotation proxy");
+                } else if (framingAssistantVM.Rectangle != null) {
+                    // Fallback if NINA renames the proxy in a future version.
+                    // Will set the value but miss the DragMove() redraw — user
+                    // may need to nudge the rectangle to see it.
+                    framingAssistantVM.Rectangle.TotalRotation = inverted;
+                    Logger.Warning("ACP: RectangleTotalRotation proxy not found; used Rectangle.TotalRotation fallback");
+                }
+            });
         }
 
         // ── Action: Sync All to TS ────────────────────────────────────────────
