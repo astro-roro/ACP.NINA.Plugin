@@ -51,16 +51,36 @@
 
             <TextBlock FontSize="14" FontWeight="Bold" Text="Behavior" Margin="0,0,0,6" />
 
-            <StackPanel Orientation="Vertical">
-                <CheckBox IsChecked="{Binding AutoRefreshEnabled}" Margin="0,2,0,2">
-                    <TextBlock>
-                        <Run Text="Auto-refresh plans every " /><Run Text="{Binding AutoRefreshSeconds}" /><Run Text=" seconds" />
-                    </TextBlock>
-                </CheckBox>
-                <CheckBox IsChecked="{Binding ConfirmBeforeTsSync}"
-                          Content="Confirm before Sync to TS"
-                          Margin="0,2,0,2" />
-            </StackPanel>
+            <!-- NINA's CheckBox style renders as a toggle and hides the Content
+                 property, so labels live in side-by-side TextBlocks rather than
+                 inside the CheckBox. Mirrors NINA core's own options pattern. -->
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Column="0"
+                          IsChecked="{Binding AutoRefreshEnabled}"
+                          VerticalAlignment="Center"
+                          Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1" VerticalAlignment="Center">
+                    <Run Text="Auto-refresh plans every " /><Run Text="{Binding AutoRefreshSeconds}" /><Run Text=" seconds" />
+                </TextBlock>
+            </Grid>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Column="0"
+                          IsChecked="{Binding ConfirmBeforeTsSync}"
+                          VerticalAlignment="Center"
+                          Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Confirm before Sync to TS" />
+            </Grid>
 
         </StackPanel>
     </DataTemplate>
