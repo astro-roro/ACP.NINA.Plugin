@@ -24,3 +24,6 @@ Thumbs.db
 # Scratch / temp files
 .tmp_*
 
+# Release artifacts (built via the pack script, uploaded to GitHub release)
+*.zip
+

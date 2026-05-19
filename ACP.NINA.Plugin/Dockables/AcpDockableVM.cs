@@ -300,22 +300,6 @@ namespace ACP.NINA.Plugin.Dockables {
                     }
                 });
 
-                // Diagnostic: log the framing state after LoadImage. Helps
-                // us pinpoint whether CameraRectangles is being populated
-                // (mosaic rectangles built, possibly invisible due to
-                // rendering issue) or not (mosaic rectangles never built).
-                Logger.Info(
-                    $"ACP: post-LoadImage state — RectangleCalculated={framingAssistantVM.RectangleCalculated}, " +
-                    $"CameraRectangles.Count={framingAssistantVM.CameraRectangles?.Count ?? -1}, " +
-                    $"HorizontalPanels={framingAssistantVM.HorizontalPanels}, " +
-                    $"VerticalPanels={framingAssistantVM.VerticalPanels}, " +
-                    $"CameraWidth={framingAssistantVM.CameraWidth}, " +
-                    $"CameraHeight={framingAssistantVM.CameraHeight}, " +
-                    $"CameraPixelSize={framingAssistantVM.CameraPixelSize}, " +
-                    $"FocalLength={framingAssistantVM.FocalLength}, " +
-                    $"FieldOfView={framingAssistantVM.FieldOfView}"
-                );
-
                 if (Math.Abs(target.RotationDeg) > 0.001) {
                     await ApplyRotationOnceAsync(target.RotationDeg);
                 }
