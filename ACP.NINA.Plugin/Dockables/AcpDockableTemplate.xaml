@@ -139,6 +139,11 @@
                             Command="{Binding SyncAllToTsCommand}"
                             Content="Sync All to TS" />
                 </Grid>
+                <Button Margin="0,6,0,0"
+                        Height="32"
+                        Command="{Binding SyncForTonightCommand}"
+                        Content="Sync for tonight"
+                        ToolTip="Solves a frame from where the mount is pointing, works out the connected gear from it, and asks ACP which plans fit tonight. Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out. Reuses a solve from the last hour rather than taking another one." />
                 <TextBlock Margin="0,4,0,0"
                            FontSize="11"
                            Opacity="0.7">

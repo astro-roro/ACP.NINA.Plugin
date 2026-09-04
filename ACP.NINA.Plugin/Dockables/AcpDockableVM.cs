@@ -31,14 +31,20 @@ namespace ACP.NINA.Plugin.Dockables {
     public partial class AcpDockableVM : DockableVM, IDisposable {
 
         private readonly IFramingAssistantVM framingAssistantVM;
+        private readonly IAcpPlateSolver plateSolver;
+        private readonly ISyncForTonightRunner syncRunner;
         private readonly AcpSettings settings;
 
         [ImportingConstructor]
         public AcpDockableVM(
             IProfileService profileService,
-            IFramingAssistantVM framingAssistantVM
+            IFramingAssistantVM framingAssistantVM,
+            IAcpPlateSolver plateSolver,
+            ISyncForTonightRunner syncRunner
         ) : base(profileService) {
             this.framingAssistantVM = framingAssistantVM;
+            this.plateSolver = plateSolver;
+            this.syncRunner = syncRunner;
             Title = "Astro Coverage Planner";
 
             var resourceDict = new ResourceDictionary();
@@ -59,6 +65,10 @@ namespace ACP.NINA.Plugin.Dockables {
             SyncAllToTsCommand = new RelayCommand(
                 async () => await SyncAllToTsAsync(),
                 () => IsConnected && Plans.Count > 0
+            );
+            SyncForTonightCommand = new RelayCommand(
+                async () => await SyncForTonightAsync(),
+                () => IsConnected && !IsSyncingForTonight
             );
 
             ActiveProfileName = profileService?.ActiveProfile?.Name ?? "(no active profile)";
@@ -210,6 +220,82 @@ namespace ACP.NINA.Plugin.Dockables {
         public ICommand RefreshCommand { get; }
         public ICommand PushToFramingCommand { get; }
         public ICommand SyncAllToTsCommand { get; }
+        public ICommand SyncForTonightCommand { get; }
+
+        // -- Action: Sync for tonight ------------------------------------------
+
+        private bool isSyncingForTonight;
+
+        public bool IsSyncingForTonight {
+            get => isSyncingForTonight;
+            set {
+                isSyncingForTonight = value;
+                RaisePropertyChanged(nameof(IsSyncingForTonight));
+                ((RelayCommand)SyncForTonightCommand).NotifyCanExecuteChanged();
+            }
+        }
+
+        /// The other half of Part E. Same steps as the sequencer instruction
+        /// from the solve onwards, but from wherever the mount is already
+        /// pointing, and reusing a solve from the last hour rather than taking
+        /// another one. Decision 1 in the v3 spec: a button is pressed by
+        /// someone who can see how long ago the last solve was, so it is
+        /// allowed to reuse it as long as it says so.
+        private async Task SyncForTonightAsync() {
+            if (IsSyncingForTonight) return;
+            IsSyncingForTonight = true;
+            try {
+                var reused = LastSolve.GetIfFresh();
+                var solve = reused;
+                if (solve == null) {
+                    LastActionResult = "Sync for tonight: capturing and solving a frame...";
+                    solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    if (solve == null) {
+                        SetResultOnUi(
+                            "✗ The plate solve failed, so ACP cannot tell what gear is connected."
+                        );
+                        return;
+                    }
+                } else {
+                    var minutes = (int)Math.Round(reused.Age.TotalMinutes);
+                    LastActionResult =
+                        $"Sync for tonight: reusing the solve from {minutes} minutes ago.";
+                }
+
+                var outcome = await syncRunner
+                    .RunAsync(solve, settings.ProfileWriteBackEnabled, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                var prefix = reused != null
+                    ? $"Reused the solve from {(int)Math.Round(reused.Age.TotalMinutes)} minutes ago. "
+                    : string.Empty;
+                SetResultOnUi(
+                    outcome.Success
+                        ? "✓ " + prefix + outcome.ShortResult
+                        : "✗ " + prefix + outcome.ShortResult
+                );
+
+                // The dock is a small box, so the one line names the plan count
+                // and the focal length change and the rest goes to the NINA log,
+                // which the runner has already written.
+                if (outcome.Success) {
+                    await RefreshAsync().ConfigureAwait(false);
+                }
+            } catch (AcpUnauthorizedException ex) {
+                SetResultOnUi("✗ " + ex.Message);
+                Logger.Warning($"ACP: Sync for tonight rejected: {ex.Message}");
+            } catch (Exception ex) {
+                SetResultOnUi($"✗ Sync for tonight failed: {ex.Message}");
+                Logger.Error($"ACP: Sync for tonight failed: {ex}");
+            } finally {
+                Application.Current?.Dispatcher.Invoke(() => IsSyncingForTonight = false);
+            }
+        }
+
+        private void SetResultOnUi(string result) {
+            Application.Current?.Dispatcher.Invoke(() => LastActionResult = result);
+        }
 
         private async Task RefreshAsync() {
             var url = settings.ServerUrl;
