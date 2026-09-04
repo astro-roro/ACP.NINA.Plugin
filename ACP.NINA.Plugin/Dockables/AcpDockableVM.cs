@@ -318,6 +318,8 @@ namespace ACP.NINA.Plugin.Dockables {
                 // runs, including zero, so a stale angle from an earlier push is
                 // never left behind.
                 await ApplyRotationOnceAsync(target.RotationDeg);
+                await Task.Delay(750);
+                LogRotationState("750 ms later");
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
                 Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
@@ -367,11 +369,26 @@ namespace ACP.NINA.Plugin.Dockables {
                 if (total != null && total.CanWrite && total != proxy) { total.SetValue(framingAssistantVM, inverted); applied = true; }
                 if (applied) {
                     Logger.Info($"ACP: rotation {rotationDeg} applied as {inverted} via RectangleRotation and RectangleTotalRotation");
+                    LogRotationState("right after apply");
                 } else if (framingAssistantVM.Rectangle != null) {
                     framingAssistantVM.Rectangle.TotalRotation = inverted;
                     Logger.Warning("ACP: no rotation proxy property; used Rectangle.TotalRotation fallback");
                 }
             });
+        }
+
+        /// Diagnostic: every rotation related value NINA holds, so a mismatch
+        /// between what we set and what the screen shows can be pinned down.
+        private void LogRotationState(string when) {
+            try {
+                var vm = framingAssistantVM;
+                var t = vm.GetType();
+                object Get(string name) { var pr = t.GetProperty(name); return pr == null ? "n/a" : pr.GetValue(vm); }
+                var r = vm.Rectangle;
+                Logger.Info($"ACP rotation state {when}: RectangleRotation={Get("RectangleRotation")} RectangleTotalRotation={Get("RectangleTotalRotation")} InverseRectangleRotation={Get("InverseRectangleRotation")} RotateSky={Get("RotateSky")} PreserveAlignment={Get("PreserveAlignment")} RectangleCalculated={vm.RectangleCalculated} Rect.Rotation={r?.Rotation} Rect.TotalRotation={r?.TotalRotation} Rect.RotationOffset={r?.RotationOffset} Rect.DSOPositionAngle={r?.DSOPositionAngle} LastRotationAngle={profileService?.ActiveProfile?.FramingAssistantSettings?.LastRotationAngle}");
+            } catch (Exception ex) {
+                Logger.Warning("ACP rotation state read failed: " + ex.Message);
+            }
         }
 
         // ── Action: Sync All to TS ────────────────────────────────────────────
