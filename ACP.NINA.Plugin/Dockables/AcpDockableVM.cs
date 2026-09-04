@@ -250,7 +250,11 @@ namespace ACP.NINA.Plugin.Dockables {
                 // the command fires from, but property setters on the framing
                 // VM need to land on the UI thread. Dispatcher.Invoke wraps the
                 // whole sequence to keep it tidy.
-                await Application.Current.Dispatcher.InvokeAsync(async () => {
+                // InvokeAsync with an async lambda completes when the lambda
+                // yields at its first await, not when its work is done. Await the
+                // inner task too, or the optics, mosaic and rotation steps race
+                // NINA's own image load and lose.
+                await await Application.Current.Dispatcher.InvokeAsync(async () => {
                     var coords = new Coordinates(
                         Angle.ByDegree(target.CenterRaDeg),
                         Angle.ByDegree(target.CenterDecDeg),
@@ -262,6 +266,12 @@ namespace ACP.NINA.Plugin.Dockables {
                         string.Empty,
                         null
                     );
+                    // NINA rebuilds the framing rectangle from the object's own
+                    // rotation after the sky image loads, so a value poked into the
+                    // view model afterwards does not survive. Give the object the
+                    // rotation up front, the way NINA's own target import does.
+                    dso.RotationPositionAngle = target.RotationDeg;
+                    dso.Rotation = target.RotationDeg;
                     var ok = await framingAssistantVM.SetCoordinates(dso);
                     if (!ok) {
                         LastActionResult = $"Framing rejected the coordinates for '{target.Name}'.";
@@ -288,21 +298,35 @@ namespace ACP.NINA.Plugin.Dockables {
                     // overlap, which silently produces unrendered rectangles
                     // until the user nudges the slider.
                     framingAssistantVM.OverlapPercentage = m.OverlapPct / 100.0;
-                });
-
-                // Phase 2 — explicitly trigger LoadImage and await it.
-                // Mirrors NINA's own DSO import path. Waiting here means
-                // the sky-survey image fetch + cascading CalculateRectangle
-                // tasks are done by the time we return.
-                await Application.Current.Dispatcher.InvokeAsync(async () => {
-                    if (framingAssistantVM.LoadImageCommand?.CanExecute(null) == true) {
-                        await framingAssistantVM.LoadImageCommand.ExecuteAsync(null);
+                    // Make sure the percent unit is selected, and re-select it so
+                    // the slider re-reads the value. NINA raises no change event
+                    // for OverlapValue when OverlapPercentage is set directly, so
+                    // the slider can otherwise keep showing its previous number
+                    // while the rectangles already use the new one.
+                    // The view rebinds the stepper only when the unit selection
+                    // changes, so go via the other unit and back to make the
+                    // displayed number match the value just set.
+                    var units = framingAssistantVM.OverlapUnits;
+                    var pctUnit = units?.FirstOrDefault(u => u != null && u.Contains("%"));
+                    var otherUnit = units?.FirstOrDefault(u => u != null && !u.Contains("%"));
+                    if (pctUnit != null) {
+                        if (otherUnit != null) framingAssistantVM.SelectedOverlapUnit = otherUnit;
+                        framingAssistantVM.SelectedOverlapUnit = pctUnit;
+                        framingAssistantVM.OverlapPercentage = m.OverlapPct / 100.0;
                     }
                 });
 
-                if (Math.Abs(target.RotationDeg) > 0.001) {
-                    await ApplyRotationOnceAsync(target.RotationDeg);
-                }
+                // No second LoadImage here. SetCoordinates already awaits the
+                // image load itself, and a reload resets the rotation to the
+                // profile's last remembered angle and rebuilds the rectangles
+                // underneath the overlap change, which is what made rotated
+                // pushes land on 0 and mosaic panels vanish until nudged.
+
+                // Belt and braces after the load: the object carries the rotation,
+                // and this pins the view model's field to the same value. Always
+                // runs, including zero, so a stale angle from an earlier push is
+                // never left behind.
+                await ApplyRotationSettledAsync(target.RotationDeg);
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
                 Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
@@ -312,37 +336,65 @@ namespace ACP.NINA.Plugin.Dockables {
             }
         }
 
-        /// Set rotation once. Caller is responsible for ensuring everything
-        /// has settled (i.e. LoadImageCommand has been awaited) — the retry
-        /// loop the previous version of this method ran turned out to race
-        /// against the CameraRectangles build, hiding mosaic panel outlines.
+        /// Apply the rotation and make sure it holds. NINA's CameraWidth and
+        /// CameraHeight setters defer their rectangle rebuild, and each rebuild
+        /// that lands after a rotation set resets it. So set the value, wait,
+        /// read it back, and repeat until it reads the same twice in a row.
         ///
-        /// Uses the RectangleRotation proxy (Rectangle.Rotation, the
-        /// user-rotation field NINA's own DSO load path writes to). Falls
-        /// back to RectangleTotalRotation, then to the bare
-        /// Rectangle.TotalRotation, in case a future NINA version renames
-        /// the proxy.
-        private async Task ApplyRotationOnceAsync(double rotationDeg) {
+        /// ACP stores the sky position angle. Framing's stored angle runs the
+        /// other way: NINA's own plate solve path writes 360 minus the angle
+        /// into RectangleTotalRotation, and the on screen box shows it back as
+        /// the position angle. So an ACP plan at 45 is stored as 315 and shows
+        /// as 45.
+        private async Task ApplyRotationSettledAsync(double rotationDeg) {
+            for (var i = 0; i < 40 && !framingAssistantVM.RectangleCalculated; i++) {
+                await Task.Delay(250);
+            }
             if (!framingAssistantVM.RectangleCalculated) {
-                Logger.Warning("ACP: Rectangle not calculated; rotation skipped");
-                LastActionResult = "✓ Pushed (rotation skipped — Framing image didn't load in time).";
+                Logger.Warning("ACP: Rectangle not calculated after 10 s; rotation skipped");
+                LastActionResult = "Pushed, but rotation was skipped: the Framing image did not load in time. Push again.";
                 return;
             }
 
             var vmType = framingAssistantVM.GetType();
-            var proxy = vmType.GetProperty("RectangleRotation")
-                     ?? vmType.GetProperty("RectangleTotalRotation");
-            var inverted = 360 - rotationDeg;
+            var total = vmType.GetProperty("RectangleTotalRotation");
+            var wanted = (360.0 - rotationDeg) % 360.0;
+            if (wanted < 0) wanted += 360.0;
 
-            await Application.Current.Dispatcher.InvokeAsync(() => {
-                if (proxy != null && proxy.CanWrite) {
-                    proxy.SetValue(framingAssistantVM, inverted);
-                    Logger.Info($"ACP: rotation {rotationDeg}° applied via {proxy.Name}");
-                } else if (framingAssistantVM.Rectangle != null) {
-                    framingAssistantVM.Rectangle.TotalRotation = inverted;
-                    Logger.Warning("ACP: no rotation proxy property; used Rectangle.TotalRotation fallback");
+            if (total == null || !total.CanWrite) {
+                if (framingAssistantVM.Rectangle != null) {
+                    framingAssistantVM.Rectangle.TotalRotation = wanted;
+                    Logger.Warning("ACP: no RectangleTotalRotation property; used Rectangle.TotalRotation fallback");
                 }
-            });
+                return;
+            }
+
+            double Read() {
+                var v = total.GetValue(framingAssistantVM);
+                return v is double d ? d : double.NaN;
+            }
+            double Diff(double a, double b) {
+                var d = Math.Abs(((a - b) % 360.0 + 360.0) % 360.0);
+                return Math.Min(d, 360.0 - d);
+            }
+
+            var stable = 0;
+            var attempts = 0;
+            for (; attempts < 8 && stable < 2; attempts++) {
+                if (Diff(Read(), wanted) >= 0.5) {
+                    await Application.Current.Dispatcher.InvokeAsync(() => total.SetValue(framingAssistantVM, wanted));
+                    stable = 0;
+                }
+                await Task.Delay(300);
+                stable = Diff(Read(), wanted) < 0.5 ? stable + 1 : 0;
+            }
+            var final = Read();
+            if (Diff(final, wanted) < 0.5) {
+                Logger.Info($"ACP: rotation {rotationDeg} held as stored {wanted} after {attempts} checks");
+            } else {
+                Logger.Warning($"ACP: rotation {rotationDeg} did not hold; stored value is {final} after {attempts} checks");
+                LastActionResult = $"Pushed, but Framing kept resetting the rotation (now {final}). Set it by hand.";
+            }
         }
 
         // ── Action: Sync All to TS ────────────────────────────────────────────

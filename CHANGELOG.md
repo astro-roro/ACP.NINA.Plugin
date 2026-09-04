@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1 (2026-09-04)
+
+### Fixed
+
+- Push to Framing now applies the rotation last and confirms it held. NINA's camera width and height setters defer their rectangle rebuild, and each rebuild landing after the rotation set reset it, so rotated plans showed 0 degrees or alternated between right and wrong on successive pushes.
+- Rotation is always applied, including zero, so a plan at 0 degrees pushed after a rotated one no longer keeps the previous angle.
+- The push no longer reloads the sky image a second time after NINA's own load, and it waits for NINA's work to finish before touching the optics and mosaic fields. The reload and the race made mosaic panels vanish until the overlap slider was nudged.
+- The overlap value now shows in NINA's stepper after a push. ACP's 15 percent used to display as NINA's previous number.
+- The first push after NINA starts waits for the Framing rectangle instead of silently skipping the rotation.
+
 ## 1.0.0 — 2026-05-19
 
 First public release.
