@@ -28,7 +28,7 @@ namespace ACP.NINA.Plugin.Dockables {
     /// Iteration 4 (this file): wires real Framing push + TS sync. Plans
     /// list and connection probing came in iteration 3.
     [Export(typeof(IDockableVM))]
-    public partial class AcpDockableVM : DockableVM {
+    public partial class AcpDockableVM : DockableVM, IDisposable {
 
         private readonly IFramingAssistantVM framingAssistantVM;
         private readonly AcpSettings settings;
@@ -118,14 +118,19 @@ namespace ACP.NINA.Plugin.Dockables {
             }
         }
 
-        public override void Dispose() {
+        /// NINA's DockableVM has no Dispose to override, so this is an
+        /// explicit interface implementation: it cannot collide with anything
+        /// the base class grows later, and it stops the poll loop for anything
+        /// that does dispose the view model. If nothing ever does, the loop
+        /// simply runs for the life of the application, which is what a 60
+        /// second poll is for.
+        void IDisposable.Dispose() {
             try {
                 pollCts.Cancel();
                 pollCts.Dispose();
             } catch (Exception) {
                 // Nothing useful to do if the token source is already gone.
             }
-            base.Dispose();
         }
 
         private void SetStatusOnUi(bool connected, string status, string result) {
