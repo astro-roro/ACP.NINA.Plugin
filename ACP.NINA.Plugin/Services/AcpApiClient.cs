@@ -36,16 +36,26 @@ namespace ACP.NINA.Plugin.Services {
 
         private readonly string baseUrl;
         private readonly Func<string> tokenSource;
+        private readonly HttpClient client;
 
-        public AcpApiClient(string baseUrl) : this(baseUrl, TokenStore.Read) { }
+        public AcpApiClient(string baseUrl) : this(baseUrl, TokenStore.Read, null) { }
 
         /// The token is read through a delegate rather than captured at
         /// construction so tests can supply one without touching Credential
         /// Manager, and so a live client picks up a token edited mid-session.
-        public AcpApiClient(string baseUrl, Func<string> tokenSource) {
+        ///
+        /// The handler is the seam the tests use. Passing one builds a private
+        /// HttpClient over it, so a fake ACP can answer without a socket, which
+        /// is what lets the match client be exercised before the server side
+        /// exists. Passing null uses the shared client, which is what
+        /// everything in the plugin does.
+        public AcpApiClient(string baseUrl, Func<string> tokenSource, HttpMessageHandler handler = null) {
             // Trim trailing slashes so we can concatenate paths cleanly.
             this.baseUrl = (baseUrl ?? string.Empty).TrimEnd('/');
             this.tokenSource = tokenSource ?? (() => null);
+            this.client = handler == null
+                ? http
+                : new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         }
 
         /// True when the configured URL is https, which the v3 spec allows and
@@ -130,7 +140,7 @@ namespace ACP.NINA.Plugin.Services {
                     req.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
                 }
 
-                using (var resp = await http.SendAsync(req, ct).ConfigureAwait(false)) {
+                using (var resp = await client.SendAsync(req, ct).ConfigureAwait(false)) {
                     var text = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
                     if (resp.StatusCode == HttpStatusCode.Unauthorized) {
                         // The one status the user can actually act on, so it
