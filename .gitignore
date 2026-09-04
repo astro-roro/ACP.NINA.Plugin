@@ -27,3 +27,6 @@ Thumbs.db
 # Release artifacts (built via the pack script, uploaded to GitHub release)
 *.zip
 
+
+# Obsidian-vault-backed notes (see note-link)
+/notes
