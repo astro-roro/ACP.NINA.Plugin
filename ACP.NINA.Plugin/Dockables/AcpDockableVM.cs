@@ -334,9 +334,15 @@ namespace ACP.NINA.Plugin.Dockables {
         /// Rectangle.TotalRotation, in case a future NINA version renames
         /// the proxy.
         private async Task ApplyRotationOnceAsync(double rotationDeg) {
+            // The first push after NINA starts can arrive before the Framing
+            // tab has laid out and built its rectangle. Wait a little rather
+            // than skip, or the rotation is silently lost.
+            for (var i = 0; i < 40 && !framingAssistantVM.RectangleCalculated; i++) {
+                await Task.Delay(250);
+            }
             if (!framingAssistantVM.RectangleCalculated) {
-                Logger.Warning("ACP: Rectangle not calculated; rotation skipped");
-                LastActionResult = "✓ Pushed (rotation skipped — Framing image didn't load in time).";
+                Logger.Warning("ACP: Rectangle not calculated after 10 s; rotation skipped");
+                LastActionResult = "Pushed, but rotation was skipped: the Framing image did not load in time. Push again.";
                 return;
             }
 
