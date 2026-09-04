@@ -326,10 +326,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 // and this pins the view model's field to the same value. Always
                 // runs, including zero, so a stale angle from an earlier push is
                 // never left behind.
-                ArmRotationWatch();
-                await ApplyRotationOnceAsync(target.RotationDeg);
-                await Task.Delay(1500);
-                LogRotationState("1500 ms later");
+                await ApplyRotationSettledAsync(target.RotationDeg);
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
                 Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
@@ -339,20 +336,17 @@ namespace ACP.NINA.Plugin.Dockables {
             }
         }
 
-        /// Set rotation once. Caller is responsible for ensuring everything
-        /// has settled (i.e. LoadImageCommand has been awaited) — the retry
-        /// loop the previous version of this method ran turned out to race
-        /// against the CameraRectangles build, hiding mosaic panel outlines.
+        /// Apply the rotation and make sure it holds. NINA's CameraWidth and
+        /// CameraHeight setters defer their rectangle rebuild, and each rebuild
+        /// that lands after a rotation set resets it. So set the value, wait,
+        /// read it back, and repeat until it reads the same twice in a row.
         ///
-        /// Uses the RectangleRotation proxy (Rectangle.Rotation, the
-        /// user-rotation field NINA's own DSO load path writes to). Falls
-        /// back to RectangleTotalRotation, then to the bare
-        /// Rectangle.TotalRotation, in case a future NINA version renames
-        /// the proxy.
-        private async Task ApplyRotationOnceAsync(double rotationDeg) {
-            // The first push after NINA starts can arrive before the Framing
-            // tab has laid out and built its rectangle. Wait a little rather
-            // than skip, or the rotation is silently lost.
+        /// ACP stores the sky position angle. Framing's stored angle runs the
+        /// other way: NINA's own plate solve path writes 360 minus the angle
+        /// into RectangleTotalRotation, and the on screen box shows it back as
+        /// the position angle. So an ACP plan at 45 is stored as 315 and shows
+        /// as 45.
+        private async Task ApplyRotationSettledAsync(double rotationDeg) {
             for (var i = 0; i < 40 && !framingAssistantVM.RectangleCalculated; i++) {
                 await Task.Delay(250);
             }
@@ -363,69 +357,43 @@ namespace ACP.NINA.Plugin.Dockables {
             }
 
             var vmType = framingAssistantVM.GetType();
-            var proxy = vmType.GetProperty("RectangleRotation")
-                     ?? vmType.GetProperty("RectangleTotalRotation");
-            // ACP stores the sky position angle. Framing's field runs the
-            // other way, and NINA's own imports write 360 minus the angle to
-            // both RectangleRotation and RectangleTotalRotation. Normalise so
-            // 0 stays 0 rather than becoming 360.
-            var inverted = (360.0 - rotationDeg) % 360.0;
-            if (inverted < 0) inverted += 360.0;
             var total = vmType.GetProperty("RectangleTotalRotation");
+            var wanted = (360.0 - rotationDeg) % 360.0;
+            if (wanted < 0) wanted += 360.0;
 
-            await Application.Current.Dispatcher.InvokeAsync(() => {
-                var applied = false;
-                if (proxy != null && proxy.CanWrite) { proxy.SetValue(framingAssistantVM, inverted); applied = true; }
-                if (total != null && total.CanWrite && total != proxy) { total.SetValue(framingAssistantVM, inverted); applied = true; }
-                if (applied) {
-                    Logger.Info($"ACP: rotation {rotationDeg} applied as {inverted} via RectangleRotation and RectangleTotalRotation");
-                    LogRotationState("right after apply");
-                } else if (framingAssistantVM.Rectangle != null) {
-                    framingAssistantVM.Rectangle.TotalRotation = inverted;
-                    Logger.Warning("ACP: no rotation proxy property; used Rectangle.TotalRotation fallback");
+            if (total == null || !total.CanWrite) {
+                if (framingAssistantVM.Rectangle != null) {
+                    framingAssistantVM.Rectangle.TotalRotation = wanted;
+                    Logger.Warning("ACP: no RectangleTotalRotation property; used Rectangle.TotalRotation fallback");
                 }
-            });
-        }
-
-        private bool rotationWatchArmed;
-        private double lastSeenTotalRotation = double.NaN;
-
-        /// Diagnostic: log who changes the rotation after a push. Hooks the
-        /// view model's PropertyChanged once and records a stack trace each
-        /// time the total rotation actually changes value.
-        private void ArmRotationWatch() {
-            if (rotationWatchArmed) return;
-            if (framingAssistantVM is System.ComponentModel.INotifyPropertyChanged npc) {
-                npc.PropertyChanged += (sender, e) => {
-                    if (e.PropertyName != "RectangleTotalRotation" && e.PropertyName != "RectangleRotation" && e.PropertyName != "Rectangle") return;
-                    try {
-                        var t = framingAssistantVM.GetType();
-                        var v = t.GetProperty("RectangleTotalRotation")?.GetValue(framingAssistantVM);
-                        var d = v is double dv ? dv : double.NaN;
-                        if (!double.IsNaN(lastSeenTotalRotation) && Math.Abs(d - lastSeenTotalRotation) < 0.01) return;
-                        lastSeenTotalRotation = d;
-                        var trace = Environment.StackTrace.Split('\n').Skip(2).Take(22).Select(l => l.Trim()).Where(l => !l.Contains("System.") && !l.Contains("MS.Internal"));
-                        Logger.Info($"ACP rotation watch: {e.PropertyName} now TotalRotation={d}\n" + string.Join("\n", trace));
-                    } catch (Exception ex) {
-                        Logger.Warning("ACP rotation watch failed: " + ex.Message);
-                    }
-                };
-                rotationWatchArmed = true;
-                Logger.Info("ACP rotation watch armed");
+                return;
             }
-        }
 
-        /// Diagnostic: every rotation related value NINA holds, so a mismatch
-        /// between what we set and what the screen shows can be pinned down.
-        private void LogRotationState(string when) {
-            try {
-                var vm = framingAssistantVM;
-                var t = vm.GetType();
-                object Get(string name) { var pr = t.GetProperty(name); return pr == null ? "n/a" : pr.GetValue(vm); }
-                var r = vm.Rectangle;
-                Logger.Info($"ACP rotation state {when}: RectangleRotation={Get("RectangleRotation")} RectangleTotalRotation={Get("RectangleTotalRotation")} InverseRectangleRotation={Get("InverseRectangleRotation")} RotateSky={Get("RotateSky")} PreserveAlignment={Get("PreserveAlignment")} RectangleCalculated={vm.RectangleCalculated} Rect.Rotation={r?.Rotation} Rect.TotalRotation={r?.TotalRotation} Rect.RotationOffset={r?.RotationOffset} Rect.DSOPositionAngle={r?.DSOPositionAngle} LastRotationAngle={profileService?.ActiveProfile?.FramingAssistantSettings?.LastRotationAngle}");
-            } catch (Exception ex) {
-                Logger.Warning("ACP rotation state read failed: " + ex.Message);
+            double Read() {
+                var v = total.GetValue(framingAssistantVM);
+                return v is double d ? d : double.NaN;
+            }
+            double Diff(double a, double b) {
+                var d = Math.Abs(((a - b) % 360.0 + 360.0) % 360.0);
+                return Math.Min(d, 360.0 - d);
+            }
+
+            var stable = 0;
+            var attempts = 0;
+            for (; attempts < 8 && stable < 2; attempts++) {
+                if (Diff(Read(), wanted) >= 0.5) {
+                    await Application.Current.Dispatcher.InvokeAsync(() => total.SetValue(framingAssistantVM, wanted));
+                    stable = 0;
+                }
+                await Task.Delay(300);
+                stable = Diff(Read(), wanted) < 0.5 ? stable + 1 : 0;
+            }
+            var final = Read();
+            if (Diff(final, wanted) < 0.5) {
+                Logger.Info($"ACP: rotation {rotationDeg} held as stored {wanted} after {attempts} checks");
+            } else {
+                Logger.Warning($"ACP: rotation {rotationDeg} did not hold; stored value is {final} after {attempts} checks");
+                LastActionResult = $"Pushed, but Framing kept resetting the rotation (now {final}). Set it by hand.";
             }
         }
 
