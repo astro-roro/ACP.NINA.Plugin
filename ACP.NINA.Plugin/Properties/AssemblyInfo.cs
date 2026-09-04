@@ -11,6 +11,12 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")]
+
+// TargetSchedulerDb keeps its SQLite connection internal so nothing outside
+// the assembly can write to schedulerdb.sqlite around the schema version gate.
+// The tests need it to check what actually landed in the tables.
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("ACP.NINA.Plugin.Tests")]
+
 [assembly: AssemblyVersion("3.1.0.0")]
 [assembly: AssemblyFileVersion("3.1.0.0")]
 
