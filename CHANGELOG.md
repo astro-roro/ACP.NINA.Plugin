@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.1.0 (unreleased)
+
+Target Scheduler sync moves inside the plugin, so it works when ACP is on another machine.
+
+### Added
+
+- **The Target Scheduler push runs in the plugin.** It opens `schedulerdb.sqlite` itself and writes a project per ACP project name, a target per mosaic panel, exposure plans from the filter goals and exposure templates deduplicated by camera and filter. Until now this only worked when ACP and NINA shared a machine, because the Python extension that did it opened the database from the ACP host.
+- **Schema versions 23 to 28 are supported**, matching the Python extension. Anything outside that range is refused before a single row is written, with the same message the extension gives.
+- **Sync for tonight now finishes the job.** The sequencer instruction and the dock button both load the matched plans into Target Scheduler, honouring the Everything and Only what fits modes, and report how many were loaded and what was left out and why.
+
+### Changed
+
+- `/api/gear` responses are read the way ACP actually sends them. Sensor size arrives as a two element `sensor_px` array, and the per filter capture settings under `cameras[].filters` are read for the first time. The Framing Assistant push was silently getting no sensor size from a real server and now gets one.
+
 ## 3.0.0 (unreleased)
 
 ACP no longer has to run on the same machine as NINA, and you no longer have to tell the plugin what rig is connected. It works the gear out from the hardware and a plate solve.
