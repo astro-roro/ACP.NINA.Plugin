@@ -150,7 +150,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var dir = Path.GetDirectoryName(dbPath) ?? string.Empty;
             var stem = Path.GetFileNameWithoutExtension(dbPath);
             var ext = Path.GetExtension(dbPath);
+            // The stamp only goes down to the second, so two pushes in quick
+            // succession would land on the same name. Never overwrite a backup:
+            // the second one gets a counter instead.
             var dst = Path.Combine(dir, $"{stem}-acpsync-{stamp}-backup{ext}");
+            for (var n = 2; File.Exists(dst); n++) {
+                dst = Path.Combine(dir, $"{stem}-acpsync-{stamp}-{n}-backup{ext}");
+            }
 
             using (var src = new FileStream(
                        dbPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))

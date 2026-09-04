@@ -126,6 +126,13 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Contains("-acpsync-", Path.GetFileName(backup));
                 Assert.EndsWith("-backup.sqlite", backup);
                 Assert.Equal(File.ReadAllBytes(path), File.ReadAllBytes(backup));
+
+                // A second backup in the same second gets its own name rather
+                // than overwriting the first.
+                var again = TargetSchedulerDb.BackupTo(path);
+                Assert.NotEqual(backup, again);
+                Assert.True(File.Exists(backup));
+                Assert.True(File.Exists(again));
             }
         }
     }
