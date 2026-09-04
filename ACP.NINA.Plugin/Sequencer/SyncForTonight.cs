@@ -17,19 +17,19 @@ namespace ACP.NINA.Plugin.Sequencer {
 
     /// The start of the night in one instruction. Optionally slew, capture and
     /// solve a frame, work out what gear is actually connected from the solve,
-    /// correct the profile focal length if it is wrong, and ask ACP which plans
-    /// fit.
+    /// correct the profile focal length if it is wrong, ask ACP which plans fit
+    /// and load them into Target Scheduler.
     ///
-    /// Loading the matching plans into Target Scheduler is the next version.
-    /// This one reports what fits and leaves TS alone, which is worth having on
-    /// its own: it tells you whether the rig is what you think it is before you
-    /// commit the night to it.
+    /// Nothing is written to Target Scheduler while one of its containers is
+    /// running, so this belongs before the container in a sequence rather than
+    /// inside it.
     [ExportMetadata("Name", "ACP: Sync for tonight")]
     [ExportMetadata(
         "Description",
-        "Solves a frame, works out the connected gear from it, and asks ACP which plans fit tonight. " +
-        "Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out, " +
-        "which you can switch off below. Loading the matching plans into Target Scheduler arrives in the next version."
+        "Solves a frame, works out the connected gear from it, asks ACP which plans fit tonight, and loads " +
+        "them into Target Scheduler. Updates the profile focal length and focal ratio when the solve says " +
+        "they are more than 5 percent out, which you can switch off below. Put this before your Target " +
+        "Scheduler container: nothing is written while one is running."
     )]
     [ExportMetadata("Icon", "PlatesolveSVG")]
     [ExportMetadata("Category", "ACP")]
