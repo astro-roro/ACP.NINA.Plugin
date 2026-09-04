@@ -294,23 +294,20 @@ namespace ACP.NINA.Plugin.Dockables {
                     // overlap, which silently produces unrendered rectangles
                     // until the user nudges the slider.
                     framingAssistantVM.OverlapPercentage = m.OverlapPct / 100.0;
-                    // NINA 3 drives the mosaic from OverlapValue plus a unit and
-                    // ignores the legacy fraction, which is why 15 percent in ACP
-                    // arrived as NINA's 20 percent default.
+                    // Make sure the percent unit is selected, and re-select it so
+                    // the slider re-reads the value. NINA raises no change event
+                    // for OverlapValue when OverlapPercentage is set directly, so
+                    // the slider can otherwise keep showing its previous number
+                    // while the rectangles already use the new one.
                     var pctUnit = framingAssistantVM.OverlapUnits?.FirstOrDefault(u => u != null && u.Contains("%"));
                     if (pctUnit != null) framingAssistantVM.SelectedOverlapUnit = pctUnit;
-                    framingAssistantVM.OverlapValue = m.OverlapPct;
                 });
 
-                // Phase 2 — explicitly trigger LoadImage and await it.
-                // Mirrors NINA's own DSO import path. Waiting here means
-                // the sky-survey image fetch + cascading CalculateRectangle
-                // tasks are done by the time we return.
-                await Application.Current.Dispatcher.InvokeAsync(async () => {
-                    if (framingAssistantVM.LoadImageCommand?.CanExecute(null) == true) {
-                        await framingAssistantVM.LoadImageCommand.ExecuteAsync(null);
-                    }
-                });
+                // No second LoadImage here. SetCoordinates already awaits the
+                // image load itself, and a reload resets the rotation to the
+                // profile's last remembered angle and rebuilds the rectangles
+                // underneath the overlap change, which is what made rotated
+                // pushes land on 0 and mosaic panels vanish until nudged.
 
                 // Belt and braces after the load: the object carries the rotation,
                 // and this pins the view model's field to the same value. Always
@@ -346,15 +343,20 @@ namespace ACP.NINA.Plugin.Dockables {
             var vmType = framingAssistantVM.GetType();
             var proxy = vmType.GetProperty("RectangleRotation")
                      ?? vmType.GetProperty("RectangleTotalRotation");
-            // Same sense as the object's RotationPositionAngle. Normalise to
-            // 0 to 360 so 0 stays 0.
-            var inverted = rotationDeg % 360.0;
+            // ACP stores the sky position angle. Framing's field runs the
+            // other way, and NINA's own imports write 360 minus the angle to
+            // both RectangleRotation and RectangleTotalRotation. Normalise so
+            // 0 stays 0 rather than becoming 360.
+            var inverted = (360.0 - rotationDeg) % 360.0;
             if (inverted < 0) inverted += 360.0;
+            var total = vmType.GetProperty("RectangleTotalRotation");
 
             await Application.Current.Dispatcher.InvokeAsync(() => {
-                if (proxy != null && proxy.CanWrite) {
-                    proxy.SetValue(framingAssistantVM, inverted);
-                    Logger.Info($"ACP: rotation {rotationDeg}° applied via {proxy.Name}");
+                var applied = false;
+                if (proxy != null && proxy.CanWrite) { proxy.SetValue(framingAssistantVM, inverted); applied = true; }
+                if (total != null && total.CanWrite && total != proxy) { total.SetValue(framingAssistantVM, inverted); applied = true; }
+                if (applied) {
+                    Logger.Info($"ACP: rotation {rotationDeg} applied as {inverted} via RectangleRotation and RectangleTotalRotation");
                 } else if (framingAssistantVM.Rectangle != null) {
                     framingAssistantVM.Rectangle.TotalRotation = inverted;
                     Logger.Warning("ACP: no rotation proxy property; used Rectangle.TotalRotation fallback");

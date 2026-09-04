@@ -4,8 +4,9 @@
 
 ### Fixed
 
-- Push to Framing now sets the rotation on the target object before NINA loads it, so the angle survives NINA's rectangle rebuild. It is also always applied, including zero, so a plan at 0 degrees pushed after a rotated one no longer keeps the previous angle.
-- Mosaic overlap now reaches NINA 3's OverlapValue field with the percent unit. ACP's 15 percent used to arrive as NINA's 20 percent default.
+- Push to Framing no longer reloads the sky image a second time after NINA's own load. That reload reset the rotation to the profile's last remembered angle and rebuilt the mosaic rectangles underneath the overlap change, so rotated plans landed on 0 degrees and mosaic panels vanished until the slider was nudged.
+- Rotation is now always applied, including zero, and written the way NINA's own imports do it, to both RectangleRotation and RectangleTotalRotation. A plan at 0 degrees pushed after a rotated one no longer keeps the previous angle.
+- The overlap slider is refreshed after a push so it shows the value the rectangles already use.
 
 ## 1.0.0 — 2026-05-19
 
