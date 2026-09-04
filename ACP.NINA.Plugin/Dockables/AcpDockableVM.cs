@@ -1,8 +1,10 @@
 using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services;
+using ACP.NINA.Plugin.Services.TargetScheduler;
 using NINA.Astrometry;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.ViewModel;
+using NINA.Plugin.Interfaces;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
@@ -40,7 +42,9 @@ namespace ACP.NINA.Plugin.Dockables {
             IProfileService profileService,
             IFramingAssistantVM framingAssistantVM,
             IAcpPlateSolver plateSolver,
-            ISyncForTonightRunner syncRunner
+            ISyncForTonightRunner syncRunner,
+            [Import(AllowDefault = true)] IMessageBroker messageBroker,
+            [Import(AllowDefault = true)] ITsContainerWatch containerWatch
         ) : base(profileService) {
             this.framingAssistantVM = framingAssistantVM;
             this.plateSolver = plateSolver;
@@ -75,9 +79,73 @@ namespace ACP.NINA.Plugin.Dockables {
             ConnectionStatus = "Probing...";
             IsConnected = false;
 
+            StartProgressReporting(messageBroker, containerWatch);
+
             _ = RefreshAsync();
             _ = PollForChangesAsync(pollCts.Token);
         }
+
+        // -- Progress reporting (Part F) ---------------------------------------
+
+        private ProgressReporter progressReporter;
+        private TsSnapshotCache tsSnapshotCache;
+        private TsPlanRefsSource planRefsSource;
+
+        /// Build the reporter and let it run for the life of the dock.
+        ///
+        /// It lives here rather than behind another exported service because
+        /// this is the one place that already has the profile, the settings and
+        /// somewhere to show the result. Both new imports are AllowDefault, so
+        /// a NINA that does not hand over a message broker or the container
+        /// watch still composes the dock: progress reporting falls back to the
+        /// timer, or to being off, rather than the whole panel failing to
+        /// appear. That is the same call v3.1 made about its own broker import.
+        private void StartProgressReporting(
+            IMessageBroker messageBroker, ITsContainerWatch containerWatch
+        ) {
+            try {
+                Func<string> profileId = () => profileService?.ActiveProfile?.Id.ToString();
+
+                tsSnapshotCache = new TsSnapshotCache();
+                planRefsSource = new TsPlanRefsSource(
+                    tsSnapshotCache,
+                    profileId,
+                    async ct => (IReadOnlyList<Plan>)
+                        (await new AcpApiClient(settings.ServerUrl).GetPlansAsync(ct)
+                            .ConfigureAwait(false))?.Plans
+                );
+
+                progressReporter = new ProgressReporter(
+                    messageBroker,
+                    new TsDatabaseProgressSource(tsSnapshotCache, profileId),
+                    planRefsSource,
+                    new AcpApiClient(settings.ServerUrl),
+                    containerWatch,
+                    () => settings.ReportProgressToAcp,
+                    profileId
+                );
+                progressReporter.StatusChanged += (s, e) =>
+                    RaisePropertyChanged(nameof(ProgressStatusLine));
+                progressReporter.Start();
+            } catch (Exception ex) {
+                // Nothing here is worth losing the dock over.
+                Logger.Error($"ACP: could not start progress reporting: {ex}");
+                progressReporter = null;
+            }
+        }
+
+        /// A sync has just rewritten Target Scheduler, so the reporter's view
+        /// of both the rows and the plan list is out of date. Dropping the two
+        /// caches means the next report joins against what was actually
+        /// written rather than what was there beforehand.
+        private void InvalidateProgressCaches() {
+            tsSnapshotCache?.Invalidate();
+            planRefsSource?.Invalidate();
+        }
+
+        /// The footer line: "Progress sent 22 s ago", or the last error.
+        public string ProgressStatusLine =>
+            progressReporter?.StatusLine ?? ProgressStatus.Off;
 
         // -- Change polling ----------------------------------------------------
 
@@ -135,6 +203,11 @@ namespace ACP.NINA.Plugin.Dockables {
         /// simply runs for the life of the application, which is what a 60
         /// second poll is for.
         void IDisposable.Dispose() {
+            try {
+                progressReporter?.Dispose();
+            } catch (Exception) {
+                // Already gone, nothing useful to do.
+            }
             try {
                 pollCts.Cancel();
                 pollCts.Dispose();
@@ -280,6 +353,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 // and the focal length change and the rest goes to the NINA log,
                 // which the runner has already written.
                 if (outcome.Success) {
+                    InvalidateProgressCaches();
                     await RefreshAsync().ConfigureAwait(false);
                 }
             } catch (AcpUnauthorizedException ex) {
@@ -594,6 +668,7 @@ namespace ACP.NINA.Plugin.Dockables {
 
                 var client = new AcpApiClient(settings.ServerUrl);
                 var resp = await client.SyncToTsAsync(profileId).ConfigureAwait(false);
+                InvalidateProgressCaches();
 
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");
