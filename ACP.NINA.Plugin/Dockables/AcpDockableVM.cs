@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Composition;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -65,6 +66,74 @@ namespace ACP.NINA.Plugin.Dockables {
             IsConnected = false;
 
             _ = RefreshAsync();
+            _ = PollForChangesAsync(pollCts.Token);
+        }
+
+        // -- Change polling ----------------------------------------------------
+
+        /// GET /api/version once a minute and refetch plans only when
+        /// plans_last_modified moves. A dock left open all night then costs one
+        /// small request a minute instead of a full plans and gear fetch, and a
+        /// plan edited in ACP's web UI shows up here without anyone pressing
+        /// refresh.
+        private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
+
+        private readonly CancellationTokenSource pollCts = new CancellationTokenSource();
+        private string lastSeenPlansModified;
+
+        private async Task PollForChangesAsync(CancellationToken ct) {
+            while (!ct.IsCancellationRequested) {
+                try {
+                    await Task.Delay(PollInterval, ct).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return;
+                }
+                if (ct.IsCancellationRequested) return;
+
+                try {
+                    var client = new AcpApiClient(settings.ServerUrl);
+                    var version = await client.GetVersionAsync(ct).ConfigureAwait(false);
+                    var marker = version?.PlansLastModified;
+
+                    if (!IsConnected) {
+                        // Coming back after an outage. Refetch whatever the
+                        // marker says, since the list on screen is only what was
+                        // there when the connection dropped.
+                        await RefreshAsync().ConfigureAwait(false);
+                        continue;
+                    }
+                    if (marker != null && marker != lastSeenPlansModified) {
+                        Logger.Info($"ACP: plans changed on the server ({lastSeenPlansModified} to {marker}), refetching.");
+                        await RefreshAsync().ConfigureAwait(false);
+                    }
+                } catch (AcpUnauthorizedException ex) {
+                    SetStatusOnUi(false, $"Not connected — {settings.ServerUrl}", ex.Message);
+                } catch (OperationCanceledException) {
+                    return;
+                } catch (Exception ex) {
+                    // A poll failure is not worth shouting about. The next one
+                    // in a minute either recovers or the user presses refresh.
+                    Logger.Debug($"ACP: version poll failed: {ex.Message}");
+                }
+            }
+        }
+
+        public override void Dispose() {
+            try {
+                pollCts.Cancel();
+                pollCts.Dispose();
+            } catch (Exception) {
+                // Nothing useful to do if the token source is already gone.
+            }
+            base.Dispose();
+        }
+
+        private void SetStatusOnUi(bool connected, string status, string result) {
+            Application.Current?.Dispatcher.Invoke(() => {
+                IsConnected = connected;
+                ConnectionStatus = status;
+                LastActionResult = result;
+            });
         }
 
         // ── Connection status ─────────────────────────────────────────────────
@@ -145,6 +214,18 @@ namespace ACP.NINA.Plugin.Dockables {
                 var plans = await client.GetPlansAsync().ConfigureAwait(false);
                 var gear = await client.GetGearAsync().ConfigureAwait(false);
 
+                // Stamp the change marker after a successful fetch, so a failed
+                // fetch cannot make the poller think it is already up to date.
+                try {
+                    var version = await client.GetVersionAsync().ConfigureAwait(false);
+                    lastSeenPlansModified = version?.PlansLastModified;
+                } catch (Exception) {
+                    // An ACP too old for /api/version polls without a marker.
+                    // The poller then never sees a change and the refresh button
+                    // stays the way to update.
+                    lastSeenPlansModified = null;
+                }
+
                 var rows = BuildPlanRows(plans.Plans, gear);
 
                 Application.Current?.Dispatcher.Invoke(() => {
@@ -155,6 +236,16 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = $"Loaded {rows.Count} plans from ACP.";
                 });
                 Logger.Info($"ACP: refreshed {rows.Count} plans from {url}");
+            } catch (AcpUnauthorizedException ex) {
+                // The one failure the user can fix themselves, so it says what
+                // is wrong rather than looking like the network is down.
+                Application.Current?.Dispatcher.Invoke(() => {
+                    Plans.Clear();
+                    IsConnected = false;
+                    ConnectionStatus = $"Not connected — {url}";
+                    LastActionResult = ex.Message;
+                });
+                Logger.Warning($"ACP: {ex.Message} ({url})");
             } catch (Exception ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     Plans.Clear();
@@ -417,6 +508,11 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");
                 });
                 Logger.Info($"ACP: TS sync OK — {resp?.Report?.ToShortString()}");
+            } catch (AcpUnauthorizedException ex) {
+                Application.Current?.Dispatcher.Invoke(() => {
+                    LastActionResult = $"✗ {ex.Message}";
+                });
+                Logger.Warning($"ACP: TS sync rejected: {ex.Message}");
             } catch (Exception ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = $"✗ TS sync failed: {ex.Message}";

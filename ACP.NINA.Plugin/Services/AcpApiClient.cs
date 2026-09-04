@@ -1,18 +1,30 @@
 using ACP.NINA.Plugin.Models;
 using Newtonsoft.Json;
 using System;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace ACP.NINA.Plugin.Services {
 
-    /// HTTP wrapper around ACP's REST surface. Stateless — instances reuse a
-    /// single HttpClient with a short timeout for the lightweight endpoints
-    /// and a longer one for the TS sync (DB write + backup can take seconds).
-    /// Errors surface as exceptions which callers translate to user-visible
-    /// status text.
+    /// Raised when ACP answers 401. Kept separate from the generic transport
+    /// failure so the dock can say "ACP rejected the token" instead of a
+    /// connection error, which is the difference between the user fixing their
+    /// token and the user restarting their router.
+    public class AcpUnauthorizedException : Exception {
+        public AcpUnauthorizedException(string message) : base(message) { }
+    }
+
+    /// The transport the whole plugin talks to ACP through. Every request
+    /// carries Authorization: Bearer when a token is stored.
+    ///
+    /// The HttpClient is static and shared because that is what HttpClient
+    /// wants, so the token cannot live in DefaultRequestHeaders: it is set on
+    /// each request instead. That also means a token changed on the Options
+    /// page takes effect on the next call with no restart.
     public class AcpApiClient {
 
         private static readonly HttpClient http = new HttpClient {
@@ -23,64 +35,119 @@ namespace ACP.NINA.Plugin.Services {
         };
 
         private readonly string baseUrl;
+        private readonly Func<string> tokenSource;
 
-        public AcpApiClient(string baseUrl) {
+        public AcpApiClient(string baseUrl) : this(baseUrl, TokenStore.Read) { }
+
+        /// The token is read through a delegate rather than captured at
+        /// construction so tests can supply one without touching Credential
+        /// Manager, and so a live client picks up a token edited mid-session.
+        public AcpApiClient(string baseUrl, Func<string> tokenSource) {
             // Trim trailing slashes so we can concatenate paths cleanly.
             this.baseUrl = (baseUrl ?? string.Empty).TrimEnd('/');
+            this.tokenSource = tokenSource ?? (() => null);
         }
 
-        /// Probe ACP for liveness. ACP doesn't yet expose /api/version (audit
-        /// flagged it as a v1.x add), so we fall back to /api/plans — it
-        /// always returns 200 with a version field on a live server.
+        /// True when the configured URL is https, which the v3 spec allows and
+        /// which nothing here has to do anything special about: the default
+        /// certificate validation applies, so a self signed certificate is
+        /// refused. Pinning a self signed fingerprint is not in v3.0.
+        public bool IsHttps =>
+            baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+        // -- Endpoints ------------------------------------------------------
+
+        /// GET /api/version. Cheap enough to poll every 60 seconds.
+        public async Task<VersionInfo> GetVersionAsync(CancellationToken ct = default) {
+            var json = await SendAsync(HttpMethod.Get, "/api/version", null, ct).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<VersionInfo>(json) ?? new VersionInfo();
+        }
+
+        /// Probe ACP for liveness. /api/version is the right endpoint since
+        /// PR #69 landed; /api/plans is the fallback for a server old enough
+        /// not to have it, which keeps the v1 dock working against a v1 server.
         public async Task<string> ProbeAsync(CancellationToken ct = default) {
-            var json = await GetStringAsync("/api/plans", ct);
-            var doc = JsonConvert.DeserializeObject<PlansResponse>(json);
-            return $"ACP responding (plans schema v{doc?.Version ?? 0})";
+            try {
+                var v = await GetVersionAsync(ct).ConfigureAwait(false);
+                return $"ACP {v?.Version ?? "responding"} (API v{v?.ApiVersion ?? 0})";
+            } catch (AcpUnauthorizedException) {
+                throw;
+            } catch (HttpRequestException) {
+                var json = await SendAsync(HttpMethod.Get, "/api/plans", null, ct).ConfigureAwait(false);
+                var doc = JsonConvert.DeserializeObject<PlansResponse>(json);
+                return $"ACP responding (plans schema v{doc?.Version ?? 0})";
+            }
         }
 
         public async Task<PlansResponse> GetPlansAsync(CancellationToken ct = default) {
-            var json = await GetStringAsync("/api/plans", ct);
-            return JsonConvert.DeserializeObject<PlansResponse>(json)
-                ?? new PlansResponse();
+            var json = await SendAsync(HttpMethod.Get, "/api/plans", null, ct).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<PlansResponse>(json) ?? new PlansResponse();
         }
 
         public async Task<GearResponse> GetGearAsync(CancellationToken ct = default) {
-            var json = await GetStringAsync("/api/gear", ct);
-            return JsonConvert.DeserializeObject<GearResponse>(json)
-                ?? new GearResponse();
+            var json = await SendAsync(HttpMethod.Get, "/api/gear", null, ct).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<GearResponse>(json) ?? new GearResponse();
+        }
+
+        /// POST /api/plans/match. Body is the fingerprint plus "mode". Returns
+        /// every plan with a verdict, including the ones that do not fit, so
+        /// the dock can say why something was left out.
+        public async Task<MatchResponse> MatchPlansAsync(
+            Fingerprint fingerprint,
+            SyncMode mode,
+            CancellationToken ct = default
+        ) {
+            if (fingerprint == null) throw new ArgumentNullException(nameof(fingerprint));
+            fingerprint.Mode = mode.ToWire();
+            var body = JsonConvert.SerializeObject(fingerprint);
+            var json = await SendAsync(HttpMethod.Post, "/api/plans/match", body, ct).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<MatchResponse>(json) ?? new MatchResponse();
         }
 
         /// POST to the private nina_ts_sync extension. Body is
         /// {profile_id: "<NINA profile GUID>"}. On success returns the
         /// SyncReport plus paths to the DB backup and plans.json backup ACP
         /// wrote before the transaction.
-        ///
-        /// Surfaces errors via HttpRequestException with the response body
-        /// when ACP returns a 4xx/5xx, so callers can render the JSON
-        /// {error: "..."} payload that the extension produces (e.g.
-        /// "profile_id is required" or a SchemaVersionError).
         public async Task<TsSyncResponse> SyncToTsAsync(string profileId, CancellationToken ct = default) {
-            var url = baseUrl + "/api/ext/nina-ts-sync/sync";
             var body = JsonConvert.SerializeObject(new { profile_id = profileId });
-            var content = new StringContent(body, Encoding.UTF8, "application/json");
-
-            using (var resp = await http.PostAsync(url, content, ct)) {
-                var json = await resp.Content.ReadAsStringAsync();
-                if (!resp.IsSuccessStatusCode) {
-                    throw new HttpRequestException(
-                        $"HTTP {(int)resp.StatusCode}: {ExtractErrorMessage(json) ?? json}"
-                    );
-                }
-                return JsonConvert.DeserializeObject<TsSyncResponse>(json)
-                    ?? new TsSyncResponse();
-            }
+            var json = await SendAsync(
+                HttpMethod.Post, "/api/ext/nina-ts-sync/sync", body, ct
+            ).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<TsSyncResponse>(json) ?? new TsSyncResponse();
         }
 
-        private async Task<string> GetStringAsync(string path, CancellationToken ct) {
-            var url = baseUrl + path;
-            using (var resp = await http.GetAsync(url, ct)) {
-                resp.EnsureSuccessStatusCode();
-                return await resp.Content.ReadAsStringAsync();
+        // -- Transport ------------------------------------------------------
+
+        private async Task<string> SendAsync(
+            HttpMethod method, string path, string jsonBody, CancellationToken ct
+        ) {
+            using (var req = new HttpRequestMessage(method, baseUrl + path)) {
+                var token = tokenSource();
+                if (!string.IsNullOrWhiteSpace(token)) {
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                }
+                if (jsonBody != null) {
+                    req.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+                }
+
+                using (var resp = await http.SendAsync(req, ct).ConfigureAwait(false)) {
+                    var text = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    if (resp.StatusCode == HttpStatusCode.Unauthorized) {
+                        // The one status the user can actually act on, so it
+                        // gets its own type and its own words in the dock.
+                        throw new AcpUnauthorizedException(
+                            string.IsNullOrWhiteSpace(token)
+                                ? "ACP needs a token. Add one on the ACP options page."
+                                : "ACP rejected the token"
+                        );
+                    }
+                    if (!resp.IsSuccessStatusCode) {
+                        throw new HttpRequestException(
+                            $"HTTP {(int)resp.StatusCode}: {ExtractErrorMessage(text) ?? text}"
+                        );
+                    }
+                    return text;
+                }
             }
         }
 
