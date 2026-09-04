@@ -4,7 +4,8 @@
 
 ### Fixed
 
-- Push to Framing now always sets the rotation, including zero. A plan at 0 degrees pushed after a rotated one used to keep the Framing Assistant's previous angle.
+- Push to Framing now sets the rotation on the target object before NINA loads it, so the angle survives NINA's rectangle rebuild. It is also always applied, including zero, so a plan at 0 degrees pushed after a rotated one no longer keeps the previous angle.
+- Mosaic overlap now reaches NINA 3's OverlapValue field with the percent unit. ACP's 15 percent used to arrive as NINA's 20 percent default.
 
 ## 1.0.0 — 2026-05-19
 
