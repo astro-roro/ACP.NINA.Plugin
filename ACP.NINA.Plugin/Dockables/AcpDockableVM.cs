@@ -300,9 +300,10 @@ namespace ACP.NINA.Plugin.Dockables {
                     }
                 });
 
-                if (Math.Abs(target.RotationDeg) > 0.001) {
-                    await ApplyRotationOnceAsync(target.RotationDeg);
-                }
+                // Always apply, including zero. Skipping zero left the Framing
+                // Assistant's previous rotation in place, so a plan at 0 degrees
+                // pushed after a rotated one inherited the stale angle.
+                await ApplyRotationOnceAsync(target.RotationDeg);
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
                 Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
@@ -332,7 +333,10 @@ namespace ACP.NINA.Plugin.Dockables {
             var vmType = framingAssistantVM.GetType();
             var proxy = vmType.GetProperty("RectangleRotation")
                      ?? vmType.GetProperty("RectangleTotalRotation");
-            var inverted = 360 - rotationDeg;
+            // Framing counts the opposite way to ACP. Normalise so 0 stays 0
+            // rather than becoming 360.
+            var inverted = (360.0 - rotationDeg) % 360.0;
+            if (inverted < 0) inverted += 360.0;
 
             await Application.Current.Dispatcher.InvokeAsync(() => {
                 if (proxy != null && proxy.CanWrite) {
