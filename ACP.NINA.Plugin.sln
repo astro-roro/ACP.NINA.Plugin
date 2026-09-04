@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ACP.NINA.Plugin", "ACP.NINA.Plugin\ACP.NINA.Plugin.csproj", "{9F9EB062-B1CC-4622-A2FC-4362FE97CD08}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ACP.NINA.Plugin.Tests", "ACP.NINA.Plugin.Tests\ACP.NINA.Plugin.Tests.csproj", "{4B2A6E71-7C8D-4E2F-9A31-5D6C0F8B1E42}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,6 +16,10 @@ Global
 		{9F9EB062-B1CC-4622-A2FC-4362FE97CD08}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9F9EB062-B1CC-4622-A2FC-4362FE97CD08}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9F9EB062-B1CC-4622-A2FC-4362FE97CD08}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4B2A6E71-7C8D-4E2F-9A31-5D6C0F8B1E42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B2A6E71-7C8D-4E2F-9A31-5D6C0F8B1E42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B2A6E71-7C8D-4E2F-9A31-5D6C0F8B1E42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B2A6E71-7C8D-4E2F-9A31-5D6C0F8B1E42}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
