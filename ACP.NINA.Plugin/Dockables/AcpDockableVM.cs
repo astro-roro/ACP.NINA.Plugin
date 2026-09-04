@@ -250,7 +250,11 @@ namespace ACP.NINA.Plugin.Dockables {
                 // the command fires from, but property setters on the framing
                 // VM need to land on the UI thread. Dispatcher.Invoke wraps the
                 // whole sequence to keep it tidy.
-                await Application.Current.Dispatcher.InvokeAsync(async () => {
+                // InvokeAsync with an async lambda completes when the lambda
+                // yields at its first await, not when its work is done. Await the
+                // inner task too, or the optics, mosaic and rotation steps race
+                // NINA's own image load and lose.
+                await await Application.Current.Dispatcher.InvokeAsync(async () => {
                     var coords = new Coordinates(
                         Angle.ByDegree(target.CenterRaDeg),
                         Angle.ByDegree(target.CenterDecDeg),
