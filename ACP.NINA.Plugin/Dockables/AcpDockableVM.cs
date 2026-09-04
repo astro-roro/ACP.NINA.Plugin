@@ -303,8 +303,17 @@ namespace ACP.NINA.Plugin.Dockables {
                     // for OverlapValue when OverlapPercentage is set directly, so
                     // the slider can otherwise keep showing its previous number
                     // while the rectangles already use the new one.
-                    var pctUnit = framingAssistantVM.OverlapUnits?.FirstOrDefault(u => u != null && u.Contains("%"));
-                    if (pctUnit != null) framingAssistantVM.SelectedOverlapUnit = pctUnit;
+                    // The view rebinds the stepper only when the unit selection
+                    // changes, so go via the other unit and back to make the
+                    // displayed number match the value just set.
+                    var units = framingAssistantVM.OverlapUnits;
+                    var pctUnit = units?.FirstOrDefault(u => u != null && u.Contains("%"));
+                    var otherUnit = units?.FirstOrDefault(u => u != null && !u.Contains("%"));
+                    if (pctUnit != null) {
+                        if (otherUnit != null) framingAssistantVM.SelectedOverlapUnit = otherUnit;
+                        framingAssistantVM.SelectedOverlapUnit = pctUnit;
+                        framingAssistantVM.OverlapPercentage = m.OverlapPct / 100.0;
+                    }
                 });
 
                 // No second LoadImage here. SetCoordinates already awaits the
