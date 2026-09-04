@@ -262,6 +262,12 @@ namespace ACP.NINA.Plugin.Dockables {
                         string.Empty,
                         null
                     );
+                    // NINA rebuilds the framing rectangle from the object's own
+                    // rotation after the sky image loads, so a value poked into the
+                    // view model afterwards does not survive. Give the object the
+                    // rotation up front, the way NINA's own target import does.
+                    dso.RotationPositionAngle = target.RotationDeg;
+                    dso.Rotation = target.RotationDeg;
                     var ok = await framingAssistantVM.SetCoordinates(dso);
                     if (!ok) {
                         LastActionResult = $"Framing rejected the coordinates for '{target.Name}'.";
@@ -288,6 +294,12 @@ namespace ACP.NINA.Plugin.Dockables {
                     // overlap, which silently produces unrendered rectangles
                     // until the user nudges the slider.
                     framingAssistantVM.OverlapPercentage = m.OverlapPct / 100.0;
+                    // NINA 3 drives the mosaic from OverlapValue plus a unit and
+                    // ignores the legacy fraction, which is why 15 percent in ACP
+                    // arrived as NINA's 20 percent default.
+                    var pctUnit = framingAssistantVM.OverlapUnits?.FirstOrDefault(u => u != null && u.Contains("%"));
+                    if (pctUnit != null) framingAssistantVM.SelectedOverlapUnit = pctUnit;
+                    framingAssistantVM.OverlapValue = m.OverlapPct;
                 });
 
                 // Phase 2 — explicitly trigger LoadImage and await it.
@@ -300,9 +312,10 @@ namespace ACP.NINA.Plugin.Dockables {
                     }
                 });
 
-                // Always apply, including zero. Skipping zero left the Framing
-                // Assistant's previous rotation in place, so a plan at 0 degrees
-                // pushed after a rotated one inherited the stale angle.
+                // Belt and braces after the load: the object carries the rotation,
+                // and this pins the view model's field to the same value. Always
+                // runs, including zero, so a stale angle from an earlier push is
+                // never left behind.
                 await ApplyRotationOnceAsync(target.RotationDeg);
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
@@ -333,9 +346,9 @@ namespace ACP.NINA.Plugin.Dockables {
             var vmType = framingAssistantVM.GetType();
             var proxy = vmType.GetProperty("RectangleRotation")
                      ?? vmType.GetProperty("RectangleTotalRotation");
-            // Framing counts the opposite way to ACP. Normalise so 0 stays 0
-            // rather than becoming 360.
-            var inverted = (360.0 - rotationDeg) % 360.0;
+            // Same sense as the object's RotationPositionAngle. Normalise to
+            // 0 to 360 so 0 stays 0.
+            var inverted = rotationDeg % 360.0;
             if (inverted < 0) inverted += 360.0;
 
             await Application.Current.Dispatcher.InvokeAsync(() => {
