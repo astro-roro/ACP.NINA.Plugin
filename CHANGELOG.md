@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 (unreleased)
+
+### Fixed
+
+- Push to Framing now always sets the rotation, including zero. A plan at 0 degrees pushed after a rotated one used to keep the Framing Assistant's previous angle.
+
 ## 1.0.0 — 2026-05-19
 
 First public release.
