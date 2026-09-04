@@ -326,9 +326,10 @@ namespace ACP.NINA.Plugin.Dockables {
                 // and this pins the view model's field to the same value. Always
                 // runs, including zero, so a stale angle from an earlier push is
                 // never left behind.
+                ArmRotationWatch();
                 await ApplyRotationOnceAsync(target.RotationDeg);
-                await Task.Delay(750);
-                LogRotationState("750 ms later");
+                await Task.Delay(1500);
+                LogRotationState("1500 ms later");
 
                 LastActionResult = $"✓ Pushed '{target.Name}' to Framing Wizard.";
                 Logger.Info($"ACP: pushed '{target.Name}' to Framing — RA {target.CenterRaDeg:F4}° Dec {target.CenterDecDeg:F4}° rot {target.RotationDeg}° mosaic {target.Mosaic?.Rows}×{target.Mosaic?.Cols}");
@@ -384,6 +385,34 @@ namespace ACP.NINA.Plugin.Dockables {
                     Logger.Warning("ACP: no rotation proxy property; used Rectangle.TotalRotation fallback");
                 }
             });
+        }
+
+        private bool rotationWatchArmed;
+        private double lastSeenTotalRotation = double.NaN;
+
+        /// Diagnostic: log who changes the rotation after a push. Hooks the
+        /// view model's PropertyChanged once and records a stack trace each
+        /// time the total rotation actually changes value.
+        private void ArmRotationWatch() {
+            if (rotationWatchArmed) return;
+            if (framingAssistantVM is System.ComponentModel.INotifyPropertyChanged npc) {
+                npc.PropertyChanged += (sender, e) => {
+                    if (e.PropertyName != "RectangleTotalRotation" && e.PropertyName != "RectangleRotation" && e.PropertyName != "Rectangle") return;
+                    try {
+                        var t = framingAssistantVM.GetType();
+                        var v = t.GetProperty("RectangleTotalRotation")?.GetValue(framingAssistantVM);
+                        var d = v is double dv ? dv : double.NaN;
+                        if (!double.IsNaN(lastSeenTotalRotation) && Math.Abs(d - lastSeenTotalRotation) < 0.01) return;
+                        lastSeenTotalRotation = d;
+                        var trace = Environment.StackTrace.Split('\n').Skip(2).Take(22).Select(l => l.Trim()).Where(l => !l.Contains("System.") && !l.Contains("MS.Internal"));
+                        Logger.Info($"ACP rotation watch: {e.PropertyName} now TotalRotation={d}\n" + string.Join("\n", trace));
+                    } catch (Exception ex) {
+                        Logger.Warning("ACP rotation watch failed: " + ex.Message);
+                    }
+                };
+                rotationWatchArmed = true;
+                Logger.Info("ACP rotation watch armed");
+            }
         }
 
         /// Diagnostic: every rotation related value NINA holds, so a mismatch
