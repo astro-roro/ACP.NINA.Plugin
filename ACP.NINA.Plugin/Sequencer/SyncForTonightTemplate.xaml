@@ -11,35 +11,66 @@
     </DataTemplate>
 
     <DataTemplate DataType="{x:Type local:SyncForTonight}">
-        <StackPanel Orientation="Vertical" Margin="0,4,0,4">
+        <!-- Two rows at most. Row one is the exposure, the slew toggle and,
+             when slewing, a one-line RA/Dec editor. Row two is the focal length
+             toggle. NINA's CheckBox style renders as a toggle and hides
+             Content, so labels sit in TextBlocks beside each box. -->
+        <StackPanel Orientation="Vertical" Margin="0,2,0,2">
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+            <WrapPanel Orientation="Horizontal">
                 <TextBlock VerticalAlignment="Center" Text="Exposure" />
-                <TextBox Width="60" Height="24" Margin="6,0,0,0"
+                <TextBox Width="50" Height="24" Margin="6,0,0,0"
                          VerticalContentAlignment="Center"
                          Text="{Binding ExposureTime, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="Seconds for the frame this instruction solves. Long enough to get stars, short enough not to waste the start of the night." />
-                <TextBlock VerticalAlignment="Center" Margin="4,0,0,0" Text="s" />
-            </StackPanel>
+                <TextBlock VerticalAlignment="Center" Margin="4,0,16,0" Text="s" />
 
-            <!-- NINA's CheckBox style renders as a toggle and hides Content, so
-                 the labels sit in TextBlocks beside it. Same pattern as the
-                 options page and as NINA core's own instructions. -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <CheckBox VerticalAlignment="Center" IsChecked="{Binding SlewFirst}" />
-                <TextBlock VerticalAlignment="Center" Margin="8,0,0,0"
-                           Text="Slew to these coordinates first" />
-            </StackPanel>
+                <TextBlock VerticalAlignment="Center" Margin="6,0,10,0" Text="Slew first to" />
 
-            <ContentPresenter Margin="0,0,0,4"
-                              Content="{Binding Coordinates}"
-                              Visibility="{Binding SlewFirst, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
+                <!-- RA and Dec on the same line, bound straight to NINA's
+                     InputCoordinates the way its own Slew to RA/Dec editor
+                     is. NINA 3.3 ships a CoordinatesControl for this, but the
+                     plugin compiles against 3.1 so it can run there too. -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding SlewFirst, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                    <StackPanel.Resources>
+                        <local:DecDegreesConverter x:Key="DecDegrees" />
+                    </StackPanel.Resources>
+                    <TextBlock VerticalAlignment="Center" Text="RA" />
+                    <TextBox Width="34" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.RAHours, UpdateSourceTrigger=LostFocus}" ToolTip="Hours" />
+                    <TextBlock VerticalAlignment="Center" Text="h" Margin="2,0,0,0" />
+                    <TextBox Width="34" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.RAMinutes, UpdateSourceTrigger=LostFocus}" ToolTip="Minutes" />
+                    <TextBlock VerticalAlignment="Center" Text="m" Margin="2,0,0,0" />
+                    <TextBox Width="44" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.RASeconds, StringFormat=N1, UpdateSourceTrigger=LostFocus}" ToolTip="Seconds" />
+                    <TextBlock VerticalAlignment="Center" Text="s" Margin="2,0,12,0" />
 
-            <StackPanel Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center" Text="Dec" />
+                    <TextBox Width="38" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center" ToolTip="Degrees, with a minus sign for south">
+                        <TextBox.Text>
+                            <MultiBinding Converter="{StaticResource DecDegrees}" UpdateSourceTrigger="LostFocus">
+                                <Binding Path="Coordinates.NegativeDec" />
+                                <Binding Path="Coordinates.DecDegrees" />
+                            </MultiBinding>
+                        </TextBox.Text>
+                    </TextBox>
+                    <TextBlock VerticalAlignment="Center" Text="°" Margin="2,0,0,0" />
+                    <TextBox Width="34" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.DecMinutes, UpdateSourceTrigger=LostFocus}" ToolTip="Arcminutes" />
+                    <TextBlock VerticalAlignment="Center" Text="'" Margin="2,0,0,0" />
+                    <TextBox Width="44" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.DecSeconds, StringFormat=N1, UpdateSourceTrigger=LostFocus}" ToolTip="Arcseconds" />
+                    <TextBlock VerticalAlignment="Center" Text="&quot;" Margin="2,0,0,0" />
+                </StackPanel>
+            </WrapPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                 <CheckBox VerticalAlignment="Center" IsChecked="{Binding UpdateProfileFocalLength}" />
-                <TextBlock VerticalAlignment="Center" Margin="8,0,0,0"
-                           TextWrapping="Wrap"
-                           Text="Update the profile focal length and focal ratio when the solve says they are more than 5 percent out" />
+                <TextBlock VerticalAlignment="Center" Margin="6,0,0,0"
+                           Text="Update profile focal length and ratio when the solve is more than 5 percent out" />
             </StackPanel>
 
         </StackPanel>

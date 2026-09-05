@@ -1,5 +1,7 @@
 using ACP.NINA.Plugin.Models;
+using ACP.NINA.Plugin.Services.TargetScheduler;
 using NINA.Core.Utility;
+using NINA.Profile.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
@@ -24,6 +26,10 @@ namespace ACP.NINA.Plugin.Services {
         public MatchResponse Match { get; set; }
         public List<MatchedPlan> Selected { get; set; } = new List<MatchedPlan>();
 
+        /// What the Target Scheduler push did. Null when the run stopped before
+        /// getting that far.
+        public TsPushResult TsPush { get; set; }
+
         /// Whether the solve was taken now or reused from an earlier one, which
         /// the spec says the dock has to say out loud.
         public bool SolveWasReused { get; set; }
@@ -32,16 +38,28 @@ namespace ACP.NINA.Plugin.Services {
         /// line; the dock joins them.
         public List<string> Lines { get; set; } = new List<string>();
 
-        /// A single line for the dock's result text: how many plans fit and
-        /// what the focal length change was.
+        /// A single line for the dock's result text: how many plans reached
+        /// Target Scheduler and what the focal length change was.
+        /// The push was declined for a stated reason, most often a running
+        /// Target Scheduler container. The run itself finished, but the dock
+        /// should show this as the headline and not as a footnote to a tick.
+        public bool PushRefused => TsPush != null && !TsPush.Success;
+
         public string ShortResult {
             get {
                 if (!Success) return Failure ?? "Sync for tonight did not finish.";
-                var plans = $"{Selected.Count} {(Selected.Count == 1 ? "plan" : "plans")} fit tonight's gear";
+                if (PushRefused) return TsPush.Failure;
+
+                var loaded = TsPush != null && TsPush.Success
+                    ? $"{TsPush.Pushed.Count} {(TsPush.Pushed.Count == 1 ? "plan" : "plans")} " +
+                      "loaded into Target Scheduler"
+                    : $"{Selected.Count} {(Selected.Count == 1 ? "plan" : "plans")} fit tonight's gear";
+
                 var focal = WriteBack == null || !WriteBack.Written
                     ? "profile focal length unchanged"
                     : $"focal length {WriteBack.OldFocalLengthMm:F1} to {WriteBack.NewFocalLengthMm:F1} mm";
-                return $"{plans}, {focal}.";
+
+                return $"{loaded}, {focal}.";
             }
         }
     }
@@ -54,10 +72,7 @@ namespace ACP.NINA.Plugin.Services {
 
         /// Build the fingerprint from the solve, correct the profile focal
         /// length if it is far enough out and write-back is on, ask ACP which
-        /// plans fit, and report.
-        ///
-        /// Loading the chosen plans into Target Scheduler is v3.1. This version
-        /// reports what would be loaded and leaves TS alone.
+        /// plans fit, and load them into Target Scheduler.
         Task<SyncOutcome> RunAsync(SolveSnapshot solve, bool writeBackEnabled, CancellationToken token);
     }
 
@@ -66,14 +81,20 @@ namespace ACP.NINA.Plugin.Services {
 
         private readonly IGearFingerprintService fingerprintService;
         private readonly IProfileWriteBack writeBack;
+        private readonly ITsPushService tsPush;
+        private readonly IProfileService profileService;
 
         [ImportingConstructor]
         public SyncForTonightRunner(
             IGearFingerprintService fingerprintService,
-            IProfileWriteBack writeBack
+            IProfileWriteBack writeBack,
+            ITsPushService tsPush,
+            IProfileService profileService
         ) {
             this.fingerprintService = fingerprintService;
             this.writeBack = writeBack;
+            this.tsPush = tsPush;
+            this.profileService = profileService;
         }
 
         public async Task<SyncOutcome> RunAsync(
@@ -90,17 +111,20 @@ namespace ACP.NINA.Plugin.Services {
             // back needs an aperture, and the write-back runs before the match
             // call. A server that cannot answer is not a reason to abandon the
             // run: the focal length is still written, just without a ratio.
-            List<Telescope> telescopes = null;
+            // The gear is wanted twice: for the aperture behind the focal ratio,
+            // and for the focal lengths, sensor sizes and per filter settings
+            // the Target Scheduler push turns into mosaic panels and exposure
+            // templates. Fetch it once and keep it.
+            GearResponse gear = null;
             try {
-                var gear = await client.GetGearAsync(token).ConfigureAwait(false);
-                telescopes = gear?.Telescopes;
+                gear = await client.GetGearAsync(token).ConfigureAwait(false);
             } catch (AcpUnauthorizedException) {
                 throw;
             } catch (Exception ex) {
                 Logger.Warning($"ACP: could not read gear from ACP, so no focal ratio will be written: {ex.Message}");
             }
 
-            outcome.WriteBack = writeBack.Apply(outcome.Fingerprint, telescopes, writeBackEnabled);
+            outcome.WriteBack = writeBack.Apply(outcome.Fingerprint, gear?.Telescopes, writeBackEnabled);
             outcome.Lines.Add(outcome.WriteBack.Summary);
 
             try {
@@ -111,6 +135,26 @@ namespace ACP.NINA.Plugin.Services {
                 outcome.Failure = ex.Message;
                 outcome.Lines.Add(ex.Message);
                 return outcome;
+            } catch (Exception ex) when (settings.SyncMode == SyncMode.Everything) {
+                // Everything mode loads the lot whether or not ACP can judge
+                // the fit, so a match that cannot run, most often because no
+                // camera is connected and the fingerprint has no sensor, is
+                // not a reason to stop. The plan list is fetched plain and
+                // every plan is treated as unconstrained.
+                Logger.Warning($"ACP: could not match the plans, loading everything unjudged: {ex.Message}");
+                try {
+                    var plans = await client.GetPlansAsync(token).ConfigureAwait(false);
+                    outcome.Match = MatchSelection.Unjudged(plans?.Plans);
+                    outcome.Lines.Add("ACP could not judge the fit, so every plan is loaded without a verdict.");
+                } catch (AcpUnauthorizedException ex2) {
+                    outcome.Failure = ex2.Message;
+                    outcome.Lines.Add(ex2.Message);
+                    return outcome;
+                } catch (Exception ex2) {
+                    outcome.Failure = $"ACP could not list the plans: {ex2.Message}";
+                    outcome.Lines.Add(outcome.Failure);
+                    return outcome;
+                }
             } catch (Exception ex) {
                 outcome.Failure = $"ACP could not match the plans: {ex.Message}";
                 outcome.Lines.Add(outcome.Failure);
@@ -120,17 +164,39 @@ namespace ACP.NINA.Plugin.Services {
             outcome.Selected = MatchSelection.SelectForMode(outcome.Match, settings.SyncMode);
             outcome.Lines.Add(MatchSelection.Summarise(outcome.Match, settings.SyncMode));
 
-            // v3.1 is where these plans reach Target Scheduler. Say so, rather
-            // than letting someone think the sync happened.
-            outcome.Lines.Add(
-                "Target Scheduler was not touched. Loading these plans into it arrives in the next version."
-            );
+            // The mode has already decided what Selected holds: everything, or
+            // only the plans that fit plus the ones with no gear set. The push
+            // takes that list as given.
+            if (outcome.Selected.Count == 0) {
+                outcome.Lines.Add("Target Scheduler was left as it was, because nothing was selected to load.");
+                outcome.Success = true;
+                LogLines(outcome);
+                return outcome;
+            }
 
+            var profileId = profileService?.ActiveProfile?.Id.ToString();
+            outcome.TsPush = await tsPush
+                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token)
+                .ConfigureAwait(false);
+            outcome.Lines.Add(outcome.TsPush.Summary());
+
+            if (outcome.TsPush.Success && !string.IsNullOrEmpty(outcome.TsPush.BackupPath)) {
+                outcome.Lines.Add($"The database was copied to {outcome.TsPush.BackupPath} first.");
+            }
+
+            // A push that did not run is not a failed night: the fingerprint is
+            // built, the profile is corrected and the user has been told why
+            // Target Scheduler is untouched. The run reports itself as done and
+            // the reason is in the log and in the dock.
             outcome.Success = true;
+            LogLines(outcome);
+            return outcome;
+        }
+
+        private static void LogLines(SyncOutcome outcome) {
             foreach (var line in outcome.Lines) {
                 Logger.Info("ACP: " + line);
             }
-            return outcome;
         }
 
         private static string DescribeFingerprint(Fingerprint fingerprint) {

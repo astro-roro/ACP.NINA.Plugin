@@ -30,6 +30,20 @@ namespace ACP.NINA.Plugin.Services {
         /// default that checkbox starts from and what the dock button uses.
         public bool ProfileWriteBackEnabled { get; set; } = true;
 
+        /// Send acquired hours back to ACP while Target Scheduler is imaging.
+        ///
+        /// On by default, per the v3 spec. It is the thing that keeps ACP's
+        /// actual_hours from going stale, and a stale actual_hours is not
+        /// merely cosmetic: the v3.1 push writes ACP's view of the counts into
+        /// Target Scheduler, so leaving this off lets a later sync walk the
+        /// real counts backwards.
+        ///
+        /// Reasons to turn it off are having ACP on a machine this one cannot
+        /// reach, or already running the Python extension's sync-acquired
+        /// against the same plans. The two can coexist, since ACP takes the
+        /// higher number either way, but there is no point paying for both.
+        public bool ReportProgressToAcp { get; set; } = true;
+
         /// Deliberately absent: the bearer token. It lives in Windows
         /// Credential Manager, see TokenStore. Settings.json travels with the
         /// plugin folder, so a token in here would be a token in a text file.
@@ -39,7 +53,22 @@ namespace ACP.NINA.Plugin.Services {
             "NINA", "Plugins", "3.0.0", "ACP.NINA.Plugin", "settings.json"
         );
 
+        /// The most recently loaded or saved instance. The options page and
+        /// the dock each load their own copy at startup, and the options page
+        /// is the one that saves, so anything in the dock that wants the
+        /// current value reads this rather than its startup copy.
+        public static AcpSettings Current { get; private set; }
+
+        /// Raised after Save() so the dock can refresh what it shows.
+        public static event Action Saved;
+
         public static AcpSettings Load() {
+            var loaded = LoadFromDisk();
+            Current = loaded;
+            return loaded;
+        }
+
+        private static AcpSettings LoadFromDisk() {
             try {
                 if (!File.Exists(SettingsPath)) {
                     return new AcpSettings();
@@ -63,6 +92,12 @@ namespace ACP.NINA.Plugin.Services {
                 File.WriteAllText(SettingsPath, json);
             } catch (Exception ex) {
                 Logger.Error($"ACP: failed to save settings: {ex.Message}");
+            }
+            Current = this;
+            try {
+                Saved?.Invoke();
+            } catch (Exception ex) {
+                Logger.Warning($"ACP: a settings listener failed: {ex.Message}");
             }
         }
     }
