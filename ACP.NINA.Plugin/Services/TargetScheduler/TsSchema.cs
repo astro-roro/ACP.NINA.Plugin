@@ -47,6 +47,37 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return columns.Where(c => ColumnExistsAt(table, c, userVersion)).ToList();
         }
 
+        /// Columns written when a row is created and never again. Matches
+        /// INSERT_ONLY_COLUMNS in nina_ts_sync/schema.py.
+        ///
+        /// exposureplan.acquired is how many subs the camera actually took and
+        /// accepted is the grader's verdict on them. Neither is ACP's to state.
+        /// ACP recomputes both from its own ActualHours, which at best
+        /// round-trips the acquired count and at worst marks every frame the
+        /// grader rejected as good. On a project with the grader on, Target
+        /// Scheduler reads completeness from accepted, so overwriting it makes
+        /// Target Scheduler believe a target is finished when it is not.
+        ///
+        /// project.createdate is the date the project was created. Rewriting it
+        /// on every push makes it the date of the last push instead.
+        ///
+        /// Everything else the push writes is still overwritten on update. That
+        /// is a wider question about settings columns, deliberately left open.
+        private static readonly Dictionary<string, HashSet<string>> insertOnlyColumns =
+            new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
+                { "exposureplan", new HashSet<string>(
+                    new[] { "acquired", "accepted" }, StringComparer.OrdinalIgnoreCase) },
+                { "project", new HashSet<string>(
+                    new[] { "createdate" }, StringComparer.OrdinalIgnoreCase) },
+            };
+
+        /// Drop the insert-only columns from `columns`, order preserved.
+        public static List<string> ColumnsForUpdate(string table, IEnumerable<string> columns) {
+            HashSet<string> skip;
+            if (!insertOnlyColumns.TryGetValue(table, out skip)) return columns.ToList();
+            return columns.Where(c => !skip.Contains(c)).ToList();
+        }
+
         /// The message shape the Python extension raises, word for word, so a
         /// user who has seen one tool refuse recognises the other.
         public static string UnsupportedMessage(int found) {

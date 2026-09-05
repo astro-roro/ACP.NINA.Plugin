@@ -169,7 +169,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             string[] claimKeys
         ) {
             var cols = WritableColumns(table, entity.Columns, userVersion, columnsByTable);
-            var setClause = string.Join(", ", cols.Select(c => $"{Quote(c)} = ${c}"));
+
+            // The UPDATE never touches the insert-only columns: the frame
+            // counts on an exposure plan and a project's creation date belong
+            // to whoever wrote them first. See TsSchema.ColumnsForUpdate.
+            var updateCols = TsSchema.ColumnsForUpdate(table, cols);
+            var setClause = string.Join(", ", updateCols.Select(c => $"{Quote(c)} = ${c}"));
 
             // 1) By our own guid.
             var existingId = SelectId(conn, table, "guid = $g", new Dictionary<string, object> {
@@ -178,7 +183,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (existingId.HasValue) {
                 ExecuteWithValues(
                     conn, $"UPDATE {table} SET {setClause} WHERE Id = $__id",
-                    cols, entity, existingId.Value);
+                    updateCols, entity, existingId.Value);
                 counts.Updated++;
                 return existingId.Value;
             }
@@ -191,10 +196,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 if (claim != null) {
                     if (string.IsNullOrWhiteSpace(claim.Item2)) {
                         // No stamp at all, so this is a row the user set up by
-                        // hand and we can safely take ownership of it.
+                        // hand and we can safely take ownership of it. A claim
+                        // is an update of a row that already existed, so the
+                        // insert-only columns are left alone here too: the
+                        // frames it has already taken are not ours to reset.
                         ExecuteWithValues(
                             conn, $"UPDATE {table} SET {setClause} WHERE Id = $__id",
-                            cols, entity, claim.Item1);
+                            updateCols, entity, claim.Item1);
                         counts.Claimed++;
                         return claim.Item1;
                     }
