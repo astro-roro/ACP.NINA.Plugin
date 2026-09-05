@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using NINA.Core.Utility;
 using System;
 using System.IO;
@@ -16,6 +17,22 @@ namespace ACP.NINA.Plugin.Services {
         public bool AutoRefreshEnabled { get; set; } = false;
         public int AutoRefreshSeconds { get; set; } = 30;
         public bool ConfirmBeforeTsSync { get; set; } = false;
+
+        /// Which plans to load into Target Scheduler. Everything by default,
+        /// per the v3 spec: the fingerprint is still built and the focal length
+        /// write-back still runs, nothing is filtered.
+        [JsonConverter(typeof(StringEnumConverter))]
+        public SyncMode SyncMode { get; set; } = SyncMode.Everything;
+
+        /// Write the solved focal length back into the active profile when it
+        /// differs from the profile by more than the threshold. The sequencer
+        /// instruction has its own per-instruction checkbox; this is the
+        /// default that checkbox starts from and what the dock button uses.
+        public bool ProfileWriteBackEnabled { get; set; } = true;
+
+        /// Deliberately absent: the bearer token. It lives in Windows
+        /// Credential Manager, see TokenStore. Settings.json travels with the
+        /// plugin folder, so a token in here would be a token in a text file.
 
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

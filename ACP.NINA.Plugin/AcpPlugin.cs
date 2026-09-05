@@ -36,6 +36,9 @@ namespace ACP.NINA.Plugin {
             settings = AcpSettings.Load();
 
             TestConnectionCommand = new RelayCommand(async () => await TestConnectionAsync());
+            ClearTokenCommand = new RelayCommand(ClearToken);
+
+            tokenStatus = DescribeTokenState();
         }
 
         public override Task Initialize() {
@@ -91,6 +94,77 @@ namespace ACP.NINA.Plugin {
             }
         }
 
+        public bool ProfileWriteBackEnabled {
+            get => settings.ProfileWriteBackEnabled;
+            set {
+                if (settings.ProfileWriteBackEnabled == value) return;
+                settings.ProfileWriteBackEnabled = value;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        // -- The two mode switch -----------------------------------------------
+
+        /// Bound as plain strings rather than enum values because the Options
+        /// page is a DataTemplate in a ResourceDictionary, where wiring up an
+        /// ObjectDataProvider for the enum costs more than it saves.
+        public string[] SyncModeOptions { get; } = new[] {
+            SyncMode.Everything.ToLabel(),
+            SyncMode.OnlyWhatFits.ToLabel(),
+        };
+
+        public string SelectedSyncModeOption {
+            get => settings.SyncMode.ToLabel();
+            set {
+                var mode = value == SyncMode.OnlyWhatFits.ToLabel()
+                    ? SyncMode.OnlyWhatFits
+                    : SyncMode.Everything;
+                if (settings.SyncMode == mode) return;
+                settings.SyncMode = mode;
+                settings.Save();
+                Logger.Info($"ACP: plan matching mode set to {mode.ToWire()}");
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(SyncModeExplanation));
+            }
+        }
+
+        public string SyncModeExplanation =>
+            settings.SyncMode == SyncMode.OnlyWhatFits
+                ? "Plans are matched against the gear the plate solve found and only the ones that fit are loaded. Plans with no gear set are always loaded. Pick this if you use more than one rig, site or computer."
+                : "Every plan in ACP is loaded. The gear fingerprint is still built and shown, and the focal length is still corrected, but nothing is filtered out. Anything that does not suit tonight gets one warning line and you adjust in Target Scheduler.";
+
+        // -- API token ---------------------------------------------------------
+
+        private string tokenStatus;
+        public string TokenStatus {
+            get => tokenStatus;
+            set { tokenStatus = value; RaisePropertyChanged(); }
+        }
+
+        public ICommand ClearTokenCommand { get; }
+
+        /// Called from the Options code-behind as the user types. Blank clears
+        /// the stored token, which is how someone goes back to an ACP with no
+        /// token set.
+        public void SetApiToken(string token) {
+            var ok = TokenStore.Write(token);
+            TokenStatus = ok
+                ? DescribeTokenState()
+                : "Windows Credential Manager refused to store the token. See the NINA log.";
+        }
+
+        private void ClearToken() {
+            TokenStore.Delete();
+            TokenStatus = DescribeTokenState();
+        }
+
+        private static string DescribeTokenState() {
+            return TokenStore.HasToken()
+                ? "A token is stored in Windows Credential Manager. Type a new one to replace it."
+                : "No token stored. Needed only when the ACP server sets ACP_API_TOKEN.";
+        }
+
         private string connectionTestResult;
         public string ConnectionTestResult {
             get => connectionTestResult;
@@ -107,6 +181,9 @@ namespace ACP.NINA.Plugin {
                 var status = await client.ProbeAsync().ConfigureAwait(false);
                 ConnectionTestResult = $"✓ {status}";
                 Logger.Info($"ACP: test connection OK against {url}");
+            } catch (AcpUnauthorizedException ex) {
+                ConnectionTestResult = $"✗ {ex.Message}";
+                Logger.Warning($"ACP: test connection rejected by {url}: {ex.Message}");
             } catch (Exception ex) {
                 ConnectionTestResult = $"✗ Failed: {ex.Message}";
                 Logger.Warning($"ACP: test connection failed against {url}: {ex.Message}");

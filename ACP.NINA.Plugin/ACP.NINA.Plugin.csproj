@@ -20,9 +20,9 @@
     <PackageReference Include="NINA.Plugin" Version="3.1.2.9001" />
   </ItemGroup>
 
-  <!-- Copies the built plugin into NINA's plugin folder. Set SkipAcpDeploy=true
-       to build without touching the installed copy, for CI or for building a
-       branch on a machine whose NINA is running something else. -->
+  <!-- Copies the built plugin straight into NINA's plugin folder, which is what
+       you want building on the imaging machine and not what you want building
+       over SSH or in CI. Set SkipAcpDeploy=true to build without installing. -->
   <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(SkipAcpDeploy)' != 'true'">
     <Exec Command="if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;if exist &quot;$(TargetDir)Newtonsoft.Json.dll&quot; xcopy &quot;$(TargetDir)Newtonsoft.Json.dll&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;if exist &quot;$(TargetDir)CommunityToolkit.Mvvm.dll&quot; xcopy &quot;$(TargetDir)CommunityToolkit.Mvvm.dll&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;for %25%25d in (ca-ES cs-CZ da-DK de-DE el-GR en-GB en-US es-ES eu-ES fr-FR gl-ES hu-HU it-IT ja-JP ko-KR nb-NO nl-NL pl-PL pt-PT ru-RU tr-TR uk-UA zh-CN zh-HK zh-TW runtimes) do if exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\%25%25d&quot; rd /s /q &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\%25%25d&quot;" />
   </Target>

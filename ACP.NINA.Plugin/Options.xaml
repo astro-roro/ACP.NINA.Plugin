@@ -13,6 +13,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="120" />
@@ -41,12 +43,77 @@
                            TextWrapping="Wrap"
                            Text="{Binding ConnectionTestResult}" />
 
-                <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                <TextBlock Grid.Row="2" Grid.Column="0"
+                           Text="API token:"
+                           VerticalAlignment="Center" />
+                <PasswordBox Grid.Row="2" Grid.Column="1"
+                             x:Name="TokenBox"
+                             Margin="6,6,6,0"
+                             Height="24"
+                             VerticalContentAlignment="Center"
+                             PasswordChanged="TokenBox_PasswordChanged"
+                             ToolTip="The value of ACP_API_TOKEN on the ACP server. Stored in Windows Credential Manager, never in the plugin's settings file. Leave blank if ACP runs on this machine with no token set." />
+                <Button Grid.Row="2" Grid.Column="2"
+                        Margin="0,6,0,0"
+                        Content="Clear"
+                        Width="60" Height="24"
+                        Command="{Binding ClearTokenCommand}"
+                        ToolTip="Remove the stored token from Windows Credential Manager." />
+
+                <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2"
+                           Margin="6,4,0,0"
+                           FontSize="11"
+                           Opacity="0.75"
+                           TextWrapping="Wrap"
+                           Text="{Binding TokenStatus}" />
+
+                <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2"
                            Margin="6,8,0,0"
                            FontSize="11"
                            Opacity="0.7"
                            TextWrapping="Wrap"
-                           Text="ACP must be running on the same machine as NINA for v1.x. Cross-machine access is planned for v3.0; see the ACP repo for the security model." />
+                           Text="ACP can run on another machine reachable over your LAN or a VPN such as Tailscale. Set a token on both sides when it does. Do not port forward ACP to the Internet." />
+            </Grid>
+
+            <TextBlock FontSize="14" FontWeight="Bold" Text="Plan matching" Margin="0,0,0,6" />
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="Which plans to load into Target Scheduler:"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          Margin="6,0,0,0"
+                          Height="24"
+                          VerticalContentAlignment="Center"
+                          ItemsSource="{Binding SyncModeOptions}"
+                          SelectedItem="{Binding SelectedSyncModeOption}"
+                          ToolTip="Everything loads every plan in ACP. Only what fits tonight loads the plans that match the gear the plate solve says is actually connected." />
+            </Grid>
+
+            <TextBlock Margin="0,0,0,12"
+                       FontSize="11"
+                       Opacity="0.7"
+                       TextWrapping="Wrap"
+                       Text="{Binding SyncModeExplanation}" />
+
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Column="0"
+                          IsChecked="{Binding ProfileWriteBackEnabled}"
+                          VerticalAlignment="Center"
+                          Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           Text="Update the profile focal length from the plate solve (Sync for tonight only, when it is more than 5 percent out)" />
             </Grid>
 
             <TextBlock FontSize="14" FontWeight="Bold" Text="Behavior" Margin="0,0,0,6" />
