@@ -128,11 +128,14 @@ namespace ACP.NINA.Plugin.Dockables {
                     planRefsSource,
                     new AcpApiClient(settings.ServerUrl),
                     containerWatch,
-                    () => settings.ReportProgressToAcp,
+                    () => (AcpSettings.Current ?? settings).ReportProgressToAcp,
                     profileId
                 );
                 progressReporter.StatusChanged += (s, e) =>
                     RaisePropertyChanged(nameof(ProgressStatusLine));
+                // The footer says "off" the moment the option is unticked,
+                // without waiting for the next report.
+                AcpSettings.Saved += OnSettingsSaved;
                 progressReporter.Start();
             } catch (Exception ex) {
                 // Nothing here is worth losing the dock over.
@@ -148,6 +151,10 @@ namespace ACP.NINA.Plugin.Dockables {
         private void InvalidateProgressCaches() {
             tsSnapshotCache?.Invalidate();
             planRefsSource?.Invalidate();
+        }
+
+        private void OnSettingsSaved() {
+            RaisePropertyChanged(nameof(ProgressStatusLine));
         }
 
         /// The footer line: "Progress sent 22 s ago", or the last error.
@@ -211,6 +218,7 @@ namespace ACP.NINA.Plugin.Dockables {
         /// second poll is for.
         void IDisposable.Dispose() {
             if (profileService != null) profileService.ProfileChanged -= OnProfileChanged;
+            AcpSettings.Saved -= OnSettingsSaved;
             try {
                 progressReporter?.Dispose();
             } catch (Exception) {
