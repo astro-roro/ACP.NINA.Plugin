@@ -35,8 +35,11 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("pixel_scale_ratio")]
         public double? PixelScaleRatio { get; set; }
 
+        /// Width and height ratios of the connected field to the plan's,
+        /// in that order, so a rig that is narrower one way than the other
+        /// can be explained. Either can be null when the plan has no gear.
         [JsonProperty("fov_ratio")]
-        public double? FovRatio { get; set; }
+        public List<double?> FovRatio { get; set; } = new List<double?>();
 
         [JsonProperty("filters_missing")]
         public List<string> FiltersMissing { get; set; } = new List<string>();

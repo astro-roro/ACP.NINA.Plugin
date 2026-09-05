@@ -40,9 +40,15 @@ namespace ACP.NINA.Plugin.Services {
 
         /// A single line for the dock's result text: how many plans reached
         /// Target Scheduler and what the focal length change was.
+        /// The push was declined for a stated reason, most often a running
+        /// Target Scheduler container. The run itself finished, but the dock
+        /// should show this as the headline and not as a footnote to a tick.
+        public bool PushRefused => TsPush != null && !TsPush.Success;
+
         public string ShortResult {
             get {
                 if (!Success) return Failure ?? "Sync for tonight did not finish.";
+                if (PushRefused) return TsPush.Failure;
 
                 var loaded = TsPush != null && TsPush.Success
                     ? $"{TsPush.Pushed.Count} {(TsPush.Pushed.Count == 1 ? "plan" : "plans")} " +
@@ -53,13 +59,7 @@ namespace ACP.NINA.Plugin.Services {
                     ? "profile focal length unchanged"
                     : $"focal length {WriteBack.OldFocalLengthMm:F1} to {WriteBack.NewFocalLengthMm:F1} mm";
 
-                var line = $"{loaded}, {focal}.";
-                // A push that did not happen is the thing the user most needs
-                // to see, so it goes on the end rather than into the log alone.
-                if (TsPush != null && !TsPush.Success) {
-                    line += " " + TsPush.Failure;
-                }
-                return line;
+                return $"{loaded}, {focal}.";
             }
         }
     }
@@ -135,6 +135,26 @@ namespace ACP.NINA.Plugin.Services {
                 outcome.Failure = ex.Message;
                 outcome.Lines.Add(ex.Message);
                 return outcome;
+            } catch (Exception ex) when (settings.SyncMode == SyncMode.Everything) {
+                // Everything mode loads the lot whether or not ACP can judge
+                // the fit, so a match that cannot run, most often because no
+                // camera is connected and the fingerprint has no sensor, is
+                // not a reason to stop. The plan list is fetched plain and
+                // every plan is treated as unconstrained.
+                Logger.Warning($"ACP: could not match the plans, loading everything unjudged: {ex.Message}");
+                try {
+                    var plans = await client.GetPlansAsync(token).ConfigureAwait(false);
+                    outcome.Match = MatchSelection.Unjudged(plans?.Plans);
+                    outcome.Lines.Add("ACP could not judge the fit, so every plan is loaded without a verdict.");
+                } catch (AcpUnauthorizedException ex2) {
+                    outcome.Failure = ex2.Message;
+                    outcome.Lines.Add(ex2.Message);
+                    return outcome;
+                } catch (Exception ex2) {
+                    outcome.Failure = $"ACP could not list the plans: {ex2.Message}";
+                    outcome.Lines.Add(outcome.Failure);
+                    return outcome;
+                }
             } catch (Exception ex) {
                 outcome.Failure = $"ACP could not match the plans: {ex.Message}";
                 outcome.Lines.Add(outcome.Failure);

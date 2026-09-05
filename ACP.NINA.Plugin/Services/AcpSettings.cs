@@ -53,7 +53,22 @@ namespace ACP.NINA.Plugin.Services {
             "NINA", "Plugins", "3.0.0", "ACP.NINA.Plugin", "settings.json"
         );
 
+        /// The most recently loaded or saved instance. The options page and
+        /// the dock each load their own copy at startup, and the options page
+        /// is the one that saves, so anything in the dock that wants the
+        /// current value reads this rather than its startup copy.
+        public static AcpSettings Current { get; private set; }
+
+        /// Raised after Save() so the dock can refresh what it shows.
+        public static event Action Saved;
+
         public static AcpSettings Load() {
+            var loaded = LoadFromDisk();
+            Current = loaded;
+            return loaded;
+        }
+
+        private static AcpSettings LoadFromDisk() {
             try {
                 if (!File.Exists(SettingsPath)) {
                     return new AcpSettings();
@@ -77,6 +92,12 @@ namespace ACP.NINA.Plugin.Services {
                 File.WriteAllText(SettingsPath, json);
             } catch (Exception ex) {
                 Logger.Error($"ACP: failed to save settings: {ex.Message}");
+            }
+            Current = this;
+            try {
+                Saved?.Invoke();
+            } catch (Exception ex) {
+                Logger.Warning($"ACP: a settings listener failed: {ex.Message}");
             }
         }
     }

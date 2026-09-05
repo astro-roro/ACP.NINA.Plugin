@@ -103,9 +103,9 @@ namespace ACP.NINA.Plugin.Sequencer {
 
         private bool updateProfileFocalLength = true;
 
-        /// On by default, per the spec. Turning it off still solves, still
-        /// fingerprints and still matches; it only stops the profile being
-        /// written.
+        /// On by default, per the spec. With it off, a frame is only solved
+        /// when the mode is Only what fits, which needs the measured gear to
+        /// judge against. Everything mode with this off takes no frame at all.
         [JsonProperty]
         public bool UpdateProfileFocalLength {
             get => updateProfileFocalLength;
@@ -123,7 +123,7 @@ namespace ACP.NINA.Plugin.Sequencer {
 
         public bool Validate() {
             var found = new List<string>();
-            if (!cameraMediator.GetInfo().Connected) {
+            if (NeedsSolve() && !cameraMediator.GetInfo().Connected) {
                 found.Add("Camera not connected. The gear fingerprint needs a frame to solve.");
             }
             if (SlewFirst && !telescopeMediator.GetInfo().Connected) {
@@ -150,14 +150,21 @@ namespace ACP.NINA.Plugin.Sequencer {
                 await telescopeMediator.SlewToCoordinatesAsync(target, token);
             }
 
-            // The instruction always solves. That is decision 1 in the v3 spec:
-            // reusing an old solve is the dock button's job, because the button
-            // is pressed by someone who can see how long ago it was.
-            var solve = await plateSolver.SolveAsync(ExposureTime, progress, token);
-            if (solve == null) {
-                throw new SequenceEntityFailedException(
-                    "The plate solve failed, so ACP cannot tell what gear is connected."
-                );
+            // The instruction never reuses an old solve: that is the dock
+            // button's job, pressed by someone who can see how long ago it was.
+            // It takes a fresh frame whenever a solve is needed at all, which
+            // is when the focal length update is on or the mode is Only what
+            // fits. Everything mode with the update off skips the frame.
+            SolveSnapshot solve = null;
+            if (NeedsSolve()) {
+                solve = await plateSolver.SolveAsync(ExposureTime, progress, token);
+                if (solve == null) {
+                    throw new SequenceEntityFailedException(
+                        "The plate solve failed, so ACP cannot tell what gear is connected."
+                    );
+                }
+            } else {
+                Logger.Info("ACP: Sync for tonight is loading every plan, so no frame is taken.");
             }
 
             var outcome = await runner.RunAsync(solve, UpdateProfileFocalLength, token);
@@ -171,6 +178,10 @@ namespace ACP.NINA.Plugin.Sequencer {
             if (!outcome.Success) {
                 throw new SequenceEntityFailedException(outcome.Failure ?? "Sync for tonight did not finish.");
             }
+        }
+
+        private bool NeedsSolve() {
+            return UpdateProfileFocalLength || AcpSettings.Load().SyncMode == SyncMode.OnlyWhatFits;
         }
 
         public override string ToString() {
