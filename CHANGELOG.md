@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.2.0 (unreleased)
+
+ACP finds out what tonight actually acquired, while it is being acquired.
+
+### Added
+
+- **Acquired hours are reported back to ACP during a session.** When Target Scheduler starts or finishes a target, the plugin reads that target's acquired counts, converts them to hours using each exposure plan's sub length, and posts them to `POST /api/plans/<id>/progress`. The coverage map and the hours remaining stay current through the night instead of waiting for someone to run a sync. This replaces the Python extension's `sync-acquired` poll for people whose ACP is on another machine, and the two can run side by side.
+- **A five minute fallback** while a Target Scheduler container is running, so a missed or unrecognised event costs at most five minutes of staleness rather than a whole night's worth.
+- **"Report progress to ACP while imaging"** on the options page, on by default. Turning it off is honest about the cost: the Target Scheduler sync writes ACP's view of the counts back into Target Scheduler, so hours that go stale in ACP can walk the real counts backwards on a later sync.
+- **A dock footer line** reading "Progress sent 22 s ago", or the last error when there is one.
+
+### Notes
+
+- Hours only ever go up. ACP refuses to lower a stored `actual_hours` unless it is told to force it, and this plugin never asks it to: a count that goes backwards in Target Scheduler is a culled frame or a reset project, and rewinding a plan someone has watched fill up is worse than being one session stale.
+- A mosaic reports the hours from its 1,1 panel and only that panel, because ACP stores a mosaic's filter goals per panel rather than summed across them. This matches what the Python extension does, so both paths produce the same number.
+- The Target Scheduler database is only ever opened read only here, which is why progress reporting is safe to run mid session when the 3.1 push deliberately refuses to.
+
 ## 3.1.0 (unreleased)
 
 Target Scheduler sync moves inside the plugin, so it works when ACP is on another machine.

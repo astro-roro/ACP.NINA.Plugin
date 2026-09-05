@@ -104,6 +104,28 @@ namespace ACP.NINA.Plugin {
             }
         }
 
+        /// "Report progress to ACP while imaging", on by default.
+        ///
+        /// The reporter checks this on every event rather than at startup, so
+        /// switching it here takes effect immediately and does not wait for a
+        /// NINA restart.
+        public bool ReportProgressToAcp {
+            get => settings.ReportProgressToAcp;
+            set {
+                if (settings.ReportProgressToAcp == value) return;
+                settings.ReportProgressToAcp = value;
+                settings.Save();
+                Logger.Info($"ACP: progress reporting turned {(value ? "on" : "off")}.");
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(ReportProgressExplanation));
+            }
+        }
+
+        public string ReportProgressExplanation =>
+            settings.ReportProgressToAcp
+                ? "As Target Scheduler works through a target, the hours it has actually acquired are sent back to ACP so the coverage map and the hours remaining stay current. Hours only ever go up, so a report that arrives late or twice changes nothing."
+                : "ACP will not hear what tonight acquired until something else tells it. Worth knowing: the Target Scheduler sync writes ACP's view of the counts back into Target Scheduler, so if ACP's hours go stale, a later sync can walk the real counts backwards.";
+
         // -- The two mode switch -----------------------------------------------
 
         /// Bound as plain strings rather than enum values because the Options
