@@ -50,6 +50,12 @@ ACP no longer has to run on the same machine as NINA, and you no longer have to 
 
 - The connection probe uses `GET /api/version` and falls back to `/api/plans` against an older ACP.
 
+## 1.0.2 (2026-09-05)
+
+### Fixed
+
+- The "Will sync to profile" label under the Sync All to TS button now follows profile switches. It used to show the profile NINA started with while the sync used the current one. Reported by the manifest maintainers in review.
+- "Confirm before Sync to TS" is honoured. The option was saved but never checked, so the sync went straight through. It now asks first, and reads the option fresh each time rather than the value loaded at startup.
 
 ## 1.0.1 (2026-09-04)
 
