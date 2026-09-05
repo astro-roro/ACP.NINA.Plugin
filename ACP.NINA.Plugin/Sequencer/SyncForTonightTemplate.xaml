@@ -2,8 +2,7 @@
     x:Class="ACP.NINA.Plugin.Sequencer.SyncForTonightTemplate"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="clr-namespace:ACP.NINA.Plugin.Sequencer"
-    xmlns:logic="clr-namespace:NINA.Sequencer.Logic;assembly=NINA.Sequencer">
+    xmlns:local="clr-namespace:ACP.NINA.Plugin.Sequencer">
 
     <DataTemplate x:Key="ACP.NINA.Plugin.Sequencer.SyncForTonight_Mini">
         <StackPanel Orientation="Horizontal">
@@ -13,8 +12,7 @@
 
     <DataTemplate DataType="{x:Type local:SyncForTonight}">
         <!-- Two rows at most. Row one is the exposure, the slew toggle and,
-             when slewing, NINA's own one-line RA/Dec editor, the same control
-             its Slew to RA/Dec instruction uses. Row two is the focal length
+             when slewing, a one-line RA/Dec editor. Row two is the focal length
              toggle. NINA's CheckBox style renders as a toggle and hides
              Content, so labels sit in TextBlocks beside each box. -->
         <StackPanel Orientation="Vertical" Margin="0,2,0,2">
@@ -30,9 +28,43 @@
                 <CheckBox VerticalAlignment="Center" IsChecked="{Binding SlewFirst}" />
                 <TextBlock VerticalAlignment="Center" Margin="6,0,10,0" Text="Slew first to" />
 
-                <logic:CoordinatesControl VerticalAlignment="Center"
-                                          Coords="{Binding Coordinates}"
-                                          Visibility="{Binding SlewFirst, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
+                <!-- RA and Dec on the same line, bound straight to NINA's
+                     InputCoordinates the way its own Slew to RA/Dec editor
+                     is. NINA 3.3 ships a CoordinatesControl for this, but the
+                     plugin compiles against 3.1 so it can run there too. -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding SlewFirst, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}">
+                    <StackPanel.Resources>
+                        <local:DecDegreesConverter x:Key="DecDegrees" />
+                    </StackPanel.Resources>
+                    <TextBlock VerticalAlignment="Center" Text="RA" />
+                    <TextBox Width="34" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.RAHours, UpdateSourceTrigger=LostFocus}" ToolTip="Hours" />
+                    <TextBlock VerticalAlignment="Center" Text="h" Margin="2,0,0,0" />
+                    <TextBox Width="34" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.RAMinutes, UpdateSourceTrigger=LostFocus}" ToolTip="Minutes" />
+                    <TextBlock VerticalAlignment="Center" Text="m" Margin="2,0,0,0" />
+                    <TextBox Width="44" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.RASeconds, StringFormat=N1, UpdateSourceTrigger=LostFocus}" ToolTip="Seconds" />
+                    <TextBlock VerticalAlignment="Center" Text="s" Margin="2,0,12,0" />
+
+                    <TextBlock VerticalAlignment="Center" Text="Dec" />
+                    <TextBox Width="38" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center" ToolTip="Degrees, with a minus sign for south">
+                        <TextBox.Text>
+                            <MultiBinding Converter="{StaticResource DecDegrees}" UpdateSourceTrigger="LostFocus">
+                                <Binding Path="Coordinates.NegativeDec" />
+                                <Binding Path="Coordinates.DecDegrees" />
+                            </MultiBinding>
+                        </TextBox.Text>
+                    </TextBox>
+                    <TextBlock VerticalAlignment="Center" Text="°" Margin="2,0,0,0" />
+                    <TextBox Width="34" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.DecMinutes, UpdateSourceTrigger=LostFocus}" ToolTip="Arcminutes" />
+                    <TextBlock VerticalAlignment="Center" Text="'" Margin="2,0,0,0" />
+                    <TextBox Width="44" Height="24" Margin="4,0,0,0" TextAlignment="Right" VerticalContentAlignment="Center"
+                             Text="{Binding Coordinates.DecSeconds, StringFormat=N1, UpdateSourceTrigger=LostFocus}" ToolTip="Arcseconds" />
+                    <TextBlock VerticalAlignment="Center" Text="&quot;" Margin="2,0,0,0" />
+                </StackPanel>
             </WrapPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
