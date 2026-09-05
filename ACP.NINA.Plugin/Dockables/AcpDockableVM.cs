@@ -64,7 +64,6 @@ namespace ACP.NINA.Plugin.Dockables {
             // The label under the sync button names the profile the sync will
             // write to. The sync itself reads the active profile at click time,
             // so the label has to follow profile switches or it lies.
-            this.profileService = profileService;
             ActiveProfileName = profileService?.ActiveProfile?.Name ?? "(no active profile)";
             if (profileService != null) {
                 profileService.ProfileChanged += OnProfileChanged;
@@ -124,8 +123,6 @@ namespace ACP.NINA.Plugin.Dockables {
             : $"{SelectedPlan.CoordinatesShort} · rot {SelectedPlan.RotationDeg}° · {SelectedPlan.MosaicShort}";
 
         // ── Profile (for TS sync display) ─────────────────────────────────────
-
-        private readonly IProfileService profileService;
 
         private void OnProfileChanged(object sender, EventArgs e) {
             var name = profileService?.ActiveProfile?.Name ?? "(no active profile)";
