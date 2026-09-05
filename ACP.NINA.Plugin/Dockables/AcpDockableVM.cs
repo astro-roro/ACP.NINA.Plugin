@@ -61,7 +61,7 @@ namespace ACP.NINA.Plugin.Dockables {
 
             settings = AcpSettings.Load();
 
-            RefreshCommand = new RelayCommand(async () => await RefreshAsync());
+            RefreshCommand = new RelayCommand(async () => await RefreshAsync(announce: true));
             PushToFramingCommand = new RelayCommand(
                 async () => await PushToFramingAsync(),
                 () => SelectedPlan != null && IsConnected
@@ -340,6 +340,16 @@ namespace ACP.NINA.Plugin.Dockables {
                     .RunAsync(solve, settings.ProfileWriteBackEnabled, CancellationToken.None)
                     .ConfigureAwait(false);
 
+                // The dock is a small box, so the one line names the plan count
+                // and the focal length change and the rest goes to the NINA log,
+                // which the runner has already written. The refresh runs first
+                // and quietly, so its own "Loaded N plans" line cannot replace
+                // the result the user is waiting for.
+                if (outcome.Success) {
+                    InvalidateProgressCaches();
+                    await RefreshAsync().ConfigureAwait(false);
+                }
+
                 var prefix = reused != null
                     ? $"Reused the solve from {(int)Math.Round(reused.Age.TotalMinutes)} minutes ago. "
                     : string.Empty;
@@ -348,14 +358,6 @@ namespace ACP.NINA.Plugin.Dockables {
                         ? "✓ " + prefix + outcome.ShortResult
                         : "✗ " + prefix + outcome.ShortResult
                 );
-
-                // The dock is a small box, so the one line names the plan count
-                // and the focal length change and the rest goes to the NINA log,
-                // which the runner has already written.
-                if (outcome.Success) {
-                    InvalidateProgressCaches();
-                    await RefreshAsync().ConfigureAwait(false);
-                }
             } catch (AcpUnauthorizedException ex) {
                 SetResultOnUi("✗ " + ex.Message);
                 Logger.Warning($"ACP: Sync for tonight rejected: {ex.Message}");
@@ -371,7 +373,10 @@ namespace ACP.NINA.Plugin.Dockables {
             Application.Current?.Dispatcher.Invoke(() => LastActionResult = result);
         }
 
-        private async Task RefreshAsync() {
+        /// Refetch plans and gear. Only the refresh button announces itself
+        /// on the result line; the timer and the sync paths stay quiet so the
+        /// last thing the user did is still readable a minute later.
+        private async Task RefreshAsync(bool announce = false) {
             var url = settings.ServerUrl;
             var client = new AcpApiClient(url);
             try {
@@ -398,7 +403,7 @@ namespace ACP.NINA.Plugin.Dockables {
                     foreach (var r in rows) Plans.Add(r);
                     IsConnected = true;
                     ConnectionStatus = $"Connected — {url}";
-                    LastActionResult = $"Loaded {rows.Count} plans from ACP.";
+                    if (announce) LastActionResult = $"Loaded {rows.Count} plans from ACP.";
                 });
                 Logger.Info($"ACP: refreshed {rows.Count} plans from {url}");
             } catch (AcpUnauthorizedException ex) {
