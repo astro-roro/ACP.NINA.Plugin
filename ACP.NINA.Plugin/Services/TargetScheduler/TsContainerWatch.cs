@@ -1,5 +1,8 @@
 using NINA.Core.Utility;
 using NINA.Plugin.Interfaces;
+using NINA.Sequencer.Interfaces.Mediator;
+using NINA.Core.Enum;
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
@@ -26,6 +29,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     /// TargetComplete at the end. So a run is inferred rather than announced.
     /// Any of the three start topics means a container is going, and
     /// ContainerStopped means it has finished.
+    ///
+    /// The topics alone leave a window at the start of a run. The container
+    /// publishes nothing until its planning engine has finished, and that
+    /// engine reads this same database for twenty seconds or more. The bench
+    /// on 2026-09-05 pushed three times inside that window. So the sequencer
+    /// itself is asked too: when an advanced sequence is running and one of
+    /// its target containers is Target Scheduler's and is in the RUNNING
+    /// state, that counts as running whatever the topics say.
     ///
     /// That leaves one gap. If NINA is killed mid-run, or a container ends in a
     /// way that publishes nothing, the last thing this ever heard is a start
@@ -61,6 +72,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public static readonly TimeSpan StaleAfter = TimeSpan.FromHours(3);
 
         private readonly IMessageBroker broker;
+        private readonly ISequenceMediator sequenceMediator;
         private readonly Func<DateTime> clock;
         private readonly object gate = new object();
 
@@ -74,13 +86,37 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// on that basis would break the feature for everyone rather than
         /// protect anyone. The push goes ahead and says the guard is off.
         [ImportingConstructor]
-        public TsContainerWatch([Import(AllowDefault = true)] IMessageBroker broker)
-            : this(broker, () => DateTime.UtcNow) { }
+        public TsContainerWatch(
+            [Import(AllowDefault = true)] IMessageBroker broker,
+            [Import(AllowDefault = true)] ISequenceMediator sequenceMediator
+        ) : this(broker, () => DateTime.UtcNow, sequenceMediator) { }
 
-        public TsContainerWatch(IMessageBroker broker, Func<DateTime> clock) {
+        public TsContainerWatch(IMessageBroker broker, Func<DateTime> clock)
+            : this(broker, clock, null) { }
+
+        public TsContainerWatch(IMessageBroker broker, Func<DateTime> clock, ISequenceMediator sequenceMediator) {
             this.broker = broker;
+            this.sequenceMediator = sequenceMediator;
             this.clock = clock ?? (() => DateTime.UtcNow);
             Subscribe();
+        }
+
+        /// Ask the sequencer directly. Covers the planning window before the
+        /// first topic, and a container that was already running when NINA
+        /// composed this plugin. Any failure here means "cannot tell", which
+        /// falls through to the topics.
+        private bool SequencerShowsContainerRunning() {
+            try {
+                if (sequenceMediator == null || !sequenceMediator.IsAdvancedSequenceRunning()) return false;
+                var targets = sequenceMediator.GetAllTargetsInAdvancedSequence();
+                return targets != null && targets.Any(t =>
+                    t != null
+                    && t.GetType().Name == "TargetSchedulerContainer"
+                    && t.Status == SequenceEntityStatus.RUNNING);
+            } catch (Exception ex) {
+                Logger.Debug($"ACP: could not read the sequencer for a Target Scheduler container: {ex.Message}");
+                return false;
+            }
         }
 
         public bool BrokerAvailable => broker != null;
@@ -124,6 +160,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         public bool IsRunning {
             get {
+                if (SequencerShowsContainerRunning()) return true;
                 lock (gate) {
                     if (!running) return false;
                     if (clock() - lastEventUtc > StaleAfter) {
@@ -138,6 +175,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         }
 
         public string Explain() {
+            if (SequencerShowsContainerRunning()) {
+                return "Target Scheduler is running a container in the current sequence.";
+            }
             lock (gate) {
                 if (broker == null || !subscribed) {
                     return "NINA did not offer a message broker, so whether Target Scheduler is " +
