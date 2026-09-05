@@ -154,7 +154,7 @@ namespace ACP.NINA.Plugin {
         public string SyncModeExplanation =>
             settings.SyncMode == SyncMode.OnlyWhatFits
                 ? "Plans are matched against the gear the plate solve found and only the ones that fit are loaded. Plans with no gear set are always loaded. Pick this if you use more than one rig, site or computer."
-                : "Every plan in ACP is loaded. The gear fingerprint is still built and shown, and the focal length is still corrected, but nothing is filtered out. Anything that does not suit tonight gets one warning line and you adjust in Target Scheduler.";
+                : "Every plan in ACP is loaded and nothing is filtered out. A frame is only solved when the focal length update below is on; with it off, no camera is needed. Anything that does not suit tonight gets one warning line and you adjust in Target Scheduler.";
 
         // -- API token ---------------------------------------------------------
 

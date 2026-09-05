@@ -46,13 +46,24 @@
                 <TextBlock Grid.Row="2" Grid.Column="0"
                            Text="API token:"
                            VerticalAlignment="Center" />
+                <!-- NINA styles TextBox but not PasswordBox, which otherwise
+                     renders in stock WPF white. Give it the text box's tint,
+                     border and foreground so it matches the URL field. -->
                 <PasswordBox Grid.Row="2" Grid.Column="1"
                              x:Name="TokenBox"
                              Margin="6,6,6,0"
                              Height="24"
                              VerticalContentAlignment="Center"
+                             Foreground="{StaticResource PrimaryBrush}"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             BorderThickness="0,0,0,1"
+                             CaretBrush="{StaticResource PrimaryBrush}"
                              PasswordChanged="TokenBox_PasswordChanged"
-                             ToolTip="The value of ACP_API_TOKEN on the ACP server. Stored in Windows Credential Manager, never in the plugin's settings file. Leave blank if ACP runs on this machine with no token set." />
+                             ToolTip="The value of ACP_API_TOKEN on the ACP server. Stored in Windows Credential Manager, never in the plugin's settings file. Leave blank if ACP runs on this machine with no token set.">
+                    <PasswordBox.Background>
+                        <SolidColorBrush Opacity="0.05" Color="{Binding Color, Source={StaticResource PrimaryBrush}}" />
+                    </PasswordBox.Background>
+                </PasswordBox>
                 <Button Grid.Row="2" Grid.Column="2"
                         Margin="0,6,0,0"
                         Content="Clear"
