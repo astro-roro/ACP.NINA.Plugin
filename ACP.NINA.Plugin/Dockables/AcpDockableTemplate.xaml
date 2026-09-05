@@ -13,6 +13,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!-- Row 0: connection status -->
@@ -158,6 +159,14 @@
                        Opacity="0.85"
                        TextWrapping="Wrap"
                        Text="{Binding LastActionResult}" />
+
+            <!-- Row 6: progress reporting footer (Part F) -->
+            <TextBlock Grid.Row="6"
+                       Margin="0,4,0,0"
+                       FontSize="11"
+                       Opacity="0.7"
+                       TextWrapping="Wrap"
+                       Text="{Binding ProgressStatusLine}" />
         </Grid>
     </DataTemplate>
 
