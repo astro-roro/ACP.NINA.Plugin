@@ -274,5 +274,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// exposureTemplateId once both rows are on disk.
         public Dictionary<string, string> TemplateGuidByPlanGuid { get; } =
             new Dictionary<string, string>();
+
+        /// Each exposure template's guid to the guid the same template carried
+        /// under the pre-length-prefix recipe. A template's natural key
+        /// includes the camera id, which is not a column on the row, so this is
+        /// the one table whose old identity cannot be recomputed from the
+        /// database alone. TsMigration reads it; the other three tables it
+        /// derives from their own rows.
+        public Dictionary<string, string> LegacyTemplateGuidByGuid { get; } =
+            new Dictionary<string, string>();
     }
 }
