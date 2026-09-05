@@ -17,19 +17,19 @@ namespace ACP.NINA.Plugin.Sequencer {
 
     /// The start of the night in one instruction. Optionally slew, capture and
     /// solve a frame, work out what gear is actually connected from the solve,
-    /// correct the profile focal length if it is wrong, and ask ACP which plans
-    /// fit.
+    /// correct the profile focal length if it is wrong, ask ACP which plans fit
+    /// and load them into Target Scheduler.
     ///
-    /// Loading the matching plans into Target Scheduler is the next version.
-    /// This one reports what fits and leaves TS alone, which is worth having on
-    /// its own: it tells you whether the rig is what you think it is before you
-    /// commit the night to it.
+    /// Nothing is written to Target Scheduler while one of its containers is
+    /// running, so this belongs before the container in a sequence rather than
+    /// inside it.
     [ExportMetadata("Name", "ACP: Sync for tonight")]
     [ExportMetadata(
         "Description",
-        "Solves a frame, works out the connected gear from it, and asks ACP which plans fit tonight. " +
-        "Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out, " +
-        "which you can switch off below. Loading the matching plans into Target Scheduler arrives in the next version."
+        "Solves a frame, works out the connected gear from it, asks ACP which plans fit tonight, and loads " +
+        "them into Target Scheduler. Updates the profile focal length and focal ratio when the solve says " +
+        "they are more than 5 percent out, which you can switch off below. Put this before your Target " +
+        "Scheduler container: nothing is written while one is running."
     )]
     [ExportMetadata("Icon", "PlatesolveSVG")]
     [ExportMetadata("Category", "ACP")]
@@ -103,9 +103,9 @@ namespace ACP.NINA.Plugin.Sequencer {
 
         private bool updateProfileFocalLength = true;
 
-        /// On by default, per the spec. Turning it off still solves, still
-        /// fingerprints and still matches; it only stops the profile being
-        /// written.
+        /// On by default, per the spec. With it off, a frame is only solved
+        /// when the mode is Only what fits, which needs the measured gear to
+        /// judge against. Everything mode with this off takes no frame at all.
         [JsonProperty]
         public bool UpdateProfileFocalLength {
             get => updateProfileFocalLength;
@@ -123,7 +123,7 @@ namespace ACP.NINA.Plugin.Sequencer {
 
         public bool Validate() {
             var found = new List<string>();
-            if (!cameraMediator.GetInfo().Connected) {
+            if (NeedsSolve() && !cameraMediator.GetInfo().Connected) {
                 found.Add("Camera not connected. The gear fingerprint needs a frame to solve.");
             }
             if (SlewFirst && !telescopeMediator.GetInfo().Connected) {
@@ -150,14 +150,21 @@ namespace ACP.NINA.Plugin.Sequencer {
                 await telescopeMediator.SlewToCoordinatesAsync(target, token);
             }
 
-            // The instruction always solves. That is decision 1 in the v3 spec:
-            // reusing an old solve is the dock button's job, because the button
-            // is pressed by someone who can see how long ago it was.
-            var solve = await plateSolver.SolveAsync(ExposureTime, progress, token);
-            if (solve == null) {
-                throw new SequenceEntityFailedException(
-                    "The plate solve failed, so ACP cannot tell what gear is connected."
-                );
+            // The instruction never reuses an old solve: that is the dock
+            // button's job, pressed by someone who can see how long ago it was.
+            // It takes a fresh frame whenever a solve is needed at all, which
+            // is when the focal length update is on or the mode is Only what
+            // fits. Everything mode with the update off skips the frame.
+            SolveSnapshot solve = null;
+            if (NeedsSolve()) {
+                solve = await plateSolver.SolveAsync(ExposureTime, progress, token);
+                if (solve == null) {
+                    throw new SequenceEntityFailedException(
+                        "The plate solve failed, so ACP cannot tell what gear is connected."
+                    );
+                }
+            } else {
+                Logger.Info("ACP: Sync for tonight is loading every plan, so no frame is taken.");
             }
 
             var outcome = await runner.RunAsync(solve, UpdateProfileFocalLength, token);
@@ -171,6 +178,10 @@ namespace ACP.NINA.Plugin.Sequencer {
             if (!outcome.Success) {
                 throw new SequenceEntityFailedException(outcome.Failure ?? "Sync for tonight did not finish.");
             }
+        }
+
+        private bool NeedsSolve() {
+            return UpdateProfileFocalLength || AcpSettings.Load().SyncMode == SyncMode.OnlyWhatFits;
         }
 
         public override string ToString() {

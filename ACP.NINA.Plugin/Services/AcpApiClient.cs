@@ -25,7 +25,7 @@ namespace ACP.NINA.Plugin.Services {
     /// wants, so the token cannot live in DefaultRequestHeaders: it is set on
     /// each request instead. That also means a token changed on the Options
     /// page takes effect on the next call with no restart.
-    public class AcpApiClient {
+    public class AcpApiClient : IProgressSink {
 
         private static readonly HttpClient http = new HttpClient {
             // Long enough to absorb a TS sync's BEGIN IMMEDIATE + backup +
@@ -124,6 +124,28 @@ namespace ACP.NINA.Plugin.Services {
                 HttpMethod.Post, "/api/ext/nina-ts-sync/sync", body, ct
             ).ConfigureAwait(false);
             return JsonConvert.DeserializeObject<TsSyncResponse>(json) ?? new TsSyncResponse();
+        }
+
+        /// POST /api/plans/{id}/progress. Reports what a session has actually
+        /// acquired against a plan's per filter goals.
+        ///
+        /// ACP raises actual_hours and never lowers it unless the body says
+        /// force, which this plugin never does, so sending the same numbers
+        /// twice is free and sending them late is harmless. Filters the plan
+        /// has no goal for come back in unknown_filters rather than being
+        /// invented, and are worth a log line but not a failure.
+        public async Task<ProgressResponse> ReportProgressAsync(
+            string planId, ProgressRequest body, CancellationToken ct = default
+        ) {
+            if (string.IsNullOrWhiteSpace(planId)) {
+                throw new ArgumentException("A plan id is required.", nameof(planId));
+            }
+            if (body == null) throw new ArgumentNullException(nameof(body));
+
+            var json = JsonConvert.SerializeObject(body);
+            var path = $"/api/plans/{Uri.EscapeDataString(planId)}/progress";
+            var text = await SendAsync(HttpMethod.Post, path, json, ct).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<ProgressResponse>(text) ?? new ProgressResponse();
         }
 
         // -- Transport ------------------------------------------------------

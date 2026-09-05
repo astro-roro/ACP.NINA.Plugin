@@ -1,5 +1,36 @@
 # Changelog
 
+## 3.2.0 (unreleased)
+
+ACP finds out what tonight actually acquired, while it is being acquired.
+
+### Added
+
+- **Acquired hours are reported back to ACP during a session.** When Target Scheduler starts or finishes a target, the plugin reads that target's acquired counts, converts them to hours using each exposure plan's sub length, and posts them to `POST /api/plans/<id>/progress`. The coverage map and the hours remaining stay current through the night instead of waiting for someone to run a sync. This replaces the Python extension's `sync-acquired` poll for people whose ACP is on another machine, and the two can run side by side.
+- **A five minute fallback** while a Target Scheduler container is running, so a missed or unrecognised event costs at most five minutes of staleness rather than a whole night's worth.
+- **"Report progress to ACP while imaging"** on the options page, on by default. Turning it off is honest about the cost: the Target Scheduler sync writes ACP's view of the counts back into Target Scheduler, so hours that go stale in ACP can walk the real counts backwards on a later sync.
+- **A dock footer line** reading "Progress sent 22 s ago", or the last error when there is one.
+
+### Notes
+
+- Hours only ever go up. ACP refuses to lower a stored `actual_hours` unless it is told to force it, and this plugin never asks it to: a count that goes backwards in Target Scheduler is a culled frame or a reset project, and rewinding a plan someone has watched fill up is worse than being one session stale.
+- A mosaic reports the hours from its 1,1 panel and only that panel, because ACP stores a mosaic's filter goals per panel rather than summed across them. This matches what the Python extension does, so both paths produce the same number.
+- The Target Scheduler database is only ever opened read only here, which is why progress reporting is safe to run mid session when the 3.1 push deliberately refuses to.
+
+## 3.1.0 (unreleased)
+
+Target Scheduler sync moves inside the plugin, so it works when ACP is on another machine.
+
+### Added
+
+- **The Target Scheduler push runs in the plugin.** It opens `schedulerdb.sqlite` itself and writes a project per ACP project name, a target per mosaic panel, exposure plans from the filter goals and exposure templates deduplicated by camera and filter. Until now this only worked when ACP and NINA shared a machine, because the Python extension that did it opened the database from the ACP host.
+- **Schema versions 23 to 28 are supported**, matching the Python extension. Anything outside that range is refused before a single row is written, with the same message the extension gives.
+- **Sync for tonight now finishes the job.** The sequencer instruction and the dock button both load the matched plans into Target Scheduler, honouring the Everything and Only what fits modes, and report how many were loaded and what was left out and why.
+
+### Changed
+
+- `/api/gear` responses are read the way ACP actually sends them. Sensor size arrives as a two element `sensor_px` array, and the per filter capture settings under `cameras[].filters` are read for the first time. The Framing Assistant push was silently getting no sensor size from a real server and now gets one.
+
 ## 3.0.0 (unreleased)
 
 ACP no longer has to run on the same machine as NINA, and you no longer have to tell the plugin what rig is connected. It works the gear out from the hardware and a plate solve.

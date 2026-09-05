@@ -1,9 +1,11 @@
 using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services;
+using ACP.NINA.Plugin.Services.TargetScheduler;
 using NINA.Astrometry;
 using NINA.Core.MyMessageBox;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.ViewModel;
+using NINA.Plugin.Interfaces;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
@@ -41,7 +43,9 @@ namespace ACP.NINA.Plugin.Dockables {
             IProfileService profileService,
             IFramingAssistantVM framingAssistantVM,
             IAcpPlateSolver plateSolver,
-            ISyncForTonightRunner syncRunner
+            ISyncForTonightRunner syncRunner,
+            [Import(AllowDefault = true)] IMessageBroker messageBroker,
+            [Import(AllowDefault = true)] ITsContainerWatch containerWatch
         ) : base(profileService) {
             this.framingAssistantVM = framingAssistantVM;
             this.plateSolver = plateSolver;
@@ -58,7 +62,7 @@ namespace ACP.NINA.Plugin.Dockables {
 
             settings = AcpSettings.Load();
 
-            RefreshCommand = new RelayCommand(async () => await RefreshAsync());
+            RefreshCommand = new RelayCommand(async () => await RefreshAsync(announce: true));
             PushToFramingCommand = new RelayCommand(
                 async () => await PushToFramingAsync(),
                 () => SelectedPlan != null && IsConnected
@@ -82,9 +86,80 @@ namespace ACP.NINA.Plugin.Dockables {
             ConnectionStatus = "Probing...";
             IsConnected = false;
 
+            StartProgressReporting(messageBroker, containerWatch);
+
             _ = RefreshAsync();
             _ = PollForChangesAsync(pollCts.Token);
         }
+
+        // -- Progress reporting (Part F) ---------------------------------------
+
+        private ProgressReporter progressReporter;
+        private TsSnapshotCache tsSnapshotCache;
+        private TsPlanRefsSource planRefsSource;
+
+        /// Build the reporter and let it run for the life of the dock.
+        ///
+        /// It lives here rather than behind another exported service because
+        /// this is the one place that already has the profile, the settings and
+        /// somewhere to show the result. Both new imports are AllowDefault, so
+        /// a NINA that does not hand over a message broker or the container
+        /// watch still composes the dock: progress reporting falls back to the
+        /// timer, or to being off, rather than the whole panel failing to
+        /// appear. That is the same call v3.1 made about its own broker import.
+        private void StartProgressReporting(
+            IMessageBroker messageBroker, ITsContainerWatch containerWatch
+        ) {
+            try {
+                Func<string> profileId = () => profileService?.ActiveProfile?.Id.ToString();
+
+                tsSnapshotCache = new TsSnapshotCache();
+                planRefsSource = new TsPlanRefsSource(
+                    tsSnapshotCache,
+                    profileId,
+                    async ct => (IReadOnlyList<Plan>)
+                        (await new AcpApiClient(settings.ServerUrl).GetPlansAsync(ct)
+                            .ConfigureAwait(false))?.Plans
+                );
+
+                progressReporter = new ProgressReporter(
+                    messageBroker,
+                    new TsDatabaseProgressSource(tsSnapshotCache, profileId),
+                    planRefsSource,
+                    new AcpApiClient(settings.ServerUrl),
+                    containerWatch,
+                    () => (AcpSettings.Current ?? settings).ReportProgressToAcp,
+                    profileId
+                );
+                progressReporter.StatusChanged += (s, e) =>
+                    RaisePropertyChanged(nameof(ProgressStatusLine));
+                // The footer says "off" the moment the option is unticked,
+                // without waiting for the next report.
+                AcpSettings.Saved += OnSettingsSaved;
+                progressReporter.Start();
+            } catch (Exception ex) {
+                // Nothing here is worth losing the dock over.
+                Logger.Error($"ACP: could not start progress reporting: {ex}");
+                progressReporter = null;
+            }
+        }
+
+        /// A sync has just rewritten Target Scheduler, so the reporter's view
+        /// of both the rows and the plan list is out of date. Dropping the two
+        /// caches means the next report joins against what was actually
+        /// written rather than what was there beforehand.
+        private void InvalidateProgressCaches() {
+            tsSnapshotCache?.Invalidate();
+            planRefsSource?.Invalidate();
+        }
+
+        private void OnSettingsSaved() {
+            RaisePropertyChanged(nameof(ProgressStatusLine));
+        }
+
+        /// The footer line: "Progress sent 22 s ago", or the last error.
+        public string ProgressStatusLine =>
+            progressReporter?.StatusLine ?? ProgressStatus.Off;
 
         // -- Change polling ----------------------------------------------------
 
@@ -142,6 +217,13 @@ namespace ACP.NINA.Plugin.Dockables {
         /// simply runs for the life of the application, which is what a 60
         /// second poll is for.
         void IDisposable.Dispose() {
+            if (profileService != null) profileService.ProfileChanged -= OnProfileChanged;
+            AcpSettings.Saved -= OnSettingsSaved;
+            try {
+                progressReporter?.Dispose();
+            } catch (Exception) {
+                // Already gone, nothing useful to do.
+            }
             try {
                 pollCts.Cancel();
                 pollCts.Dispose();
@@ -257,43 +339,59 @@ namespace ACP.NINA.Plugin.Dockables {
             if (IsSyncingForTonight) return;
             IsSyncingForTonight = true;
             try {
-                var reused = LastSolve.GetIfFresh();
-                var solve = reused;
-                if (solve == null) {
-                    LastActionResult = "Sync for tonight: capturing and solving a frame...";
-                    solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
-                        .ConfigureAwait(false);
+                // A solve is only taken when something needs it: the focal
+                // length update, or the fit judgement in Only what fits mode.
+                // Everything mode with the update off pushes every plan and
+                // needs neither a camera nor a frame. Settings are read fresh
+                // because the options page saves through its own copy.
+                var live = AcpSettings.Load();
+                var needsSolve = live.ProfileWriteBackEnabled || live.SyncMode == SyncMode.OnlyWhatFits;
+                SolveSnapshot reused = null;
+                SolveSnapshot solve = null;
+                if (needsSolve) {
+                    reused = LastSolve.GetIfFresh();
+                    solve = reused;
                     if (solve == null) {
-                        SetResultOnUi(
-                            "✗ The plate solve failed, so ACP cannot tell what gear is connected."
-                        );
-                        return;
+                        LastActionResult = "Sync for tonight: capturing and solving a frame...";
+                        solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
+                            .ConfigureAwait(false);
+                        if (solve == null) {
+                            SetResultOnUi(
+                                "✗ The plate solve failed, so ACP cannot tell what gear is connected."
+                            );
+                            return;
+                        }
+                    } else {
+                        var minutes = (int)Math.Round(reused.Age.TotalMinutes);
+                        LastActionResult =
+                            $"Sync for tonight: reusing the solve from {minutes} minutes ago.";
                     }
                 } else {
-                    var minutes = (int)Math.Round(reused.Age.TotalMinutes);
-                    LastActionResult =
-                        $"Sync for tonight: reusing the solve from {minutes} minutes ago.";
+                    LastActionResult = "Sync for tonight: loading every plan, no solve needed.";
                 }
 
                 var outcome = await syncRunner
-                    .RunAsync(solve, settings.ProfileWriteBackEnabled, CancellationToken.None)
+                    .RunAsync(solve, live.ProfileWriteBackEnabled, CancellationToken.None)
                     .ConfigureAwait(false);
+
+                // The dock is a small box, so the one line names the plan count
+                // and the focal length change and the rest goes to the NINA log,
+                // which the runner has already written. The refresh runs first
+                // and quietly, so its own "Loaded N plans" line cannot replace
+                // the result the user is waiting for.
+                if (outcome.Success) {
+                    InvalidateProgressCaches();
+                    await RefreshAsync().ConfigureAwait(false);
+                }
 
                 var prefix = reused != null
                     ? $"Reused the solve from {(int)Math.Round(reused.Age.TotalMinutes)} minutes ago. "
                     : string.Empty;
                 SetResultOnUi(
-                    outcome.Success
+                    outcome.Success && !outcome.PushRefused
                         ? "✓ " + prefix + outcome.ShortResult
                         : "✗ " + prefix + outcome.ShortResult
                 );
-
-                // The dock is a small box, so the one line names the plan count
-                // and the focal length change and the rest goes to the NINA log,
-                // which the runner has already written.
-                if (outcome.Success) {
-                    await RefreshAsync().ConfigureAwait(false);
-                }
             } catch (AcpUnauthorizedException ex) {
                 SetResultOnUi("✗ " + ex.Message);
                 Logger.Warning($"ACP: Sync for tonight rejected: {ex.Message}");
@@ -309,7 +407,10 @@ namespace ACP.NINA.Plugin.Dockables {
             Application.Current?.Dispatcher.Invoke(() => LastActionResult = result);
         }
 
-        private async Task RefreshAsync() {
+        /// Refetch plans and gear. Only the refresh button announces itself
+        /// on the result line; the timer and the sync paths stay quiet so the
+        /// last thing the user did is still readable a minute later.
+        private async Task RefreshAsync(bool announce = false) {
             var url = settings.ServerUrl;
             var client = new AcpApiClient(url);
             try {
@@ -336,7 +437,7 @@ namespace ACP.NINA.Plugin.Dockables {
                     foreach (var r in rows) Plans.Add(r);
                     IsConnected = true;
                     ConnectionStatus = $"Connected — {url}";
-                    LastActionResult = $"Loaded {rows.Count} plans from ACP.";
+                    if (announce) LastActionResult = $"Loaded {rows.Count} plans from ACP.";
                 });
                 Logger.Info($"ACP: refreshed {rows.Count} plans from {url}");
             } catch (AcpUnauthorizedException ex) {
@@ -624,6 +725,7 @@ namespace ACP.NINA.Plugin.Dockables {
 
                 var client = new AcpApiClient(settings.ServerUrl);
                 var resp = await client.SyncToTsAsync(profileId).ConfigureAwait(false);
+                InvalidateProgressCaches();
 
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");

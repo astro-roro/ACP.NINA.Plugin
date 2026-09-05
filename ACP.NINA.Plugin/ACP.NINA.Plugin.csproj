@@ -16,15 +16,48 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <!-- The Target Scheduler push opens schedulerdb.sqlite directly. This is
+         the same SQLite the Target Scheduler plugin itself sits on, reached
+         without EF because the push writes four tables and needs the column
+         list to vary by schema version. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NINA.Plugin" Version="3.1.2.9001" />
   </ItemGroup>
 
+  <!-- The managed assemblies the plugin folder needs beside the plugin DLL.
+       Microsoft.Data.Sqlite arrived with the Target Scheduler push in 3.1; its
+       SQLitePCLRaw companions are what actually reach the native library. -->
+  <ItemGroup>
+    <AcpDeployAssembly Include="Newtonsoft.Json.dll" />
+    <AcpDeployAssembly Include="CommunityToolkit.Mvvm.dll" />
+    <AcpDeployAssembly Include="Microsoft.Data.Sqlite.dll" />
+    <AcpDeployAssembly Include="SQLitePCLRaw.core.dll" />
+    <AcpDeployAssembly Include="SQLitePCLRaw.batteries_v2.dll" />
+    <AcpDeployAssembly Include="SQLitePCLRaw.provider.e_sqlite3.dll" />
+  </ItemGroup>
+
   <!-- Copies the built plugin straight into NINA's plugin folder, which is what
        you want building on the imaging machine and not what you want building
-       over SSH or in CI. Set SkipAcpDeploy=true to build without installing. -->
+       over SSH or in CI. Set SkipAcpDeploy=true to build without installing.
+
+       The satellite locale folders are stripped because they are pure bloat in
+       a plugin folder. runtimes\win-x64\native is not: it holds e_sqlite3.dll,
+       which SQLitePCLRaw loads at run time. It used to be deleted along with
+       the locales, so the purge now names the RIDs it wants gone and the
+       native copy runs after it rather than before. -->
   <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(SkipAcpDeploy)' != 'true'">
-    <Exec Command="if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;&#xD;&#xA;if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot;&#xD;&#xA;xcopy &quot;$(TargetPath)&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;if exist &quot;$(TargetDir)Newtonsoft.Json.dll&quot; xcopy &quot;$(TargetDir)Newtonsoft.Json.dll&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;if exist &quot;$(TargetDir)CommunityToolkit.Mvvm.dll&quot; xcopy &quot;$(TargetDir)CommunityToolkit.Mvvm.dll&quot; &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)&quot; /h/i/c/k/e/r/y&#xD;&#xA;for %25%25d in (ca-ES cs-CZ da-DK de-DE el-GR en-GB en-US es-ES eu-ES fr-FR gl-ES hu-HU it-IT ja-JP ko-KR nb-NO nl-NL pl-PL pt-PT ru-RU tr-TR uk-UA zh-CN zh-HK zh-TW runtimes) do if exist &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\%25%25d&quot; rd /s /q &quot;%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)\%25%25d&quot;" />
+    <PropertyGroup>
+      <AcpPluginDir>%25localappdata%25\NINA\Plugins\3.0.0\$(TargetName)</AcpPluginDir>
+    </PropertyGroup>
+    <Exec Command="if not exist &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot; mkdir &quot;%25localappdata%25\NINA\Plugins\3.0.0&quot;" />
+    <Exec Command="if not exist &quot;$(AcpPluginDir)&quot; mkdir &quot;$(AcpPluginDir)&quot;" />
+    <Exec Command="xcopy &quot;$(TargetPath)&quot; &quot;$(AcpPluginDir)&quot; /h/i/c/k/e/r/y" />
+    <Exec Command="if exist &quot;$(TargetDir)%(AcpDeployAssembly.Identity)&quot; xcopy &quot;$(TargetDir)%(AcpDeployAssembly.Identity)&quot; &quot;$(AcpPluginDir)&quot; /h/i/c/k/e/r/y" />
+    <Exec Command="for %25%25d in (ca-ES cs-CZ da-DK de-DE el-GR en-GB en-US es-ES eu-ES fr-FR gl-ES hu-HU it-IT ja-JP ko-KR nb-NO nl-NL pl-PL pt-PT ru-RU tr-TR uk-UA zh-CN zh-HK zh-TW) do if exist &quot;$(AcpPluginDir)\%25%25d&quot; rd /s /q &quot;$(AcpPluginDir)\%25%25d&quot;" />
+    <Exec Command="if exist &quot;$(AcpPluginDir)\runtimes&quot; rd /s /q &quot;$(AcpPluginDir)\runtimes&quot;" />
+    <Exec Command="if exist &quot;$(TargetDir)runtimes\win-x64\native\e_sqlite3.dll&quot; xcopy &quot;$(TargetDir)runtimes\win-x64\native\e_sqlite3.dll&quot; &quot;$(AcpPluginDir)\runtimes\win-x64\native\&quot; /h/i/c/k/e/r/y" />
+    <Exec Command="if exist &quot;$(TargetDir)runtimes\win-x64\native\e_sqlite3.dll&quot; xcopy &quot;$(TargetDir)runtimes\win-x64\native\e_sqlite3.dll&quot; &quot;$(AcpPluginDir)&quot; /h/i/c/k/e/r/y" />
   </Target>
 
 </Project>
