@@ -86,13 +86,22 @@
                            Text="Which plans to load into Target Scheduler:"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center" />
+                <!-- NINA's implicit ComboBox style does not reach this
+                     template, so name the style and give it the same
+                     tint NINA's text boxes use, so it sits beside the
+                     server URL field without standing out. -->
                 <ComboBox Grid.Column="1"
                           Margin="6,0,0,0"
                           Height="24"
+                          Style="{StaticResource StandardComboBox}"
                           VerticalContentAlignment="Center"
                           ItemsSource="{Binding SyncModeOptions}"
                           SelectedItem="{Binding SelectedSyncModeOption}"
-                          ToolTip="Everything loads every plan in ACP. Only what fits tonight loads the plans that match the gear the plate solve says is actually connected." />
+                          ToolTip="Everything loads every plan in ACP. Only what fits tonight loads the plans that match the gear the plate solve says is actually connected.">
+                    <ComboBox.Background>
+                        <SolidColorBrush Opacity="0.05" Color="{Binding Color, Source={StaticResource PrimaryBrush}}" />
+                    </ComboBox.Background>
+                </ComboBox>
             </Grid>
 
             <TextBlock Margin="0,0,0,12"

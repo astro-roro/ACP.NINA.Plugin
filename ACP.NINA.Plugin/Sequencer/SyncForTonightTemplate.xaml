@@ -2,7 +2,8 @@
     x:Class="ACP.NINA.Plugin.Sequencer.SyncForTonightTemplate"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="clr-namespace:ACP.NINA.Plugin.Sequencer">
+    xmlns:local="clr-namespace:ACP.NINA.Plugin.Sequencer"
+    xmlns:logic="clr-namespace:NINA.Sequencer.Logic;assembly=NINA.Sequencer">
 
     <DataTemplate x:Key="ACP.NINA.Plugin.Sequencer.SyncForTonight_Mini">
         <StackPanel Orientation="Horizontal">
@@ -11,35 +12,33 @@
     </DataTemplate>
 
     <DataTemplate DataType="{x:Type local:SyncForTonight}">
-        <StackPanel Orientation="Vertical" Margin="0,4,0,4">
+        <!-- Two rows at most. Row one is the exposure, the slew toggle and,
+             when slewing, NINA's own one-line RA/Dec editor, the same control
+             its Slew to RA/Dec instruction uses. Row two is the focal length
+             toggle. NINA's CheckBox style renders as a toggle and hides
+             Content, so labels sit in TextBlocks beside each box. -->
+        <StackPanel Orientation="Vertical" Margin="0,2,0,2">
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+            <WrapPanel Orientation="Horizontal">
                 <TextBlock VerticalAlignment="Center" Text="Exposure" />
-                <TextBox Width="60" Height="24" Margin="6,0,0,0"
+                <TextBox Width="50" Height="24" Margin="6,0,0,0"
                          VerticalContentAlignment="Center"
                          Text="{Binding ExposureTime, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="Seconds for the frame this instruction solves. Long enough to get stars, short enough not to waste the start of the night." />
-                <TextBlock VerticalAlignment="Center" Margin="4,0,0,0" Text="s" />
-            </StackPanel>
+                <TextBlock VerticalAlignment="Center" Margin="4,0,16,0" Text="s" />
 
-            <!-- NINA's CheckBox style renders as a toggle and hides Content, so
-                 the labels sit in TextBlocks beside it. Same pattern as the
-                 options page and as NINA core's own instructions. -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <CheckBox VerticalAlignment="Center" IsChecked="{Binding SlewFirst}" />
-                <TextBlock VerticalAlignment="Center" Margin="8,0,0,0"
-                           Text="Slew to these coordinates first" />
-            </StackPanel>
+                <TextBlock VerticalAlignment="Center" Margin="6,0,10,0" Text="Slew first to" />
 
-            <ContentPresenter Margin="0,0,0,4"
-                              Content="{Binding Coordinates}"
-                              Visibility="{Binding SlewFirst, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
+                <logic:CoordinatesControl VerticalAlignment="Center"
+                                          Coords="{Binding Coordinates}"
+                                          Visibility="{Binding SlewFirst, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
+            </WrapPanel>
 
-            <StackPanel Orientation="Horizontal">
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                 <CheckBox VerticalAlignment="Center" IsChecked="{Binding UpdateProfileFocalLength}" />
-                <TextBlock VerticalAlignment="Center" Margin="8,0,0,0"
-                           TextWrapping="Wrap"
-                           Text="Update the profile focal length and focal ratio when the solve says they are more than 5 percent out" />
+                <TextBlock VerticalAlignment="Center" Margin="6,0,0,0"
+                           Text="Update profile focal length and ratio when the solve is more than 5 percent out" />
             </StackPanel>
 
         </StackPanel>
