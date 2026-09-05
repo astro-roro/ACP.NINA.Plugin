@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.0.0 (unreleased)
+
+ACP no longer has to run on the same machine as NINA, and you no longer have to tell the plugin what rig is connected. It works the gear out from the hardware and a plate solve.
+
+### Added
+
+- **Bearer token authentication.** The ACP options page gains an API token field for the value of `ACP_API_TOKEN` on the server. The token is stored in Windows Credential Manager, never in the plugin's settings file. Every request carries it, and a rejected token says "ACP rejected the token" in the dock rather than looking like the network is down.
+- **Https server URLs** are accepted. Standard certificate validation applies, so a self signed certificate is refused.
+- **Change polling.** The dock asks `GET /api/version` once a minute and refetches plans only when `plans_last_modified` moves, so a plan edited in ACP's web UI turns up without anyone pressing refresh.
+- **A gear fingerprint** built from the connected camera, filter wheel, mount, site and a plate solve. The solved focal length comes from the pixel scale, which is the one number NINA's profile routinely gets wrong.
+- **Profile focal length write-back.** When the plate solve says the focal length is more than 5 percent from what the profile claims, the profile is corrected, and the focal ratio with it when ACP knows the telescope's aperture. Every write logs the old and new values. This happens only from the Sync for tonight instruction and the Sync for tonight dock button, never from any other plate solve.
+- **"ACP: Sync for tonight" sequencer instruction**, in a new ACP category. Optionally slews to a target, captures and solves a frame, builds the fingerprint, corrects the profile focal length, asks ACP which plans fit, and reports what it found. Loading those plans into Target Scheduler arrives in 3.1.
+- **"Sync for tonight" dock button** doing the same from where the mount is already pointing, reusing a solve from the last hour rather than taking a fresh one.
+- **A mode switch, "Which plans to load into Target Scheduler"**, with two values. Everything, the default, loads every plan and names the ones that do not suit tonight in a warning line. Only what fits tonight loads the matching plans and the ones with no gear set, for people running several rigs, sites or computers.
+
+### Changed
+
+- The connection probe uses `GET /api/version` and falls back to `/api/plans` against an older ACP.
+
 ## 1.0.2 (2026-09-05)
 
 ### Fixed

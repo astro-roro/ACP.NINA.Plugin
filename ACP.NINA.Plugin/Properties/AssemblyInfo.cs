@@ -11,8 +11,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyVersion("3.0.0.0")]
+[assembly: AssemblyFileVersion("3.0.0.0")]
 
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.1.2.9001")]
 [assembly: AssemblyMetadata("License", "MIT")]
@@ -22,21 +22,19 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("Tags", "Planning,Framing,TargetScheduler,Coverage,Mosaic")]
 [assembly: AssemblyMetadata("LongDescription", @"NINA-side companion to [Astro Coverage Planner](https://github.com/astro-roro/Astro-Coverage-Planner). Pulls plans from a running ACP instance and pushes them into NINA's Framing Assistant and Target Scheduler.
 
-ACP is the open-source coverage visualiser and planner for astrophotographers: scan your FITS/XISF archive, see what you've imaged on a sky map (coloured by telescope, badged by filter, with integration hours per target), find gaps, plan your next session or mosaic, and hand the plan to NINA. This plugin is the NINA-side surface — the ACP web UI does the planning, this plugin pushes the result into NINA.
+ACP is the open-source coverage visualiser and planner for astrophotographers: scan your FITS/XISF archive, see what you've imaged on a sky map (coloured by telescope, badged by filter, with integration hours per target), find gaps, plan your next session or mosaic, and hand the plan to NINA. This plugin is the NINA-side surface. The ACP web UI does the planning, this plugin pushes the result into NINA.
 
-## What it does (v1.0)
+## What it does
 
-* **Push to Framing Assistant** — pick a plan from ACP's planner, push coordinates + rotation + mosaic geometry into NINA's Framing Wizard with one click.
-* **Sync to Target Scheduler** — trigger ACP's bidirectional TS sync directly from NINA. No zip imports.
+* **Sync for tonight.** One sequencer instruction and one dock button. Solves a frame, works out from the solve what camera, filters, mount and focal length are actually connected, corrects the profile focal length when it is more than 5 percent out, and asks ACP which of your plans fit tonight's rig. You never have to tell it what rig is attached.
+* **Push to Framing Assistant.** Pick a plan from ACP's planner and push coordinates, rotation and mosaic geometry into NINA's Framing Wizard with one click.
+* **Sync to Target Scheduler.** Trigger ACP's bidirectional TS sync directly from NINA. No zip imports.
+* **Two ways to work.** Load every plan in ACP, or only the ones that fit the gear the plate solve found. One setting, and Everything is the default.
 
 ## Requirements
 
 * NINA 3.1.2.9001 or newer.
-* A running ACP instance reachable on `http://127.0.0.1:5555` (configurable). ACP must run on the same machine as NINA for v1.x — see ACP repo for setup.
-
-## Status
-
-v0.x scaffold — not yet shippable. The full ACP feature set (coverage maps, gap finder, public-survey overlays, friend manifests, NINA Target Scheduler sync engine) lives in the ACP repo.
+* A running ACP instance. It can be on this machine or on another one reachable over your LAN or a VPN such as Tailscale. Set an API token on both sides when it is elsewhere, and do not port forward ACP to the Internet.
 
 ## Links
 

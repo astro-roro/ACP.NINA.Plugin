@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Composition;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -28,17 +29,23 @@ namespace ACP.NINA.Plugin.Dockables {
     /// Iteration 4 (this file): wires real Framing push + TS sync. Plans
     /// list and connection probing came in iteration 3.
     [Export(typeof(IDockableVM))]
-    public partial class AcpDockableVM : DockableVM {
+    public partial class AcpDockableVM : DockableVM, IDisposable {
 
         private readonly IFramingAssistantVM framingAssistantVM;
+        private readonly IAcpPlateSolver plateSolver;
+        private readonly ISyncForTonightRunner syncRunner;
         private readonly AcpSettings settings;
 
         [ImportingConstructor]
         public AcpDockableVM(
             IProfileService profileService,
-            IFramingAssistantVM framingAssistantVM
+            IFramingAssistantVM framingAssistantVM,
+            IAcpPlateSolver plateSolver,
+            ISyncForTonightRunner syncRunner
         ) : base(profileService) {
             this.framingAssistantVM = framingAssistantVM;
+            this.plateSolver = plateSolver;
+            this.syncRunner = syncRunner;
             Title = "Astro Coverage Planner";
 
             var resourceDict = new ResourceDictionary();
@@ -60,6 +67,10 @@ namespace ACP.NINA.Plugin.Dockables {
                 async () => await SyncAllToTsAsync(),
                 () => IsConnected && Plans.Count > 0
             );
+            SyncForTonightCommand = new RelayCommand(
+                async () => await SyncForTonightAsync(),
+                () => IsConnected && !IsSyncingForTonight
+            );
 
             // The label under the sync button names the profile the sync will
             // write to. The sync itself reads the active profile at click time,
@@ -72,6 +83,79 @@ namespace ACP.NINA.Plugin.Dockables {
             IsConnected = false;
 
             _ = RefreshAsync();
+            _ = PollForChangesAsync(pollCts.Token);
+        }
+
+        // -- Change polling ----------------------------------------------------
+
+        /// GET /api/version once a minute and refetch plans only when
+        /// plans_last_modified moves. A dock left open all night then costs one
+        /// small request a minute instead of a full plans and gear fetch, and a
+        /// plan edited in ACP's web UI shows up here without anyone pressing
+        /// refresh.
+        private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(60);
+
+        private readonly CancellationTokenSource pollCts = new CancellationTokenSource();
+        private string lastSeenPlansModified;
+
+        private async Task PollForChangesAsync(CancellationToken ct) {
+            while (!ct.IsCancellationRequested) {
+                try {
+                    await Task.Delay(PollInterval, ct).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return;
+                }
+                if (ct.IsCancellationRequested) return;
+
+                try {
+                    var client = new AcpApiClient(settings.ServerUrl);
+                    var version = await client.GetVersionAsync(ct).ConfigureAwait(false);
+                    var marker = version?.PlansLastModified;
+
+                    if (!IsConnected) {
+                        // Coming back after an outage. Refetch whatever the
+                        // marker says, since the list on screen is only what was
+                        // there when the connection dropped.
+                        await RefreshAsync().ConfigureAwait(false);
+                        continue;
+                    }
+                    if (marker != null && marker != lastSeenPlansModified) {
+                        Logger.Info($"ACP: plans changed on the server ({lastSeenPlansModified} to {marker}), refetching.");
+                        await RefreshAsync().ConfigureAwait(false);
+                    }
+                } catch (AcpUnauthorizedException ex) {
+                    SetStatusOnUi(false, $"Not connected — {settings.ServerUrl}", ex.Message);
+                } catch (OperationCanceledException) {
+                    return;
+                } catch (Exception ex) {
+                    // A poll failure is not worth shouting about. The next one
+                    // in a minute either recovers or the user presses refresh.
+                    Logger.Debug($"ACP: version poll failed: {ex.Message}");
+                }
+            }
+        }
+
+        /// NINA's DockableVM has no Dispose to override, so this is an
+        /// explicit interface implementation: it cannot collide with anything
+        /// the base class grows later, and it stops the poll loop for anything
+        /// that does dispose the view model. If nothing ever does, the loop
+        /// simply runs for the life of the application, which is what a 60
+        /// second poll is for.
+        void IDisposable.Dispose() {
+            try {
+                pollCts.Cancel();
+                pollCts.Dispose();
+            } catch (Exception) {
+                // Nothing useful to do if the token source is already gone.
+            }
+        }
+
+        private void SetStatusOnUi(bool connected, string status, string result) {
+            Application.Current?.Dispatcher.Invoke(() => {
+                IsConnected = connected;
+                ConnectionStatus = status;
+                LastActionResult = result;
+            });
         }
 
         // ── Connection status ─────────────────────────────────────────────────
@@ -148,6 +232,82 @@ namespace ACP.NINA.Plugin.Dockables {
         public ICommand RefreshCommand { get; }
         public ICommand PushToFramingCommand { get; }
         public ICommand SyncAllToTsCommand { get; }
+        public ICommand SyncForTonightCommand { get; }
+
+        // -- Action: Sync for tonight ------------------------------------------
+
+        private bool isSyncingForTonight;
+
+        public bool IsSyncingForTonight {
+            get => isSyncingForTonight;
+            set {
+                isSyncingForTonight = value;
+                RaisePropertyChanged(nameof(IsSyncingForTonight));
+                ((RelayCommand)SyncForTonightCommand).NotifyCanExecuteChanged();
+            }
+        }
+
+        /// The other half of Part E. Same steps as the sequencer instruction
+        /// from the solve onwards, but from wherever the mount is already
+        /// pointing, and reusing a solve from the last hour rather than taking
+        /// another one. Decision 1 in the v3 spec: a button is pressed by
+        /// someone who can see how long ago the last solve was, so it is
+        /// allowed to reuse it as long as it says so.
+        private async Task SyncForTonightAsync() {
+            if (IsSyncingForTonight) return;
+            IsSyncingForTonight = true;
+            try {
+                var reused = LastSolve.GetIfFresh();
+                var solve = reused;
+                if (solve == null) {
+                    LastActionResult = "Sync for tonight: capturing and solving a frame...";
+                    solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    if (solve == null) {
+                        SetResultOnUi(
+                            "✗ The plate solve failed, so ACP cannot tell what gear is connected."
+                        );
+                        return;
+                    }
+                } else {
+                    var minutes = (int)Math.Round(reused.Age.TotalMinutes);
+                    LastActionResult =
+                        $"Sync for tonight: reusing the solve from {minutes} minutes ago.";
+                }
+
+                var outcome = await syncRunner
+                    .RunAsync(solve, settings.ProfileWriteBackEnabled, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                var prefix = reused != null
+                    ? $"Reused the solve from {(int)Math.Round(reused.Age.TotalMinutes)} minutes ago. "
+                    : string.Empty;
+                SetResultOnUi(
+                    outcome.Success
+                        ? "✓ " + prefix + outcome.ShortResult
+                        : "✗ " + prefix + outcome.ShortResult
+                );
+
+                // The dock is a small box, so the one line names the plan count
+                // and the focal length change and the rest goes to the NINA log,
+                // which the runner has already written.
+                if (outcome.Success) {
+                    await RefreshAsync().ConfigureAwait(false);
+                }
+            } catch (AcpUnauthorizedException ex) {
+                SetResultOnUi("✗ " + ex.Message);
+                Logger.Warning($"ACP: Sync for tonight rejected: {ex.Message}");
+            } catch (Exception ex) {
+                SetResultOnUi($"✗ Sync for tonight failed: {ex.Message}");
+                Logger.Error($"ACP: Sync for tonight failed: {ex}");
+            } finally {
+                Application.Current?.Dispatcher.Invoke(() => IsSyncingForTonight = false);
+            }
+        }
+
+        private void SetResultOnUi(string result) {
+            Application.Current?.Dispatcher.Invoke(() => LastActionResult = result);
+        }
 
         private async Task RefreshAsync() {
             var url = settings.ServerUrl;
@@ -156,6 +316,18 @@ namespace ACP.NINA.Plugin.Dockables {
                 await client.ProbeAsync().ConfigureAwait(false);
                 var plans = await client.GetPlansAsync().ConfigureAwait(false);
                 var gear = await client.GetGearAsync().ConfigureAwait(false);
+
+                // Stamp the change marker after a successful fetch, so a failed
+                // fetch cannot make the poller think it is already up to date.
+                try {
+                    var version = await client.GetVersionAsync().ConfigureAwait(false);
+                    lastSeenPlansModified = version?.PlansLastModified;
+                } catch (Exception) {
+                    // An ACP too old for /api/version polls without a marker.
+                    // The poller then never sees a change and the refresh button
+                    // stays the way to update.
+                    lastSeenPlansModified = null;
+                }
 
                 var rows = BuildPlanRows(plans.Plans, gear);
 
@@ -167,6 +339,16 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = $"Loaded {rows.Count} plans from ACP.";
                 });
                 Logger.Info($"ACP: refreshed {rows.Count} plans from {url}");
+            } catch (AcpUnauthorizedException ex) {
+                // The one failure the user can fix themselves, so it says what
+                // is wrong rather than looking like the network is down.
+                Application.Current?.Dispatcher.Invoke(() => {
+                    Plans.Clear();
+                    IsConnected = false;
+                    ConnectionStatus = $"Not connected — {url}";
+                    LastActionResult = ex.Message;
+                });
+                Logger.Warning($"ACP: {ex.Message} ({url})");
             } catch (Exception ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     Plans.Clear();
@@ -447,6 +629,11 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");
                 });
                 Logger.Info($"ACP: TS sync OK — {resp?.Report?.ToShortString()}");
+            } catch (AcpUnauthorizedException ex) {
+                Application.Current?.Dispatcher.Invoke(() => {
+                    LastActionResult = $"✗ {ex.Message}";
+                });
+                Logger.Warning($"ACP: TS sync rejected: {ex.Message}");
             } catch (Exception ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = $"✗ TS sync failed: {ex.Message}";
