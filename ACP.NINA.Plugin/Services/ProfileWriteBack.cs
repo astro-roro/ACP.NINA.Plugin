@@ -99,14 +99,18 @@ namespace ACP.NINA.Plugin.Services {
             // Aperture is optional. When ACP does not know it, the focal length
             // is written on its own and the focal ratio is left as it was,
             // rather than being invented from a stale aperture.
-            var aperture = ChooseApertureMm(solved.Value, acpTelescopes);
-            var newRatio = FingerprintMath.FocalRatio(solved.Value, aperture);
+            // Whole millimetres and one decimal of focal ratio. A plate solve
+            // is not good to a micron, and a profile reading 997.9503881609492
+            // looks broken to the person who opens it.
+            var newFocalLength = Math.Round(solved.Value);
+            var aperture = ChooseApertureMm(newFocalLength, acpTelescopes);
+            var newRatio = FingerprintMath.FocalRatio(newFocalLength, aperture);
 
-            settings.FocalLength = solved.Value;
-            result.NewFocalLengthMm = solved.Value;
+            settings.FocalLength = newFocalLength;
+            result.NewFocalLengthMm = newFocalLength;
             if (newRatio.HasValue) {
-                settings.FocalRatio = newRatio.Value;
-                result.NewFocalRatio = newRatio.Value;
+                settings.FocalRatio = Math.Round(newRatio.Value, 1);
+                result.NewFocalRatio = settings.FocalRatio;
             }
             result.Written = true;
 
