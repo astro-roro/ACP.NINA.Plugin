@@ -2,6 +2,7 @@ using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services;
 using ACP.NINA.Plugin.Services.TargetScheduler;
 using NINA.Astrometry;
+using NINA.Core.MyMessageBox;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Plugin.Interfaces;
@@ -75,7 +76,13 @@ namespace ACP.NINA.Plugin.Dockables {
                 () => IsConnected && !IsSyncingForTonight
             );
 
+            // The label under the sync button names the profile the sync will
+            // write to. The sync itself reads the active profile at click time,
+            // so the label has to follow profile switches or it lies.
             ActiveProfileName = profileService?.ActiveProfile?.Name ?? "(no active profile)";
+            if (profileService != null) {
+                profileService.ProfileChanged += OnProfileChanged;
+            }
             ConnectionStatus = "Probing...";
             IsConnected = false;
 
@@ -273,6 +280,11 @@ namespace ACP.NINA.Plugin.Dockables {
             : $"{SelectedPlan.CoordinatesShort} · rot {SelectedPlan.RotationDeg}° · {SelectedPlan.MosaicShort}";
 
         // ── Profile (for TS sync display) ─────────────────────────────────────
+
+        private void OnProfileChanged(object sender, EventArgs e) {
+            var name = profileService?.ActiveProfile?.Name ?? "(no active profile)";
+            Application.Current?.Dispatcher.Invoke(() => ActiveProfileName = name);
+        }
 
         private string activeProfileName;
         public string ActiveProfileName {
@@ -662,6 +674,24 @@ namespace ACP.NINA.Plugin.Dockables {
                 return;
             }
             var profileId = profile.Id.ToString();
+
+            // The options page saves through its own copy of the settings, so
+            // read the flag fresh rather than trusting the one loaded at
+            // startup. A file read per click is nothing next to the sync.
+            if (AcpSettings.Load().ConfirmBeforeTsSync) {
+                var answer = Application.Current?.Dispatcher.Invoke(() =>
+                    MyMessageBox.Show(
+                        $"Send {Plans.Count} plans to Target Scheduler for profile \"{profile.Name}\"?",
+                        "Sync All to TS",
+                        MessageBoxButton.YesNo,
+                        MessageBoxResult.No
+                    )
+                );
+                if (answer != MessageBoxResult.Yes) {
+                    LastActionResult = "Sync to TS cancelled.";
+                    return;
+                }
+            }
 
             try {
                 LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
