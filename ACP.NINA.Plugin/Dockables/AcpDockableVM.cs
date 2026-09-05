@@ -331,26 +331,39 @@ namespace ACP.NINA.Plugin.Dockables {
             if (IsSyncingForTonight) return;
             IsSyncingForTonight = true;
             try {
-                var reused = LastSolve.GetIfFresh();
-                var solve = reused;
-                if (solve == null) {
-                    LastActionResult = "Sync for tonight: capturing and solving a frame...";
-                    solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
-                        .ConfigureAwait(false);
+                // A solve is only taken when something needs it: the focal
+                // length update, or the fit judgement in Only what fits mode.
+                // Everything mode with the update off pushes every plan and
+                // needs neither a camera nor a frame. Settings are read fresh
+                // because the options page saves through its own copy.
+                var live = AcpSettings.Load();
+                var needsSolve = live.ProfileWriteBackEnabled || live.SyncMode == SyncMode.OnlyWhatFits;
+                SolveSnapshot reused = null;
+                SolveSnapshot solve = null;
+                if (needsSolve) {
+                    reused = LastSolve.GetIfFresh();
+                    solve = reused;
                     if (solve == null) {
-                        SetResultOnUi(
-                            "✗ The plate solve failed, so ACP cannot tell what gear is connected."
-                        );
-                        return;
+                        LastActionResult = "Sync for tonight: capturing and solving a frame...";
+                        solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
+                            .ConfigureAwait(false);
+                        if (solve == null) {
+                            SetResultOnUi(
+                                "✗ The plate solve failed, so ACP cannot tell what gear is connected."
+                            );
+                            return;
+                        }
+                    } else {
+                        var minutes = (int)Math.Round(reused.Age.TotalMinutes);
+                        LastActionResult =
+                            $"Sync for tonight: reusing the solve from {minutes} minutes ago.";
                     }
                 } else {
-                    var minutes = (int)Math.Round(reused.Age.TotalMinutes);
-                    LastActionResult =
-                        $"Sync for tonight: reusing the solve from {minutes} minutes ago.";
+                    LastActionResult = "Sync for tonight: loading every plan, no solve needed.";
                 }
 
                 var outcome = await syncRunner
-                    .RunAsync(solve, settings.ProfileWriteBackEnabled, CancellationToken.None)
+                    .RunAsync(solve, live.ProfileWriteBackEnabled, CancellationToken.None)
                     .ConfigureAwait(false);
 
                 // The dock is a small box, so the one line names the plan count
@@ -367,7 +380,7 @@ namespace ACP.NINA.Plugin.Dockables {
                     ? $"Reused the solve from {(int)Math.Round(reused.Age.TotalMinutes)} minutes ago. "
                     : string.Empty;
                 SetResultOnUi(
-                    outcome.Success
+                    outcome.Success && !outcome.PushRefused
                         ? "✓ " + prefix + outcome.ShortResult
                         : "✗ " + prefix + outcome.ShortResult
                 );

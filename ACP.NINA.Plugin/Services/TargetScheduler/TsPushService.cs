@@ -128,9 +128,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // it means the night runs on a plan that no longer matches what is
             // on disk.
             if (containerWatch != null && containerWatch.IsRunning) {
-                result.Failure =
-                    "Target Scheduler is running a container, so nothing was written. " +
-                    containerWatch.Explain();
+                // One sentence: the reason, then the consequence. The
+                // reason already says a container is running.
+                result.Failure = containerWatch.Explain().TrimEnd('.') + ", so nothing was written.";
                 return result;
             }
 

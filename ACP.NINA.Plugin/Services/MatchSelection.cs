@@ -30,6 +30,21 @@ namespace ACP.NINA.Plugin.Services {
             return plans.Where(p => IsFit(p?.Match?.Verdict)).ToList();
         }
 
+        /// A match response built from a plain plan list, every plan
+        /// unconstrained. Used when Everything mode cannot get a verdict from
+        /// ACP, so the selection and summary code need not know the difference.
+        public static MatchResponse Unjudged(IEnumerable<Plan> plans) {
+            var response = new MatchResponse();
+            foreach (var plan in plans ?? Enumerable.Empty<Plan>()) {
+                if (plan == null) continue;
+                var copy = Newtonsoft.Json.JsonConvert.DeserializeObject<MatchedPlan>(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(plan));
+                copy.Match = new PlanMatch { Verdict = MatchVerdict.Unconstrained };
+                response.Plans.Add(copy);
+            }
+            return response;
+        }
+
         public static bool IsFit(string verdict) {
             return verdict == MatchVerdict.Fit || verdict == MatchVerdict.Unconstrained;
         }
