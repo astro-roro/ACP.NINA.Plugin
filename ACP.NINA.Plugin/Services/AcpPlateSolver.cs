@@ -58,6 +58,7 @@ namespace ACP.NINA.Plugin.Services {
 
         private readonly IProfileService profileService;
         private readonly ITelescopeMediator telescopeMediator;
+        private readonly ICameraMediator cameraMediator;
         private readonly IImagingMediator imagingMediator;
         private readonly IFilterWheelMediator filterWheelMediator;
         private readonly IPlateSolverFactory plateSolverFactory;
@@ -66,12 +67,14 @@ namespace ACP.NINA.Plugin.Services {
         public AcpPlateSolver(
             IProfileService profileService,
             ITelescopeMediator telescopeMediator,
+            ICameraMediator cameraMediator,
             IImagingMediator imagingMediator,
             IFilterWheelMediator filterWheelMediator,
             IPlateSolverFactory plateSolverFactory
         ) {
             this.profileService = profileService;
             this.telescopeMediator = telescopeMediator;
+            this.cameraMediator = cameraMediator;
             this.imagingMediator = imagingMediator;
             this.filterWheelMediator = filterWheelMediator;
             this.plateSolverFactory = plateSolverFactory;
@@ -80,6 +83,14 @@ namespace ACP.NINA.Plugin.Services {
         public async Task<SolveSnapshot> SolveAsync(
             double exposureSeconds, IProgress<ApplicationStatus> progress, CancellationToken token
         ) {
+            // NINA throws CameraConnectionLostException from deep inside the
+            // capture when there is no camera, and that name is all the user
+            // would see. Say the plain thing first.
+            if (cameraMediator?.GetInfo()?.Connected != true) {
+                throw new InvalidOperationException(
+                    "No camera is connected. Connect the camera, then run Sync for tonight."
+                );
+            }
             var profile = profileService.ActiveProfile;
             var plateSolveSettings = profile.PlateSolveSettings;
 
