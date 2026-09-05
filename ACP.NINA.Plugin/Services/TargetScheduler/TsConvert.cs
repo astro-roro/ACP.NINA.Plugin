@@ -59,6 +59,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             }
 
             var seenTemplateGuids = new HashSet<string>(StringComparer.Ordinal);
+            // Target identity to the ACP plan that produced it, so a collision
+            // can say which two plans need looking at rather than just that one
+            // happened.
+            var planLabelByTargetGuid = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var group in GroupByProject(planList)) {
                 var projectName = group.Key;
@@ -112,6 +116,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         if ((goal.Value?.TargetHours ?? 0.0) <= 0.0) continue;
                         var templateGuid = TsGuid.Template(profileId, goal.Key, cameraId);
                         if (!seenTemplateGuids.Add(templateGuid)) continue;
+                        payload.LegacyTemplateGuidByGuid[templateGuid] =
+                            TsGuid.LegacyTemplate(profileId, goal.Key, cameraId);
 
                         var filterCfg = FilterConfig(camera, goal.Key);
                         var templateName = !string.IsNullOrWhiteSpace(filterCfg?.TsTemplateName)
@@ -135,7 +141,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         ? MosaicPanelCentres(raDeg, decDeg, fovW, fovH, rotDeg, rows, cols, overlapPct)
                         : new List<Panel> { new Panel { Row = 0, Col = 0, RaDeg = raDeg, DecDeg = decDeg } };
 
-                    var baseName = FirstNonEmpty(target?.Name, plan.Id, "Untitled");
+                    // FirstNonEmpty skips whitespace, so the Python side's
+                    // `tg.get("name") or pl.get("id") or "Untitled"` is what
+                    // this has to match: a whitespace-only name is truthy in
+                    // Python and reaches the payload as a blank name there.
+                    var baseName = PythonFirstTruthyName(target?.Name, plan.Id);
+                    if (string.IsNullOrWhiteSpace(baseName)) {
+                        throw new TsPushValidationException(
+                            $"The plan {PlanLabel(plan)} has a target with no name, so Target " +
+                            "Scheduler would have nothing to show and the next push nothing " +
+                            "to match. Give the target a name and push again. Nothing was " +
+                            "written.");
+                    }
                     var multi = panels.Count > 1;
 
                     foreach (var panel in panels) {
@@ -146,6 +163,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         }
                         var targetName = baseName + suffix;
                         var targetGuid = TsGuid.Target(profileId, projectName, targetName);
+
+                        // Two plans in one project with the same target name
+                        // used to produce two payload entries under one guid,
+                        // which collapsed into a single row while the log
+                        // reported both as loaded. Refuse instead, and say
+                        // which plans need renaming.
+                        string firstPlan;
+                        if (planLabelByTargetGuid.TryGetValue(targetGuid, out firstPlan)) {
+                            throw new TsPushValidationException(
+                                $"The plans {firstPlan} and {PlanLabel(plan)} both produce the " +
+                                $"target '{targetName}' in the project '{projectName}', so one " +
+                                "would overwrite the other. Rename one of them, or put them in " +
+                                "different projects, and push again. Nothing was written.");
+                        }
+                        planLabelByTargetGuid[targetGuid] = PlanLabel(plan);
 
                         payload.TargetsByProjectGuid[proj.Guid].Add(new TsTarget {
                             ProjectId = 0,
@@ -340,6 +372,28 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (a.HasValue && a.Value != 0.0) return a.Value;
             if (b.HasValue && b.Value != 0.0) return b.Value;
             return fallback;
+        }
+
+        /// Python's `tg.get("name") or pl.get("id") or "Untitled"`. Only an
+        /// empty string is falsy there, so a whitespace-only target name is
+        /// kept rather than skipped, and the blank-name refusal is what catches
+        /// it. FirstNonEmpty skips whitespace, which would have made the two
+        /// implementations name the same target differently.
+        private static string PythonFirstTruthyName(string targetName, string planId) {
+            if (!string.IsNullOrEmpty(targetName)) return targetName;
+            if (!string.IsNullOrEmpty(planId)) return planId;
+            return "Untitled";
+        }
+
+        /// How to name one ACP plan in a message the user has to act on. The
+        /// plan id first, because the messages that use this are about two
+        /// plans that share a target name, where naming them by target name
+        /// would say nothing. Matches _plan_label in nina_ts_sync/convert.py.
+        private static string PlanLabel(Plan plan) {
+            var planId = (plan?.Id ?? string.Empty).Trim();
+            if (planId.Length > 0) return $"'{planId}'";
+            var targetName = (plan?.Target?.Name ?? string.Empty).Trim();
+            return targetName.Length > 0 ? $"'{targetName}'" : "an unnamed plan";
         }
 
         private static string FirstNonEmpty(params string[] candidates) {

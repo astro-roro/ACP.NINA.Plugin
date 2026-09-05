@@ -1,55 +1,57 @@
 {
   "frozen_now": 1700000000,
+  "older_createdate": 1600000000,
   "profile_id": "profile-under-test",
-  "versions": {
-    "23": {
+  "scenarios": {
+    "counts_survive_a_second_push": {
       "report": {
         "exposureplan": {
           "claimed": 0,
-          "inserted": 7,
-          "updated": 0
+          "inserted": 0,
+          "updated": 7
         },
         "exposuretemplate": {
           "claimed": 0,
-          "inserted": 2,
-          "updated": 0
+          "inserted": 0,
+          "updated": 2
         },
+        "migrated_guids": 0,
         "notes": [],
         "project": {
           "claimed": 0,
-          "inserted": 3,
-          "updated": 0
+          "inserted": 0,
+          "updated": 3
         },
-        "ruleweight_seeded_projects": 3,
+        "ruleweight_seeded_projects": 0,
         "target": {
           "claimed": 0,
-          "inserted": 6,
-          "updated": 0
+          "inserted": 0,
+          "updated": 6
         }
       },
       "tables": {
         "exposureplan": [
           {
             "Id": 1,
-            "accepted": 0,
-            "acquired": 0,
+            "accepted": 120,
+            "acquired": 137,
             "desired": 12,
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "c9318add-9ee9-58b2-a432-5e924b013e6d",
+            "guid": "0cbd2e42-4781-5364-958c-c0ef110b5c53",
             "profileId": "profile-under-test",
             "targetid": 1
           },
           {
             "Id": 2,
             "accepted": 0,
-            "acquired": 0,
+            "acquired": 40,
             "desired": 12,
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "0f193611-fa27-5730-8c24-9509273c78dd",
+            "guid": "b77570a5-bef0-5a87-aa43-c9ab1450d0f3",
             "profileId": "profile-under-test",
             "targetid": 2
           },
@@ -61,7 +63,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "30e10f76-8cf6-5c91-956f-5776af14b18c",
+            "guid": "0e8d2c39-664e-5cb1-86a5-910db83933b3",
             "profileId": "profile-under-test",
             "targetid": 3
           },
@@ -73,7 +75,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "7589cf0a-5ed1-523e-bba5-b5a39a290257",
+            "guid": "b5506fcd-c721-5f83-9fbf-8b007aa8797d",
             "profileId": "profile-under-test",
             "targetid": 4
           },
@@ -85,7 +87,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "48fc2177-f8fb-55da-afb7-669480e5b2e0",
+            "guid": "ad37d54b-e7d0-57c2-92e5-c45c0d983608",
             "profileId": "profile-under-test",
             "targetid": 5
           },
@@ -97,7 +99,7 @@
             "enabled": 1,
             "exposure": 600.0,
             "exposureTemplateId": 2,
-            "guid": "a2e10069-dd1a-5d23-937b-774edc2cae64",
+            "guid": "d61111be-33c3-5b62-a352-93848d0ee86e",
             "profileId": "profile-under-test",
             "targetid": 6
           },
@@ -109,7 +111,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "11e895f5-c90a-5262-9d38-55c58d9af1d1",
+            "guid": "cdb19844-dfd7-531a-9c0b-9295d1956907",
             "profileId": "profile-under-test",
             "targetid": 6
           }
@@ -122,7 +124,7 @@
             "ditherevery": -1,
             "filtername": "OIII",
             "gain": 100,
-            "guid": "363ae3c3-ea21-5675-9fd0-ab5c329f0e14",
+            "guid": "413ca790-4c0e-581d-823c-34b2bd53cd0b",
             "maximumhumidity": 100.0,
             "minutesOffset": 0,
             "moonavoidanceenabled": 0,
@@ -145,7 +147,7 @@
             "ditherevery": -1,
             "filtername": "Ha",
             "gain": 100,
-            "guid": "98bc9b2a-7603-500a-91f3-748df53416e2",
+            "guid": "dc2c1dd9-9124-59c0-8410-6b36516dbfa1",
             "maximumhumidity": 100.0,
             "minutesOffset": 0,
             "moonavoidanceenabled": 0,
@@ -166,13 +168,13 @@
           {
             "Id": 1,
             "activedate": null,
-            "createdate": 1700000000,
+            "createdate": 1600000000,
             "description": "",
             "ditherevery": 0,
             "enablegrader": 0,
             "filterswitchfrequency": 0,
             "flatsHandling": 0,
-            "guid": "4277255d-812e-5e91-8505-091e61c5c487",
+            "guid": "490c9e65-39e3-5aa5-85e3-d14c3907cb94",
             "horizonoffset": 0.0,
             "inactivedate": null,
             "isMosaic": 0,
@@ -196,7 +198,7 @@
             "enablegrader": 0,
             "filterswitchfrequency": 0,
             "flatsHandling": 0,
-            "guid": "0486698e-dc5b-5712-b127-4642c11dc7b2",
+            "guid": "0cf53b4b-db92-52f2-a7ca-1efa15442572",
             "horizonoffset": 0.0,
             "inactivedate": null,
             "isMosaic": 0,
@@ -220,7 +222,7 @@
             "enablegrader": 0,
             "filterswitchfrequency": 0,
             "flatsHandling": 0,
-            "guid": "3c4ac845-2459-5153-9962-a4858974dcf6",
+            "guid": "844d2611-d755-5e36-a96e-a9260749408b",
             "horizonoffset": 0.0,
             "inactivedate": null,
             "isMosaic": 0,
@@ -334,7 +336,839 @@
             "active": 1,
             "dec": -30.0,
             "epochcode": 1,
-            "guid": "636804c4-c4d6-5f31-82d4-8feabbe932e8",
+            "guid": "cde25964-1afe-5d45-8470-47af3a752a05",
+            "name": "NGC 253",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.666666666666667,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 2,
+            "active": 1,
+            "dec": 41.90721666666667,
+            "epochcode": 1,
+            "guid": "e6182b98-7fed-5346-a742-dbb235d01bac",
+            "name": "M31 Panel 1 (R1C1)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.6274333439123203,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 3,
+            "active": 1,
+            "dec": 41.90721666666667,
+            "epochcode": 1,
+            "guid": "3dc6dfdc-8242-507f-898f-d96598dffa29",
+            "name": "M31 Panel 2 (R1C2)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.7965666560876797,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 4,
+            "active": 1,
+            "dec": 40.632783333333336,
+            "epochcode": 1,
+            "guid": "87c98975-31ed-5c1b-a886-931e5e88bfeb",
+            "name": "M31 Panel 3 (R2C1)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.6274333439123203,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 5,
+            "active": 1,
+            "dec": 40.632783333333336,
+            "epochcode": 1,
+            "guid": "1b62e372-2274-561c-9e77-83bbf3ac4eed",
+            "name": "M31 Panel 4 (R2C2)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.7965666560876797,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 6,
+            "active": 1,
+            "dec": 44.5,
+            "epochcode": 1,
+            "guid": "634dab75-75cd-5551-8745-9ea7c612c1c2",
+            "name": "NGC 7000",
+            "priority": -1,
+            "projectid": 3,
+            "ra": 20.98,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
+    },
+    "migrated_from_the_old_recipe": {
+      "report": {
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 7
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 2
+        },
+        "migrated_guids": 18,
+        "notes": [],
+        "project": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 3
+        },
+        "ruleweight_seeded_projects": 0,
+        "target": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 6
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "0cbd2e42-4781-5364-958c-c0ef110b5c53",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "b77570a5-bef0-5a87-aa43-c9ab1450d0f3",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "0e8d2c39-664e-5cb1-86a5-910db83933b3",
+            "profileId": "profile-under-test",
+            "targetid": 3
+          },
+          {
+            "Id": 4,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "b5506fcd-c721-5f83-9fbf-8b007aa8797d",
+            "profileId": "profile-under-test",
+            "targetid": 4
+          },
+          {
+            "Id": 5,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "ad37d54b-e7d0-57c2-92e5-c45c0d983608",
+            "profileId": "profile-under-test",
+            "targetid": 5
+          },
+          {
+            "Id": 6,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 24,
+            "enabled": 1,
+            "exposure": 600.0,
+            "exposureTemplateId": 2,
+            "guid": "d61111be-33c3-5b62-a352-93848d0ee86e",
+            "profileId": "profile-under-test",
+            "targetid": 6
+          },
+          {
+            "Id": 7,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 24,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "cdb19844-dfd7-531a-9c0b-9295d1956907",
+            "profileId": "profile-under-test",
+            "targetid": 6
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "413ca790-4c0e-581d-823c-34b2bd53cd0b",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII 3nm",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 600.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "dc2c1dd9-9124-59c0-8410-6b36516dbfa1",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha 3nm",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": null,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 0,
+            "guid": "490c9e65-39e3-5aa5-85e3-d14c3907cb94",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Single Target",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          },
+          {
+            "Id": 2,
+            "activedate": null,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 0,
+            "guid": "0cf53b4b-db92-52f2-a7ca-1efa15442572",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Mosaic",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          },
+          {
+            "Id": 3,
+            "activedate": null,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 0,
+            "guid": "844d2611-d755-5e36-a96e-a9260749408b",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Two Filters",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "PercentComplete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "MeridianWindow",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "MosaicCompletion",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "SettingSoonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 5,
+            "name": "SmartExposure",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 6,
+            "name": "PercentComplete",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 7,
+            "name": "MeridianWindow",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 8,
+            "name": "MosaicCompletion",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 9,
+            "name": "SettingSoonest",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 10,
+            "name": "SmartExposure",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 11,
+            "name": "PercentComplete",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 12,
+            "name": "MeridianWindow",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 13,
+            "name": "MosaicCompletion",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 14,
+            "name": "SettingSoonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 15,
+            "name": "SmartExposure",
+            "projectid": 3,
+            "weight": 50.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 1,
+            "guid": "cde25964-1afe-5d45-8470-47af3a752a05",
+            "name": "NGC 253",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.666666666666667,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 2,
+            "active": 1,
+            "dec": 41.90721666666667,
+            "epochcode": 1,
+            "guid": "e6182b98-7fed-5346-a742-dbb235d01bac",
+            "name": "M31 Panel 1 (R1C1)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.6274333439123203,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 3,
+            "active": 1,
+            "dec": 41.90721666666667,
+            "epochcode": 1,
+            "guid": "3dc6dfdc-8242-507f-898f-d96598dffa29",
+            "name": "M31 Panel 2 (R1C2)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.7965666560876797,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 4,
+            "active": 1,
+            "dec": 40.632783333333336,
+            "epochcode": 1,
+            "guid": "87c98975-31ed-5c1b-a886-931e5e88bfeb",
+            "name": "M31 Panel 3 (R2C1)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.6274333439123203,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 5,
+            "active": 1,
+            "dec": 40.632783333333336,
+            "epochcode": 1,
+            "guid": "1b62e372-2274-561c-9e77-83bbf3ac4eed",
+            "name": "M31 Panel 4 (R2C2)",
+            "priority": -1,
+            "projectid": 2,
+            "ra": 0.7965666560876797,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 6,
+            "active": 1,
+            "dec": 44.5,
+            "epochcode": 1,
+            "guid": "634dab75-75cd-5551-8745-9ea7c612c1c2",
+            "name": "NGC 7000",
+            "priority": -1,
+            "projectid": 3,
+            "ra": 20.98,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
+    }
+  },
+  "versions": {
+    "23": {
+      "report": {
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 7,
+          "updated": 0
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 2,
+          "updated": 0
+        },
+        "migrated_guids": 0,
+        "notes": [],
+        "project": {
+          "claimed": 0,
+          "inserted": 3,
+          "updated": 0
+        },
+        "ruleweight_seeded_projects": 3,
+        "target": {
+          "claimed": 0,
+          "inserted": 6,
+          "updated": 0
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "0cbd2e42-4781-5364-958c-c0ef110b5c53",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "b77570a5-bef0-5a87-aa43-c9ab1450d0f3",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "0e8d2c39-664e-5cb1-86a5-910db83933b3",
+            "profileId": "profile-under-test",
+            "targetid": 3
+          },
+          {
+            "Id": 4,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "b5506fcd-c721-5f83-9fbf-8b007aa8797d",
+            "profileId": "profile-under-test",
+            "targetid": 4
+          },
+          {
+            "Id": 5,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 12,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "ad37d54b-e7d0-57c2-92e5-c45c0d983608",
+            "profileId": "profile-under-test",
+            "targetid": 5
+          },
+          {
+            "Id": 6,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 24,
+            "enabled": 1,
+            "exposure": 600.0,
+            "exposureTemplateId": 2,
+            "guid": "d61111be-33c3-5b62-a352-93848d0ee86e",
+            "profileId": "profile-under-test",
+            "targetid": 6
+          },
+          {
+            "Id": 7,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 24,
+            "enabled": 1,
+            "exposure": 300.0,
+            "exposureTemplateId": 1,
+            "guid": "cdb19844-dfd7-531a-9c0b-9295d1956907",
+            "profileId": "profile-under-test",
+            "targetid": 6
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "413ca790-4c0e-581d-823c-34b2bd53cd0b",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII 3nm",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 600.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "dc2c1dd9-9124-59c0-8410-6b36516dbfa1",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha 3nm",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": null,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 0,
+            "guid": "490c9e65-39e3-5aa5-85e3-d14c3907cb94",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Single Target",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          },
+          {
+            "Id": 2,
+            "activedate": null,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 0,
+            "guid": "0cf53b4b-db92-52f2-a7ca-1efa15442572",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Mosaic",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          },
+          {
+            "Id": 3,
+            "activedate": null,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 0,
+            "guid": "844d2611-d755-5e36-a96e-a9260749408b",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Two Filters",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "PercentComplete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "MeridianWindow",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "MosaicCompletion",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "SettingSoonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 5,
+            "name": "SmartExposure",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 6,
+            "name": "PercentComplete",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 7,
+            "name": "MeridianWindow",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 8,
+            "name": "MosaicCompletion",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 9,
+            "name": "SettingSoonest",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 10,
+            "name": "SmartExposure",
+            "projectid": 2,
+            "weight": 50.0
+          },
+          {
+            "Id": 11,
+            "name": "PercentComplete",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 12,
+            "name": "MeridianWindow",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 13,
+            "name": "MosaicCompletion",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 14,
+            "name": "SettingSoonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 15,
+            "name": "SmartExposure",
+            "projectid": 3,
+            "weight": 50.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 1,
+            "guid": "cde25964-1afe-5d45-8470-47af3a752a05",
             "name": "NGC 253",
             "projectid": 1,
             "ra": 6.666666666666667,
@@ -347,7 +1181,7 @@
             "active": 1,
             "dec": 41.90721666666667,
             "epochcode": 1,
-            "guid": "08b18079-6fbf-5167-b3d2-01b362dc407b",
+            "guid": "e6182b98-7fed-5346-a742-dbb235d01bac",
             "name": "M31 Panel 1 (R1C1)",
             "projectid": 2,
             "ra": 0.6274333439123203,
@@ -360,7 +1194,7 @@
             "active": 1,
             "dec": 41.90721666666667,
             "epochcode": 1,
-            "guid": "7f3ef843-6bf6-56a0-8e60-06f96330dc2d",
+            "guid": "3dc6dfdc-8242-507f-898f-d96598dffa29",
             "name": "M31 Panel 2 (R1C2)",
             "projectid": 2,
             "ra": 0.7965666560876797,
@@ -373,7 +1207,7 @@
             "active": 1,
             "dec": 40.632783333333336,
             "epochcode": 1,
-            "guid": "1b1a1bf0-c121-5ca3-8e90-315c544db741",
+            "guid": "87c98975-31ed-5c1b-a886-931e5e88bfeb",
             "name": "M31 Panel 3 (R2C1)",
             "projectid": 2,
             "ra": 0.6274333439123203,
@@ -386,7 +1220,7 @@
             "active": 1,
             "dec": 40.632783333333336,
             "epochcode": 1,
-            "guid": "641bb391-9e01-52f7-9664-a8d450600181",
+            "guid": "1b62e372-2274-561c-9e77-83bbf3ac4eed",
             "name": "M31 Panel 4 (R2C2)",
             "projectid": 2,
             "ra": 0.7965666560876797,
@@ -399,7 +1233,7 @@
             "active": 1,
             "dec": 44.5,
             "epochcode": 1,
-            "guid": "09136716-ba55-5afa-800d-9b8836f71a30",
+            "guid": "634dab75-75cd-5551-8745-9ea7c612c1c2",
             "name": "NGC 7000",
             "projectid": 3,
             "ra": 20.98,
@@ -422,6 +1256,7 @@
           "inserted": 2,
           "updated": 0
         },
+        "migrated_guids": 0,
         "notes": [],
         "project": {
           "claimed": 0,
@@ -445,7 +1280,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "c9318add-9ee9-58b2-a432-5e924b013e6d",
+            "guid": "0cbd2e42-4781-5364-958c-c0ef110b5c53",
             "profileId": "profile-under-test",
             "targetid": 1
           },
@@ -457,7 +1292,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "0f193611-fa27-5730-8c24-9509273c78dd",
+            "guid": "b77570a5-bef0-5a87-aa43-c9ab1450d0f3",
             "profileId": "profile-under-test",
             "targetid": 2
           },
@@ -469,7 +1304,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "30e10f76-8cf6-5c91-956f-5776af14b18c",
+            "guid": "0e8d2c39-664e-5cb1-86a5-910db83933b3",
             "profileId": "profile-under-test",
             "targetid": 3
           },
@@ -481,7 +1316,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "7589cf0a-5ed1-523e-bba5-b5a39a290257",
+            "guid": "b5506fcd-c721-5f83-9fbf-8b007aa8797d",
             "profileId": "profile-under-test",
             "targetid": 4
           },
@@ -493,7 +1328,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "48fc2177-f8fb-55da-afb7-669480e5b2e0",
+            "guid": "ad37d54b-e7d0-57c2-92e5-c45c0d983608",
             "profileId": "profile-under-test",
             "targetid": 5
           },
@@ -505,7 +1340,7 @@
             "enabled": 1,
             "exposure": 600.0,
             "exposureTemplateId": 2,
-            "guid": "a2e10069-dd1a-5d23-937b-774edc2cae64",
+            "guid": "d61111be-33c3-5b62-a352-93848d0ee86e",
             "profileId": "profile-under-test",
             "targetid": 6
           },
@@ -517,7 +1352,7 @@
             "enabled": 1,
             "exposure": 300.0,
             "exposureTemplateId": 1,
-            "guid": "11e895f5-c90a-5262-9d38-55c58d9af1d1",
+            "guid": "cdb19844-dfd7-531a-9c0b-9295d1956907",
             "profileId": "profile-under-test",
             "targetid": 6
           }
@@ -530,7 +1365,7 @@
             "ditherevery": -1,
             "filtername": "OIII",
             "gain": 100,
-            "guid": "363ae3c3-ea21-5675-9fd0-ab5c329f0e14",
+            "guid": "413ca790-4c0e-581d-823c-34b2bd53cd0b",
             "maximumhumidity": 100.0,
             "minutesOffset": 0,
             "moonavoidanceenabled": 0,
@@ -553,7 +1388,7 @@
             "ditherevery": -1,
             "filtername": "Ha",
             "gain": 100,
-            "guid": "98bc9b2a-7603-500a-91f3-748df53416e2",
+            "guid": "dc2c1dd9-9124-59c0-8410-6b36516dbfa1",
             "maximumhumidity": 100.0,
             "minutesOffset": 0,
             "moonavoidanceenabled": 0,
@@ -580,7 +1415,7 @@
             "enablegrader": 0,
             "filterswitchfrequency": 0,
             "flatsHandling": 0,
-            "guid": "4277255d-812e-5e91-8505-091e61c5c487",
+            "guid": "490c9e65-39e3-5aa5-85e3-d14c3907cb94",
             "horizonoffset": 0.0,
             "inactivedate": null,
             "isMosaic": 0,
@@ -604,7 +1439,7 @@
             "enablegrader": 0,
             "filterswitchfrequency": 0,
             "flatsHandling": 0,
-            "guid": "0486698e-dc5b-5712-b127-4642c11dc7b2",
+            "guid": "0cf53b4b-db92-52f2-a7ca-1efa15442572",
             "horizonoffset": 0.0,
             "inactivedate": null,
             "isMosaic": 0,
@@ -628,7 +1463,7 @@
             "enablegrader": 0,
             "filterswitchfrequency": 0,
             "flatsHandling": 0,
-            "guid": "3c4ac845-2459-5153-9962-a4858974dcf6",
+            "guid": "844d2611-d755-5e36-a96e-a9260749408b",
             "horizonoffset": 0.0,
             "inactivedate": null,
             "isMosaic": 0,
@@ -742,7 +1577,7 @@
             "active": 1,
             "dec": -30.0,
             "epochcode": 1,
-            "guid": "636804c4-c4d6-5f31-82d4-8feabbe932e8",
+            "guid": "cde25964-1afe-5d45-8470-47af3a752a05",
             "name": "NGC 253",
             "priority": -1,
             "projectid": 1,
@@ -756,7 +1591,7 @@
             "active": 1,
             "dec": 41.90721666666667,
             "epochcode": 1,
-            "guid": "08b18079-6fbf-5167-b3d2-01b362dc407b",
+            "guid": "e6182b98-7fed-5346-a742-dbb235d01bac",
             "name": "M31 Panel 1 (R1C1)",
             "priority": -1,
             "projectid": 2,
@@ -770,7 +1605,7 @@
             "active": 1,
             "dec": 41.90721666666667,
             "epochcode": 1,
-            "guid": "7f3ef843-6bf6-56a0-8e60-06f96330dc2d",
+            "guid": "3dc6dfdc-8242-507f-898f-d96598dffa29",
             "name": "M31 Panel 2 (R1C2)",
             "priority": -1,
             "projectid": 2,
@@ -784,7 +1619,7 @@
             "active": 1,
             "dec": 40.632783333333336,
             "epochcode": 1,
-            "guid": "1b1a1bf0-c121-5ca3-8e90-315c544db741",
+            "guid": "87c98975-31ed-5c1b-a886-931e5e88bfeb",
             "name": "M31 Panel 3 (R2C1)",
             "priority": -1,
             "projectid": 2,
@@ -798,7 +1633,7 @@
             "active": 1,
             "dec": 40.632783333333336,
             "epochcode": 1,
-            "guid": "641bb391-9e01-52f7-9664-a8d450600181",
+            "guid": "1b62e372-2274-561c-9e77-83bbf3ac4eed",
             "name": "M31 Panel 4 (R2C2)",
             "priority": -1,
             "projectid": 2,
@@ -812,7 +1647,7 @@
             "active": 1,
             "dec": 44.5,
             "epochcode": 1,
-            "guid": "09136716-ba55-5afa-800d-9b8836f71a30",
+            "guid": "634dab75-75cd-5551-8745-9ea7c612c1c2",
             "name": "NGC 7000",
             "priority": -1,
             "projectid": 3,

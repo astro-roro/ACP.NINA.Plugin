@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -13,9 +14,22 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     /// find the row it wrote last time with SELECT Id WHERE guid = ? instead of
     /// duplicating it.
     ///
+    /// Every free-text part of a name is length-prefixed as
+    /// "&lt;utf-8 byte length&gt;:&lt;value&gt;". Without that the parts were joined
+    /// with a slash and could run into each other: "M42" plus "M43/NGC1977"
+    /// hashed to the same UUID as "M42/M43" plus "NGC1977", and slashes in
+    /// catalogue names are ordinary, so the collision was reachable with real
+    /// input. Byte length rather than Length, because Python counts UTF-8
+    /// bytes and .NET would otherwise count UTF-16 units and disagree.
+    ///
     /// The namespace UUID and the four name recipes must stay byte-identical to
     /// the Python extension, because the two tools write to the same database
     /// and have to agree on what they wrote. Never change ACP_NS.
+    ///
+    /// The Legacy* methods are the recipe as it stood before the length prefix.
+    /// TsMigration is their only caller: it uses them to recognise a row this
+    /// plugin stamped under the old recipe so it can restamp it. Nothing else
+    /// should identify a row with them.
     public static class TsGuid {
 
         /// The same literal as nina_ts_sync.schema.ACP_NS. Part of the on-disk
@@ -53,19 +67,51 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return new Guid(guidBytes).ToString();
         }
 
+        /// One free-text component of an identity name, length-prefixed so two
+        /// components cannot be confused for one. Matches name_part() in
+        /// nina_ts_sync/schema.py, down to treating null as an empty string.
+        public static string NamePart(string value) {
+            var text = value ?? string.Empty;
+            return Encoding.UTF8.GetByteCount(text).ToString(CultureInfo.InvariantCulture)
+                   + ":" + text;
+        }
+
         public static string Template(string profileId, string filterName, string cameraId) {
-            return Stable($"{profileId}/template/{filterName}/{cameraId}");
+            return Stable(
+                $"{NamePart(profileId)}/template/{NamePart(filterName)}/{NamePart(cameraId)}");
         }
 
         public static string Project(string profileId, string projectName) {
-            return Stable($"{profileId}/project/{projectName}");
+            return Stable($"{NamePart(profileId)}/project/{NamePart(projectName)}");
         }
 
         public static string Target(string profileId, string projectName, string targetName) {
-            return Stable($"{profileId}/target/{projectName}/{targetName}");
+            return Stable(
+                $"{NamePart(profileId)}/target/{NamePart(projectName)}/{NamePart(targetName)}");
         }
 
         public static string ExposurePlan(string profileId, string targetGuid, string filterName) {
+            return Stable(
+                $"{NamePart(profileId)}/plan/{NamePart(targetGuid)}/{NamePart(filterName)}");
+        }
+
+        // -- The pre-length-prefix recipe, for the migration only -------------
+
+        public static string LegacyTemplate(string profileId, string filterName, string cameraId) {
+            return Stable($"{profileId}/template/{filterName}/{cameraId}");
+        }
+
+        public static string LegacyProject(string profileId, string projectName) {
+            return Stable($"{profileId}/project/{projectName}");
+        }
+
+        public static string LegacyTarget(string profileId, string projectName, string targetName) {
+            return Stable($"{profileId}/target/{projectName}/{targetName}");
+        }
+
+        public static string LegacyExposurePlan(
+            string profileId, string targetGuid, string filterName
+        ) {
             return Stable($"{profileId}/plan/{targetGuid}/{filterName}");
         }
 

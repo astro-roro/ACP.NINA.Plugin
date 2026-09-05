@@ -42,6 +42,16 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         ) {
             var outcome = new TsSyncOutcome();
 
+            Validate(payload);
+
+            // 0) Bring any rows still carrying the pre-length-prefix identity
+            // onto the current recipe, so the writes below find them instead of
+            // inserting a second tree beside them. Same transaction as the
+            // push, so a failure anywhere below takes the restamping with it.
+            var migration = TsMigration.MigrateLegacyGuids(conn, payload);
+            outcome.MigratedGuids = migration.Rewritten;
+            outcome.Notes.AddRange(migration.Notes);
+
             // 1) Exposure templates. Filter wheel slot names are unique within
             // a profile by convention, so a name collision is a real conflict.
             var templateIdByGuid = new Dictionary<string, int>();
@@ -121,6 +131,59 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             }
 
             return outcome;
+        }
+
+        /// Refuse a payload that cannot be written back to safely.
+        ///
+        /// Two rules, both about being able to find a row again on the next
+        /// push. A target with no name cannot be identified by a human or by
+        /// us, so it is refused rather than written under a blank name. And two
+        /// entities that hash to one identity would collapse into a single row
+        /// while the log claims both were loaded, so that is refused too,
+        /// naming what collided rather than silently merging.
+        ///
+        /// TsConvert catches the target cases earlier and can name the ACP
+        /// plans involved. This is the backstop for any other caller, and its
+        /// messages are deliberately about the rows rather than the plans.
+        public static void Validate(TsSyncPayload payload) {
+            foreach (var tgt in payload.TargetsByProjectGuid.Values.SelectMany(v => v)) {
+                if (string.IsNullOrWhiteSpace(tgt.Name)) {
+                    throw new TsPushValidationException(
+                        "A target has no name, so Target Scheduler would have no way to " +
+                        "show it and the next push no way to find it. Give every target " +
+                        "a name and push again. Nothing was written.");
+                }
+            }
+
+            NoDuplicateGuids("exposure template", payload.Templates.Select(t => t.Guid), null);
+            NoDuplicateGuids("project", payload.Projects.Select(p => p.Guid), null);
+
+            var targets = payload.TargetsByProjectGuid.Values.SelectMany(v => v).ToList();
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var t in targets) names[t.Guid] = t.Name;
+            NoDuplicateGuids("target", targets.Select(t => t.Guid), names);
+
+            NoDuplicateGuids(
+                "exposure plan",
+                payload.PlansByTargetGuid.Values.SelectMany(v => v).Select(p => p.Guid),
+                null);
+        }
+
+        private static void NoDuplicateGuids(
+            string what, IEnumerable<string> guids, Dictionary<string, string> labels
+        ) {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var guid in guids) {
+                if (seen.Add(guid)) continue;
+                string label;
+                var named = labels != null && labels.TryGetValue(guid, out label)
+                    ? $" ({label})"
+                    : string.Empty;
+                throw new TsPushValidationException(
+                    $"Two {what} rows in this push share the identity {guid}{named}, so " +
+                    "one would overwrite the other and the log would report both as " +
+                    "loaded. Nothing was written.");
+            }
         }
 
         /// Count what a push would do without writing anything. Plan counts are
@@ -338,6 +401,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public TsTableCounts Target { get; } = new TsTableCounts();
         public TsTableCounts ExposurePlan { get; } = new TsTableCounts();
         public int RuleWeightSeededProjects { get; set; }
+
+        /// Rows restamped from the pre-length-prefix identity recipe onto the
+        /// current one. Zero on a database that has already been migrated.
+        public int MigratedGuids { get; set; }
+
         public List<string> Notes { get; } = new List<string>();
 
         public string ToShortString() {

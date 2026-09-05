@@ -103,4 +103,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             Supported = TsSchema.SupportedUserVersions;
         }
     }
+
+    /// Raised when the payload cannot be written back to safely, and the
+    /// message says what the user has to change. The Python extension's
+    /// PayloadError, with the same two causes: a target with no name at all,
+    /// and two entities that would land on one identity. Both refuse the whole
+    /// push rather than write something the next push cannot find again.
+    public class TsPushValidationException : Exception {
+
+        public TsPushValidationException(string message) : base(message) { }
+    }
 }

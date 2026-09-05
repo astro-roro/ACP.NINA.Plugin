@@ -48,22 +48,54 @@ namespace ACP.NINA.Plugin.Tests {
         public void PushWritesTheSameRowsAsThePythonExtension(int version) {
             using (var tmp = new TempDir()) {
                 var actual = Push(version, tmp.File($"v{version}.sqlite"));
-                var expected = Golden(version);
+                CompareAllTables(Golden(version), actual);
+            }
+        }
 
-                foreach (var table in Tables) {
-                    var expectedRows = Normalise(table, (JArray)expected.Tables[table], expected.IdToGuid);
-                    var actualRows = Normalise(table, (JArray)actual.Tables[table], actual.IdToGuid);
+        /// The same comparison over the two states a second push has to get
+        /// right: a database carrying a night's frame counts, and a database
+        /// still stamped with the old identity recipe. Both sides run the same
+        /// fixture steps, so a difference here is a difference in the write
+        /// path rather than in how the fixture was built. See TsScenarios.
+        [Theory]
+        [InlineData("counts_survive_a_second_push")]
+        [InlineData("migrated_from_the_old_recipe")]
+        public void ASecondPushWritesTheSameRowsAsThePythonExtension(string scenario) {
+            using (var tmp = new TempDir()) {
+                var actual = PushScenario(scenario, tmp.File($"{scenario}.sqlite"));
+                var expected = GoldenSlice("scenarios", scenario);
+                CompareAllTables(expected, actual);
+                AssertReportMatches(expected.Report, actual.Outcome);
+            }
+        }
 
-                    Assert.True(
-                        expectedRows.Count == actualRows.Count,
-                        $"{table}: expected {expectedRows.Count} rows, got {actualRows.Count}");
+        private static void CompareAllTables(GoldenResult expected, PushResult actual) {
+            foreach (var table in Tables) {
+                var expectedRows = Normalise(table, (JArray)expected.Tables[table], expected.IdToGuid);
+                var actualRows = Normalise(table, (JArray)actual.Tables[table], actual.IdToGuid);
 
-                    foreach (var key in expectedRows.Keys) {
-                        Assert.True(actualRows.ContainsKey(key), $"{table}: no row for {key}");
-                        AssertRowsMatch(table, key, expectedRows[key], actualRows[key]);
-                    }
+                Assert.True(
+                    expectedRows.Count == actualRows.Count,
+                    $"{table}: expected {expectedRows.Count} rows, got {actualRows.Count}");
+
+                foreach (var key in expectedRows.Keys) {
+                    Assert.True(actualRows.ContainsKey(key), $"{table}: no row for {key}");
+                    AssertRowsMatch(table, key, expectedRows[key], actualRows[key]);
                 }
             }
+        }
+
+        private static void AssertReportMatches(JObject expected, TsSyncOutcome actual) {
+            foreach (var table in new[] { "exposuretemplate", "project", "target", "exposureplan" }) {
+                var counts = CountsFor(actual, table);
+                Assert.Equal((int)expected[table]["inserted"], counts.Inserted);
+                Assert.Equal((int)expected[table]["updated"], counts.Updated);
+                Assert.Equal((int)expected[table]["claimed"], counts.Claimed);
+            }
+            Assert.Equal(
+                (int)expected["ruleweight_seeded_projects"], actual.RuleWeightSeededProjects);
+            Assert.Equal((int)expected["migrated_guids"], actual.MigratedGuids);
+            Assert.Empty(actual.Notes);
         }
 
         [Theory]
@@ -72,18 +104,7 @@ namespace ACP.NINA.Plugin.Tests {
         public void PushReportsTheSameCountsAsThePythonExtension(int version) {
             using (var tmp = new TempDir()) {
                 var actual = Push(version, tmp.File($"v{version}.sqlite"));
-                var expected = Golden(version).Report;
-
-                foreach (var table in new[] { "exposuretemplate", "project", "target", "exposureplan" }) {
-                    var counts = CountsFor(actual.Outcome, table);
-                    Assert.Equal((int)expected[table]["inserted"], counts.Inserted);
-                    Assert.Equal((int)expected[table]["updated"], counts.Updated);
-                    Assert.Equal((int)expected[table]["claimed"], counts.Claimed);
-                }
-                Assert.Equal(
-                    (int)expected["ruleweight_seeded_projects"],
-                    actual.Outcome.RuleWeightSeededProjects);
-                Assert.Empty(actual.Outcome.Notes);
+                AssertReportMatches(Golden(version).Report, actual.Outcome);
             }
         }
 
@@ -239,17 +260,53 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         private static GoldenResult Golden(int version) {
+            return GoldenSlice("versions", version.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static GoldenResult GoldenSlice(string group, string key) {
             var root = JObject.Parse(TsFixtures.ReadFixture("golden-rows.json"));
             Assert.Equal(TsTestPlans.ProfileId, (string)root["profile_id"]);
             Assert.Equal(TsTestPlans.FrozenNow, (long)root["frozen_now"]);
+            // The fixture states the createdate it wrote by hand, so a change
+            // on the Python side cannot silently pass here.
+            Assert.Equal(TsScenarios.OlderCreateDate, (long)root["older_createdate"]);
 
-            var slice = (JObject)root["versions"][version.ToString(CultureInfo.InvariantCulture)];
+            var slice = (JObject)root[group][key];
+            Assert.True(slice != null, $"golden-rows.json has no {group}/{key}");
             var tables = (JObject)slice["tables"];
             return new GoldenResult {
                 Tables = tables,
                 IdToGuid = IdToGuidMaps(tables),
                 Report = (JObject)slice["report"],
             };
+        }
+
+        /// Push, apply the scenario's hand edits, push the same payload again.
+        /// The steps match tests/dump_golden_rows.py in the extension repo.
+        private static PushResult PushScenario(string scenario, string path) {
+            TsFixtures.MakeDb(28, path);
+            using (var db = TargetSchedulerDb.Open(path)) {
+                TsUpsert.Apply(db, BuildPayload());
+
+                switch (scenario) {
+                    case "counts_survive_a_second_push":
+                        TsScenarios.ANightOfImaging(db.Connection);
+                        break;
+                    case "migrated_from_the_old_recipe":
+                        TsScenarios.WindBackToTheOldRecipe(db.Connection, TsTestPlans.ProfileId);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
+                }
+
+                var outcome = TsUpsert.Apply(db, BuildPayload());
+                var tables = Dump(db.Connection);
+                return new PushResult {
+                    Tables = tables,
+                    IdToGuid = IdToGuidMaps(tables),
+                    Outcome = outcome,
+                };
+            }
         }
 
         /// Every row of every table the push writes, ordered by Id, as JSON so

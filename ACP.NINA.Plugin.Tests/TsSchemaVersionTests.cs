@@ -158,10 +158,27 @@ namespace ACP.NINA.Plugin.Tests {
 
         [Fact]
         public void TheFourRecipesUseTheDocumentedNames() {
-            Assert.Equal(TsGuid.Stable("p/project/Orion"), TsGuid.Project("p", "Orion"));
-            Assert.Equal(TsGuid.Stable("p/target/Orion/M42"), TsGuid.Target("p", "Orion", "M42"));
-            Assert.Equal(TsGuid.Stable("p/template/Ha/cam"), TsGuid.Template("p", "Ha", "cam"));
-            Assert.Equal(TsGuid.Stable("p/plan/tguid/Ha"), TsGuid.ExposurePlan("p", "tguid", "Ha"));
+            Assert.Equal(
+                TsGuid.Stable("1:p/project/5:Orion"), TsGuid.Project("p", "Orion"));
+            Assert.Equal(
+                TsGuid.Stable("1:p/target/5:Orion/3:M42"), TsGuid.Target("p", "Orion", "M42"));
+            Assert.Equal(
+                TsGuid.Stable("1:p/template/2:Ha/3:cam"), TsGuid.Template("p", "Ha", "cam"));
+            Assert.Equal(
+                TsGuid.Stable("1:p/plan/5:tguid/2:Ha"), TsGuid.ExposurePlan("p", "tguid", "Ha"));
+        }
+
+        /// The recipe the migration recognises. It has to stay exactly as it
+        /// was, because it is how a row this plugin already stamped is found.
+        [Fact]
+        public void TheFourLegacyRecipesAreUnchanged() {
+            Assert.Equal(TsGuid.Stable("p/project/Orion"), TsGuid.LegacyProject("p", "Orion"));
+            Assert.Equal(
+                TsGuid.Stable("p/target/Orion/M42"), TsGuid.LegacyTarget("p", "Orion", "M42"));
+            Assert.Equal(
+                TsGuid.Stable("p/template/Ha/cam"), TsGuid.LegacyTemplate("p", "Ha", "cam"));
+            Assert.Equal(
+                TsGuid.Stable("p/plan/tguid/Ha"), TsGuid.LegacyExposurePlan("p", "tguid", "Ha"));
         }
 
         [Fact]

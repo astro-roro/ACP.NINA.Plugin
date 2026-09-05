@@ -174,7 +174,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                 }
 
-                var payload = TsConvert.BuildPayload(plans, gear, profileId, clock());
+                TsSyncPayload payload;
+                try {
+                    payload = TsConvert.BuildPayload(plans, gear, profileId, clock());
+                } catch (TsPushValidationException ex) {
+                    // A plan that cannot be identified. The message says what to
+                    // rename, and nothing was written.
+                    result.Failure = ex.Message;
+                    return result;
+                }
                 RecordWhatWasUsable(plans, payload, result);
 
                 if (result.Pushed.Count == 0) {
@@ -195,6 +203,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         token
                     ).ConfigureAwait(false);
                     result.Attempts = attempts;
+                    if (result.Outcome.MigratedGuids > 0) {
+                        Logger.Info(
+                            $"ACP: migrated {result.Outcome.MigratedGuids} Target Scheduler " +
+                            "row(s) onto the new ACP identity recipe.");
+                    }
+                } catch (TsPushValidationException ex) {
+                    result.Failure = ex.Message;
+                    return result;
                 } catch (Microsoft.Data.Sqlite.SqliteException ex) when (TargetSchedulerDb.IsLocked(ex)) {
                     result.Failure =
                         "Target Scheduler's database stayed locked through three retries, so " +
