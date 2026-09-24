@@ -1,0 +1,312 @@
+{
+  "version": 1,
+  "gear": {
+    "version": 1,
+    "telescopes": [
+      {
+        "id": "110gtx",
+        "name": "110GTX",
+        "focal_length_mm": 547.921702230836,
+        "aperture_mm": 0,
+        "observed_pix_arcsec": 1.415,
+        "observed_fov_arcmin": 225.89
+      }
+    ],
+    "cameras": [
+      {
+        "id": "zwo-asi2600mm-duo",
+        "name": "ZWO ASI2600MM Duo",
+        "pixel_size_um": 3.76,
+        "sensor_px": [
+          7242,
+          5220
+        ],
+        "filters": {
+          "B": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 120,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          },
+          "G": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 120,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          },
+          "Ha": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 300,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          },
+          "L": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 120,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          },
+          "OIII": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 300,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          },
+          "R": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 120,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          },
+          "SII": {
+            "ts_template_id": null,
+            "ts_template_name": null,
+            "default_sub_s": 300,
+            "gain": -1,
+            "offset": -1,
+            "bin": 1
+          }
+        },
+        "sensor_width_px": 7242,
+        "sensor_height_px": 5220
+      }
+    ]
+  },
+  "plans": [
+    {
+      "id": "acp-imp-f74fed1e-95ae-49c3-9cb4-1bc082a9fac3",
+      "guid": "f74fed1e-95ae-49c3-9cb4-1bc082a9fac3",
+      "project_name": "Dolphin Nebula (Any Skies)",
+      "priority": "normal",
+      "min_altitude_deg": 25.0,
+      "meridian_window_min": 0,
+      "telescope_id": "110gtx",
+      "camera_id": "zwo-asi2600mm-duo",
+      "target": {
+        "name": "Dolphin Nebula",
+        "center_ra_deg": 103.55416666666667,
+        "center_dec_deg": -23.93138888888889,
+        "rotation_deg": 90.0,
+        "mosaic": {
+          "rows": 1,
+          "cols": 1,
+          "overlap_pct": 0
+        }
+      },
+      "filter_goals": {
+        "R": {
+          "target_hours": 0.0417,
+          "actual_hours": 0.05,
+          "sub_exposure_s": 10
+        },
+        "G": {
+          "target_hours": 0.0417,
+          "actual_hours": 0.05,
+          "sub_exposure_s": 10
+        },
+        "B": {
+          "target_hours": 0.0417,
+          "actual_hours": 0.05,
+          "sub_exposure_s": 10
+        },
+        "H": {
+          "target_hours": 4.1667,
+          "actual_hours": 1.4167,
+          "sub_exposure_s": 300
+        },
+        "O": {
+          "target_hours": 4.1667,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 300
+        }
+      },
+      "ts_refs": {
+        "profile_id": "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7",
+        "project_id": 2,
+        "target_ids_by_panel": {
+          "1,1": 5
+        },
+        "template_ids_by_filter": {
+          "R": 5,
+          "G": 6,
+          "B": 7,
+          "H": 8,
+          "O": 9
+        },
+        "exposure_plan_ids": {
+          "5_R": 29,
+          "5_G": 30,
+          "5_B": 31,
+          "5_H": 32,
+          "5_O": 33
+        },
+        "last_pushed_iso": null,
+        "last_pushed_user_version": null,
+        "last_imported_iso": "2026-09-24T08:30:00Z"
+      }
+    },
+    {
+      "id": "acp-imp-7283c87f-5dcc-48c4-9342-f80f3d1dbcfc",
+      "guid": "7283c87f-5dcc-48c4-9342-f80f3d1dbcfc",
+      "project_name": "Helix Nebula (Any Skies)",
+      "priority": "high",
+      "min_altitude_deg": 25.0,
+      "meridian_window_min": 0,
+      "telescope_id": "110gtx",
+      "camera_id": "zwo-asi2600mm-duo",
+      "target": {
+        "name": "Helix Nebula",
+        "center_ra_deg": 337.4125,
+        "center_dec_deg": -20.83722222222222,
+        "rotation_deg": 280.0,
+        "mosaic": {
+          "rows": 1,
+          "cols": 1,
+          "overlap_pct": 0
+        }
+      },
+      "filter_goals": {
+        "R": {
+          "target_hours": 0.0417,
+          "actual_hours": 0.05,
+          "sub_exposure_s": 10
+        },
+        "G": {
+          "target_hours": 0.0417,
+          "actual_hours": 0.05,
+          "sub_exposure_s": 10
+        },
+        "B": {
+          "target_hours": 0.0417,
+          "actual_hours": 0.05,
+          "sub_exposure_s": 10
+        },
+        "O": {
+          "target_hours": 0.0833,
+          "actual_hours": 0.1667,
+          "sub_exposure_s": 300
+        },
+        "H": {
+          "target_hours": 5.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 300
+        },
+        "S": {
+          "target_hours": 5.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 300
+        }
+      },
+      "ts_refs": {
+        "profile_id": "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7",
+        "project_id": 10,
+        "target_ids_by_panel": {
+          "1,1": 20
+        },
+        "template_ids_by_filter": {
+          "R": 5,
+          "G": 6,
+          "B": 7,
+          "O": 9,
+          "H": 8,
+          "S": 10
+        },
+        "exposure_plan_ids": {
+          "20_R": 114,
+          "20_G": 115,
+          "20_B": 116,
+          "20_O": 117,
+          "20_H": 118,
+          "20_S": 119
+        },
+        "last_pushed_iso": null,
+        "last_pushed_user_version": null,
+        "last_imported_iso": "2026-09-24T08:30:00Z"
+      }
+    },
+    {
+      "id": "acp-imp-121ae9dc-dad2-40ae-ab94-1d8b6bcd9e28",
+      "guid": "121ae9dc-dad2-40ae-ab94-1d8b6bcd9e28",
+      "project_name": "Sculptor Galaxy (Any Skies)",
+      "priority": "normal",
+      "min_altitude_deg": 25.0,
+      "meridian_window_min": 0,
+      "telescope_id": "110gtx",
+      "camera_id": "zwo-asi2600mm-duo",
+      "target": {
+        "name": "Sculptor Galaxy",
+        "center_ra_deg": 11.887499999999926,
+        "center_dec_deg": -25.28888888888889,
+        "rotation_deg": 145.0,
+        "mosaic": {
+          "rows": 1,
+          "cols": 1,
+          "overlap_pct": 0
+        }
+      },
+      "filter_goals": {
+        "R": {
+          "target_hours": 2.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 60
+        },
+        "G": {
+          "target_hours": 2.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 60
+        },
+        "B": {
+          "target_hours": 2.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 60
+        },
+        "L": {
+          "target_hours": 6.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 60
+        },
+        "H": {
+          "target_hours": 10.0,
+          "actual_hours": 0.0,
+          "sub_exposure_s": 300
+        }
+      },
+      "ts_refs": {
+        "profile_id": "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7",
+        "project_id": 11,
+        "target_ids_by_panel": {
+          "1,1": 21
+        },
+        "template_ids_by_filter": {
+          "R": 5,
+          "G": 6,
+          "B": 7,
+          "L": 1,
+          "H": 8
+        },
+        "exposure_plan_ids": {
+          "21_R": 124,
+          "21_G": 125,
+          "21_B": 126,
+          "21_L": 123,
+          "21_H": 127
+        },
+        "last_pushed_iso": null,
+        "last_pushed_user_version": null,
+        "last_imported_iso": "2026-09-24T08:30:00Z"
+      }
+    }
+  ]
+}
