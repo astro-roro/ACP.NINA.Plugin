@@ -135,13 +135,20 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
+        // hasToken defaults to true: TsUploadService itself defaults to
+        // TokenStore.HasToken, which is a real Windows Credential Manager
+        // read. Every test here is about the ACP conversation, not about
+        // what happens to be stored on the machine running the test, so the
+        // seam is always overridden unless a test is specifically exercising
+        // the no-token path.
         private static TsUploadService Service(ScriptedAcp acp, string dbPath, string tempDir,
-                                               string token = "tok-123", List<TimeSpan> waits = null) {
+                                               string token = "tok-123", List<TimeSpan> waits = null,
+                                               bool hasToken = true) {
             var client = new AcpApiClient(Base, () => token, acp);
             return new TsUploadService(client, (t, ct) => {
                 waits?.Add(t);
                 return Task.CompletedTask;
-            }) {
+            }, () => hasToken) {
                 DbPathOverride = dbPath,
                 TempDirOverride = tempDir,
             };
