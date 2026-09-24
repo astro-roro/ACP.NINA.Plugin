@@ -177,7 +177,7 @@ namespace ACP.NINA.Plugin.Services {
             outcome.ReviewUrl = client.Resolve(accepted?.ReviewUrl);
 
             if (string.IsNullOrWhiteSpace(accepted?.StatusUrl)) {
-                outcome.Line = "ACP took the upload but gave no status to follow. Open it in ACP to review.";
+                outcome.Line = "ACP took the upload but gave no status to follow. Review and apply it in ACP.";
                 return outcome;
             }
 
@@ -220,7 +220,7 @@ namespace ACP.NINA.Plugin.Services {
                 }
 
                 if (waited >= PollLimit) {
-                    outcome.Line = "ACP is still reading it. Open it in ACP to follow along.";
+                    outcome.Line = "ACP is still reading it. Check ACP to follow along.";
                     return outcome;
                 }
                 await delay(PollInterval, ct).ConfigureAwait(false);
@@ -228,12 +228,26 @@ namespace ACP.NINA.Plugin.Services {
             }
         }
 
-        /// "Voyager main: 2 new, 5 updated, 1 needs a choice".
+        /// "Voyager main: 32 new, 46 need a choice. Review and apply them in
+        /// ACP before anything changes." Names only the categories that
+        /// actually have something in them, and says plainly when there is
+        /// nothing to review, rather than leaving the dock silent about
+        /// whether anything is waiting.
         public static string ReadyLine(string label, TsUploadStatus s) {
-            if (s == null || !s.HasCounts) return $"{label}: ACP has read it. Open it in ACP to review.";
+            if (s == null || !s.HasCounts) return $"{label}: ACP has read it. Review it in ACP.";
+
+            var newCount = s.New ?? 0;
+            var updated = s.Updated ?? 0;
             var conflicts = s.Conflicts ?? 0;
-            return $"{label}: {s.New ?? 0} new, {s.Updated ?? 0} updated, " +
-                   $"{conflicts} {(conflicts == 1 ? "needs" : "need")} a choice";
+            if (newCount == 0 && updated == 0 && conflicts == 0) {
+                return $"{label}: ACP found nothing new or changed. Nothing to review.";
+            }
+
+            var parts = new List<string>();
+            if (newCount > 0) parts.Add($"{newCount} new");
+            if (updated > 0) parts.Add($"{updated} updated");
+            if (conflicts > 0) parts.Add($"{conflicts} {(conflicts == 1 ? "needs" : "need")} a choice");
+            return $"{label}: {string.Join(", ", parts)}. Review and apply them in ACP before anything changes.";
         }
 
         /// The dock's words for each refusal. ACP's own message leads when it
