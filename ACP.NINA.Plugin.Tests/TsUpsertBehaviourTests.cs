@@ -231,6 +231,162 @@ namespace ACP.NINA.Plugin.Tests {
         }
     }
 
+    /// Whether a sync tramples the moon, twilight, humidity and dither tuning
+    /// a user does in Target Scheduler's own exposure template screen.
+    public class TsExposureTemplateTuningTests {
+
+        private static readonly string[] TuningColumns = {
+            "twilightlevel", "minutesOffset", "maximumhumidity",
+            "moonavoidanceenabled", "moonavoidanceseparation", "moonavoidancewidth",
+            "moonrelaxscale", "moonrelaxmaxaltitude", "moonrelaxminaltitude",
+            "moondownenabled", "ditherevery",
+        };
+
+        private static TsSyncPayload OnePlan() {
+            return TsConvert.BuildPayload(
+                new List<Plan> { TsTestPlans.Plan("p", projectName: "P", targetName: "T") },
+                TsTestPlans.Gear(), TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
+        }
+
+        private static void TuneByHand(SqliteConnection conn) {
+            Exec(conn,
+                "UPDATE exposuretemplate SET twilightlevel = 2, minutesOffset = 99, " +
+                "maximumhumidity = 50, moonavoidanceenabled = 1, moonavoidanceseparation = 45, " +
+                "moonavoidancewidth = 10, moonrelaxscale = 2, moonrelaxmaxaltitude = 9, " +
+                "moonrelaxminaltitude = -9, moondownenabled = 1, ditherevery = 5");
+        }
+
+        private static void AssertHandTuningSurvived(SqliteConnection conn) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText =
+                    "SELECT twilightlevel, minutesOffset, maximumhumidity, moonavoidanceenabled, " +
+                    "moonavoidanceseparation, moonavoidancewidth, moonrelaxscale, " +
+                    "moonrelaxmaxaltitude, moonrelaxminaltitude, moondownenabled, ditherevery " +
+                    "FROM exposuretemplate";
+                using (var reader = cmd.ExecuteReader()) {
+                    Assert.True(reader.Read());
+                    Assert.Equal(2L, reader.GetInt64(0));
+                    Assert.Equal(99L, reader.GetInt64(1));
+                    Assert.Equal(50.0, reader.GetDouble(2));
+                    Assert.Equal(1L, reader.GetInt64(3));
+                    Assert.Equal(45.0, reader.GetDouble(4));
+                    Assert.Equal(10L, reader.GetInt64(5));
+                    Assert.Equal(2.0, reader.GetDouble(6));
+                    Assert.Equal(9.0, reader.GetDouble(7));
+                    Assert.Equal(-9.0, reader.GetDouble(8));
+                    Assert.Equal(1L, reader.GetInt64(9));
+                    Assert.Equal(5L, reader.GetInt64(10));
+                    Assert.False(reader.Read());
+                }
+            }
+        }
+
+        [Fact]
+        public void ANewTemplateGetsTheCurrentDefaults() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("defaults.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    TsUpsert.Apply(db, OnePlan());
+
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText =
+                            "SELECT twilightlevel, minutesOffset, maximumhumidity, " +
+                            "moonavoidanceenabled, moonrelaxmaxaltitude, moonrelaxminaltitude, " +
+                            "ditherevery FROM exposuretemplate";
+                        using (var reader = cmd.ExecuteReader()) {
+                            Assert.True(reader.Read());
+                            Assert.Equal(1L, reader.GetInt64(0));
+                            Assert.Equal(0L, reader.GetInt64(1));
+                            Assert.Equal(100.0, reader.GetDouble(2));
+                            Assert.Equal(0L, reader.GetInt64(3));
+                            Assert.Equal(5.0, reader.GetDouble(4));
+                            Assert.Equal(-15.0, reader.GetDouble(5));
+                            Assert.Equal(-1L, reader.GetInt64(6));
+                        }
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void ASecondSyncLeavesHandTuningAloneButStillUpdatesAcpsOwnColumns() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("resync.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    TsUpsert.Apply(db, OnePlan());
+                    TuneByHand(db.Connection);
+
+                    var second = OnePlan();
+                    second.Templates[0].Gain = 200;
+                    second.Templates[0].DefaultExposure = 45.0;
+                    var outcome = TsUpsert.Apply(db, second);
+
+                    Assert.Equal(1, outcome.ExposureTemplate.Updated);
+                    Assert.Equal(0, outcome.ExposureTemplate.Inserted);
+                    AssertHandTuningSurvived(db.Connection);
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "SELECT gain, defaultexposure FROM exposuretemplate";
+                        using (var reader = cmd.ExecuteReader()) {
+                            Assert.True(reader.Read());
+                            Assert.Equal(200L, reader.GetInt64(0));
+                            Assert.Equal(45.0, reader.GetDouble(1));
+                        }
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void ClaimingAHandMadeTemplateLeavesItsTuningAloneButUpdatesAcpsOwnColumns() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("claim.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    var payload = OnePlan();
+                    var tpl = payload.Templates[0];
+                    Exec(db.Connection,
+                        "INSERT INTO exposuretemplate (profileId, name, filtername, " +
+                        "defaultexposure, gain, offset, bin, twilightlevel, minutesOffset, " +
+                        "maximumhumidity, moonavoidanceenabled, moonavoidanceseparation, " +
+                        "moonavoidancewidth, moonrelaxscale, moonrelaxmaxaltitude, " +
+                        "moonrelaxminaltitude, moondownenabled, ditherevery) VALUES " +
+                        $"('{tpl.ProfileId}', '{tpl.Name}', '{tpl.FilterName}', 60, -1, -1, 1, " +
+                        "2, 99, 50, 1, 45, 10, 2, 9, -9, 1, 5)");
+
+                    var outcome = TsUpsert.Apply(db, payload);
+
+                    Assert.Equal(1, outcome.ExposureTemplate.Claimed);
+                    Assert.Equal(0, outcome.ExposureTemplate.Inserted);
+                    Assert.Equal(1L, Scalar(db.Connection, "SELECT COUNT(*) FROM exposuretemplate"));
+                    AssertHandTuningSurvived(db.Connection);
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "SELECT gain, offset, bin, guid FROM exposuretemplate";
+                        using (var reader = cmd.ExecuteReader()) {
+                            Assert.True(reader.Read());
+                            Assert.Equal((long)tpl.Gain, reader.GetInt64(0));
+                            Assert.Equal((long)tpl.Offset, reader.GetInt64(1));
+                            Assert.Equal((long)tpl.Bin, reader.GetInt64(2));
+                            Assert.Equal(tpl.Guid, reader.GetString(3));
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void Exec(SqliteConnection conn, string sql) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = sql;
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static object Scalar(SqliteConnection conn, string sql) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = sql;
+                return cmd.ExecuteScalar();
+            }
+        }
+    }
+
     /// Reading acquired counts back out. Mirrors tests/test_read_acquired.py.
     public class TsReadAcquiredTests {
 
