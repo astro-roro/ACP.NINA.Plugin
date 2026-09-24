@@ -52,10 +52,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             outcome.MigratedGuids = migration.Rewritten;
             outcome.Notes.AddRange(migration.Notes);
 
+            // 0b) Check every row Id the plans' ts_refs name before writing
+            // anything, and drop the ones that no longer hold. What survives
+            // is written by Id below, ahead of the guid and the name.
+            var neededTemplateGuids = ResolvePins(conn, payload, outcome);
+
             // 1) Exposure templates. Filter wheel slot names are unique within
             // a profile by convention, so a name collision is a real conflict.
             var templateIdByGuid = new Dictionary<string, int>();
             foreach (var tpl in payload.Templates) {
+                // Every exposure plan that would use this template already
+                // points at one the user has, so writing it would only leave
+                // an unused row behind. Null when no plan carried refs.
+                if (neededTemplateGuids != null && !neededTemplateGuids.Contains(tpl.Guid)) continue;
                 templateIdByGuid[tpl.Guid] = UpsertByGuid(
                     conn, "exposuretemplate", tpl, outcome.ExposureTemplate,
                     userVersion, columnsByTable,
@@ -115,7 +124,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 foreach (var plan in group.Value) {
                     string tplGuid;
                     int tplId;
-                    if (!payload.TemplateGuidByPlanGuid.TryGetValue(plan.Guid, out tplGuid)
+                    if (plan.PinnedTemplateId.HasValue) {
+                        tplId = plan.PinnedTemplateId.Value;
+                    } else if (!payload.TemplateGuidByPlanGuid.TryGetValue(plan.Guid, out tplGuid)
                         || !templateIdByGuid.TryGetValue(tplGuid, out tplId)) {
                         outcome.Notes.Add(
                             $"plan {plan.Guid} for target {group.Key} has no template, skipped");
@@ -239,6 +250,22 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var updateCols = TsSchema.ColumnsForUpdate(table, cols);
             var setClause = string.Join(", ", updateCols.Select(c => $"{Quote(c)} = ${c}"));
 
+            // 0) By the Id the plan's ts_refs name. ResolvePins has already
+            // checked the row exists and sits where the refs say, so this is
+            // the row the plan came from. Only the fields ACP edits are
+            // written; see TsSchema.ColumnsForPinnedUpdate.
+            if (entity.PinnedId.HasValue) {
+                var pinnedCols = TsSchema.ColumnsForPinnedUpdate(table, cols);
+                if (pinnedCols.Count > 0) {
+                    var pinnedSet = string.Join(", ", pinnedCols.Select(c => $"{Quote(c)} = ${c}"));
+                    ExecuteWithValues(
+                        conn, $"UPDATE {table} SET {pinnedSet} WHERE Id = $__id",
+                        pinnedCols, entity, entity.PinnedId.Value);
+                }
+                counts.Pinned++;
+                return entity.PinnedId.Value;
+            }
+
             // 1) By our own guid.
             var existingId = SelectId(conn, table, "guid = $g", new Dictionary<string, object> {
                 { "$g", entity.Guid },
@@ -292,6 +319,131 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 counts.Inserted++;
                 return id;
             }
+        }
+
+        // -- ts_refs ---------------------------------------------------------
+
+        /// Keep each pin only while the row it names still holds, and work out
+        /// which of the payload's templates are still needed.
+        ///
+        /// A pin holds when the row exists, is in this profile, sits under the
+        /// parent the payload is writing (a target under its project's pinned
+        /// row, an exposure plan under its target's pinned row), and no other
+        /// entity in this push has already pinned it. A pin that fails falls
+        /// back to the guid and name path, which is what every push did before
+        /// ts_refs were read, and a note says why.
+        ///
+        /// A pinned exposure plan keeps the template its row already uses. An
+        /// exposure plan with no row of its own yet uses the template the refs
+        /// give for its filter, when there is one. Returns null when no entity
+        /// carried a pin at all, which leaves the old path untouched.
+        private static HashSet<string> ResolvePins(
+            SqliteConnection conn, TsSyncPayload payload, TsSyncOutcome outcome
+        ) {
+            var plans = payload.PlansByTargetGuid.Values.SelectMany(v => v).ToList();
+            var targets = payload.TargetsByProjectGuid.Values.SelectMany(v => v).ToList();
+            var anyPins = payload.Projects.Any(p => p.PinnedId.HasValue)
+                || targets.Any(t => t.PinnedId.HasValue)
+                || plans.Any(p => p.PinnedId.HasValue || p.PinnedTemplateId.HasValue);
+            if (!anyPins) return null;
+
+            var profileId = payload.ProfileId;
+
+            var usedProjects = new HashSet<int>();
+            var projectByGuid = new Dictionary<string, TsProject>();
+            foreach (var proj in payload.Projects) {
+                projectByGuid[proj.Guid] = proj;
+                if (!proj.PinnedId.HasValue) continue;
+                var row = ReadRow(conn, "SELECT profileId FROM project WHERE Id = $id", proj.PinnedId.Value);
+                if (row == null || !SameProfile(row[0], profileId) || !usedProjects.Add(proj.PinnedId.Value)) {
+                    outcome.Notes.Add(
+                        $"ts_refs project {proj.PinnedId} for '{proj.Name}' is gone or not this profile's, " +
+                        "matched by guid and name instead");
+                    proj.PinnedId = null;
+                }
+            }
+
+            var usedTargets = new HashSet<int>();
+            var targetByGuid = new Dictionary<string, TsTarget>();
+            foreach (var group in payload.TargetsByProjectGuid) {
+                TsProject proj;
+                projectByGuid.TryGetValue(group.Key, out proj);
+                foreach (var tgt in group.Value) {
+                    targetByGuid[tgt.Guid] = tgt;
+                    if (!tgt.PinnedId.HasValue) continue;
+                    var row = ReadRow(conn, "SELECT projectid FROM target WHERE Id = $id", tgt.PinnedId.Value);
+                    var parent = proj?.PinnedId;
+                    if (row == null || !parent.HasValue || ToInt(row[0]) != parent.Value
+                        || !usedTargets.Add(tgt.PinnedId.Value)) {
+                        outcome.Notes.Add(
+                            $"ts_refs target {tgt.PinnedId} for '{tgt.Name}' is gone or has moved, " +
+                            "matched by guid and name instead");
+                        tgt.PinnedId = null;
+                    }
+                }
+            }
+
+            var usedPlans = new HashSet<int>();
+            var needed = new HashSet<string>();
+            foreach (var group in payload.PlansByTargetGuid) {
+                TsTarget tgt;
+                targetByGuid.TryGetValue(group.Key, out tgt);
+                foreach (var plan in group.Value) {
+                    if (plan.PinnedId.HasValue) {
+                        var row = ReadRow(
+                            conn, "SELECT targetid, exposureTemplateId FROM exposureplan WHERE Id = $id",
+                            plan.PinnedId.Value);
+                        var parent = tgt?.PinnedId;
+                        if (row != null && parent.HasValue && ToInt(row[0]) == parent.Value
+                            && usedPlans.Add(plan.PinnedId.Value)) {
+                            plan.PinnedTemplateId = ToInt(row[1]);
+                            continue;
+                        }
+                        outcome.Notes.Add(
+                            $"ts_refs exposure plan {plan.PinnedId} is gone or has moved, " +
+                            "matched by guid and template instead");
+                        plan.PinnedId = null;
+                    }
+                    if (plan.PinnedTemplateId.HasValue) {
+                        var row = ReadRow(
+                            conn, "SELECT profileId FROM exposuretemplate WHERE Id = $id",
+                            plan.PinnedTemplateId.Value);
+                        if (row != null && SameProfile(row[0], profileId)) continue;
+                        outcome.Notes.Add(
+                            $"ts_refs template {plan.PinnedTemplateId} is gone or not this profile's, " +
+                            "using ACP's own template instead");
+                        plan.PinnedTemplateId = null;
+                    }
+                    string tplGuid;
+                    if (payload.TemplateGuidByPlanGuid.TryGetValue(plan.Guid, out tplGuid)) {
+                        needed.Add(tplGuid);
+                    }
+                }
+            }
+            return needed;
+        }
+
+        private static object[] ReadRow(SqliteConnection conn, string sql, int id) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = sql;
+                cmd.Parameters.AddWithValue("$id", id);
+                using (var reader = cmd.ExecuteReader()) {
+                    if (!reader.Read()) return null;
+                    var values = new object[reader.FieldCount];
+                    reader.GetValues(values);
+                    return values;
+                }
+            }
+        }
+
+        private static bool SameProfile(object value, string profileId) {
+            var s = value == null || value == DBNull.Value ? null : value.ToString();
+            return string.Equals(s, profileId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ToInt(object value) {
+            if (value == null || value == DBNull.Value) return -1;
+            return Convert.ToInt32(value, CultureInfo.InvariantCulture);
         }
 
         /// Narrow an entity's columns to the ones this database can take: the
@@ -390,6 +542,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// The row existed under its natural key with no guid at all, so the
         /// push stamped its own guid on it rather than making a duplicate.
         public int Claimed { get; set; }
+        /// The row was found by the Id in the plan's ts_refs and updated in
+        /// place, before any guid or name lookup.
+        public int Pinned { get; set; }
     }
 
     /// What one push did, in the same shape as the Python extension's
@@ -409,12 +564,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public List<string> Notes { get; } = new List<string>();
 
         public string ToShortString() {
-            return
+            var line =
                 $"{Project.Inserted}+{Project.Updated} projects, " +
                 $"{Target.Inserted}+{Target.Updated} targets, " +
                 $"{ExposurePlan.Inserted}+{ExposurePlan.Updated} exposure plans, " +
                 $"{ExposureTemplate.Inserted}+{ExposureTemplate.Updated} templates " +
                 "(inserted+updated)";
+            var pinned = Project.Pinned + Target.Pinned + ExposurePlan.Pinned;
+            if (pinned > 0) {
+                line += $", and {Project.Pinned} projects, {Target.Pinned} targets and " +
+                        $"{ExposurePlan.Pinned} exposure plans updated in place from ts_refs";
+            }
+            return line;
         }
     }
 }

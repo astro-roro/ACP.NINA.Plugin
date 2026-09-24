@@ -89,6 +89,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     CreateDate = createDateUnix,
                     MinimumAltitude = minAltitude,
                     MeridianWindow = meridianWindow,
+                    // The first plan in the group whose refs name a project.
+                    // TsUpsert checks it still exists in this profile.
+                    PinnedId = group.Value
+                        .Select(p => RefsFor(p, profileId)?.ProjectId)
+                        .FirstOrDefault(id => id.HasValue),
                 };
                 payload.Projects.Add(proj);
                 payload.RuleWeightsByProjectGuid[proj.Guid] = DefaultRuleWeights
@@ -97,6 +102,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 payload.TargetsByProjectGuid[proj.Guid] = new List<TsTarget>();
 
                 foreach (var plan in group.Value) {
+                    var refs = RefsFor(plan, profileId);
                     var target = plan.Target;
                     var raDeg = target?.CenterRaDeg ?? 0.0;
                     var decDeg = target?.CenterDecDeg ?? 0.0;
@@ -199,6 +205,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         }
                         planLabelByTargetGuid[targetGuid] = PlanLabel(plan);
 
+                        // ts_refs key panels as "row,col", both from 1.
+                        int pinnedTargetId;
+                        int? targetPin = refs != null && refs.TargetIdsByPanel.TryGetValue(
+                            $"{panel.Row + 1},{panel.Col + 1}", out pinnedTargetId)
+                            ? pinnedTargetId
+                            : (int?)null;
+
                         payload.TargetsByProjectGuid[proj.Guid].Add(new TsTarget {
                             ProjectId = 0,
                             Name = targetName,
@@ -207,6 +220,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             Ra = panel.RaDeg / 15.0,
                             Dec = panel.DecDeg,
                             Rotation = rotDeg,
+                            PinnedId = targetPin,
                         });
 
                         List<TsExposurePlan> planRows;
@@ -233,6 +247,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                                 (goal.Value?.ActualHours ?? 0.0) * 3600.0 / divisor,
                                 MidpointRounding.ToEven);
 
+                            // ts_refs key exposure plans as "<target id>_<filter>".
+                            int pinnedPlanId, pinnedTemplateId;
+                            int? planPin = targetPin.HasValue && refs.ExposurePlanIds.TryGetValue(
+                                $"{targetPin.Value}_{goal.Key}", out pinnedPlanId)
+                                ? pinnedPlanId
+                                : (int?)null;
+                            int? templatePin = refs != null && refs.TemplateIdsByFilter.TryGetValue(
+                                goal.Key, out pinnedTemplateId)
+                                ? pinnedTemplateId
+                                : (int?)null;
+
                             var planGuid = TsGuid.ExposurePlan(profileId, targetGuid, goal.Key);
                             planRows.Add(new TsExposurePlan {
                                 ProfileId = profileId,
@@ -243,6 +268,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                                 Desired = desired,
                                 Acquired = acquired,
                                 Accepted = acquired,
+                                PinnedId = planPin,
+                                PinnedTemplateId = templatePin,
                             });
                             payload.TemplateGuidByPlanGuid[planGuid] =
                                 TsGuid.Template(profileId, goal.Key, cameraId);
@@ -378,6 +405,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         }
 
         // -- Small helpers ---------------------------------------------------
+
+        /// The plan's ts_refs, or null when it has none or they were taken
+        /// under another NINA profile. Row Ids are only unique within one
+        /// database, and a profile's refs say nothing about another's rows.
+        public static TsPlanRefs RefsFor(Plan plan, string profileId) {
+            var block = plan?.TsRefs as Newtonsoft.Json.Linq.JObject;
+            if (block == null) return null;
+            var refsProfile = (string)(block["profile_id"] as Newtonsoft.Json.Linq.JValue);
+            if (!string.Equals(refsProfile, profileId, StringComparison.OrdinalIgnoreCase)) return null;
+            return TsPlanRefs.FromJson(plan.Id, profileId, block);
+        }
 
         private static CameraFilter FilterConfig(Camera camera, string filterName) {
             if (camera?.Filters == null) return null;

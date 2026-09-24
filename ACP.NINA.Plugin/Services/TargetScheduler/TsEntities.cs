@@ -22,6 +22,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// dedup key the upsert looks up on.
         public string Guid { get; set; }
 
+        /// The row Id the plan's ts_refs say this entity already is, if any.
+        /// TsUpsert checks the row is still there and still belongs where the
+        /// refs say, then updates it by Id before trying the guid or the name.
+        /// Not a column. Null on every entity built from a plan with no refs,
+        /// which leaves the write path exactly as the Python extension's.
+        public int? PinnedId { get; set; }
+
         /// Column names in the order the Python dataclass declares its fields.
         /// `Id` is deliberately absent so SQLite's autoincrement is left alone.
         public abstract IReadOnlyList<string> Columns { get; }
@@ -214,6 +221,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public int Acquired { get; set; }
         public int Accepted { get; set; }
         public int Enabled { get; set; } = 1;
+
+        /// The template Id the plan's ts_refs give for this filter, if any.
+        /// When set and still valid, the plan points at that template and the
+        /// template ACP would have built for the filter is not needed. Not a
+        /// column.
+        public int? PinnedTemplateId { get; set; }
 
         private static readonly string[] cols = {
             "profileId", "targetid", "exposureTemplateId", "guid", "exposure",

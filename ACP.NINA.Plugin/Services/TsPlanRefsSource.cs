@@ -89,35 +89,13 @@ namespace ACP.NINA.Plugin.Services {
                     continue;
                 }
 
-                var mapped = FromJson(plan.Id, profileId, refs);
+                var mapped = TsPlanRefs.FromJson(plan.Id, profileId, refs);
                 // A plan that has never been synced has no panels, and there is
                 // nothing to report against it.
                 if (mapped.TargetIdsByPanel.Count == 0) continue;
                 result.Add(mapped);
             }
             return result;
-        }
-
-        private static TsPlanRefs FromJson(string planId, string profileId, JObject refs) {
-            var mapped = new TsPlanRefs {
-                AcpPlanId = planId,
-                ProfileId = profileId,
-                ProjectId = refs?["project_id"]?.Type == JTokenType.Integer
-                    ? (int?)refs["project_id"]
-                    : null,
-            };
-            CopyInts(refs?["target_ids_by_panel"] as JObject, mapped.TargetIdsByPanel);
-            CopyInts(refs?["template_ids_by_filter"] as JObject, mapped.TemplateIdsByFilter);
-            CopyInts(refs?["exposure_plan_ids"] as JObject, mapped.ExposurePlanIds);
-            return mapped;
-        }
-
-        private static void CopyInts(JObject from, IDictionary<string, int> into) {
-            if (from == null) return;
-            foreach (var pair in from) {
-                if (pair.Value == null || pair.Value.Type != JTokenType.Integer) continue;
-                into[pair.Key] = (int)pair.Value;
-            }
         }
 
         private async Task<IReadOnlyList<Plan>> PlansAsync(CancellationToken ct) {
