@@ -26,7 +26,7 @@ namespace ACP.NINA.Plugin.Dockables {
     /// Main dockable panel for the ACP plugin. Lists plans fetched from ACP,
     /// shows the currently-selected plan's geometry, and exposes the v1.0
     /// action buttons: Push to Framing (Framing Wizard) and Sync All to TS
-    /// (POSTs to the private nina_ts_sync extension).
+    /// (every plan, through the plugin's own Target Scheduler writer).
     ///
     /// Iteration 4 (this file): wires real Framing push + TS sync. Plans
     /// list and connection probing came in iteration 3.
@@ -36,6 +36,7 @@ namespace ACP.NINA.Plugin.Dockables {
         private readonly IFramingAssistantVM framingAssistantVM;
         private readonly IAcpPlateSolver plateSolver;
         private readonly ISyncForTonightRunner syncRunner;
+        private readonly ITsPushService tsPush;
         private readonly AcpSettings settings;
 
         [ImportingConstructor]
@@ -44,12 +45,14 @@ namespace ACP.NINA.Plugin.Dockables {
             IFramingAssistantVM framingAssistantVM,
             IAcpPlateSolver plateSolver,
             ISyncForTonightRunner syncRunner,
+            ITsPushService tsPush,
             [Import(AllowDefault = true)] IMessageBroker messageBroker,
             [Import(AllowDefault = true)] ITsContainerWatch containerWatch
         ) : base(profileService) {
             this.framingAssistantVM = framingAssistantVM;
             this.plateSolver = plateSolver;
             this.syncRunner = syncRunner;
+            this.tsPush = tsPush;
             Title = "Astro Coverage Planner";
 
             var resourceDict = new ResourceDictionary();
@@ -720,17 +723,43 @@ namespace ACP.NINA.Plugin.Dockables {
                 }
             }
 
+            // Every plan, written by the plugin's own Target Scheduler writer.
+            // This used to ask ACP's nina-ts-sync extension to do the write,
+            // which only works when ACP runs on the NINA machine: anywhere else
+            // the route is missing (a 404) and the extension cannot reach this
+            // machine's database anyway. The plugin's writer is the same one
+            // Sync for tonight uses, so both buttons write the same rows and
+            // both map plan filters onto the wheel's names. No solve, no match
+            // and no profile write-back: that is Sync for tonight's job.
             try {
                 LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
 
-                var client = new AcpApiClient(settings.ServerUrl);
-                var resp = await client.SyncToTsAsync(profileId).ConfigureAwait(false);
+                var client = new AcpApiClient(AcpSettings.Load().ServerUrl);
+                var plans = (await client.GetPlansAsync().ConfigureAwait(false))?.Plans ?? new List<Plan>();
+                GearResponse gear = null;
+                try {
+                    gear = await client.GetGearAsync().ConfigureAwait(false);
+                } catch (AcpUnauthorizedException) {
+                    throw;
+                } catch (Exception ex) {
+                    // Without gear the rows still load, with no mosaic panels
+                    // and default exposure settings, as Sync for tonight does.
+                    Logger.Warning($"ACP: could not read gear for Sync All to TS: {ex.Message}");
+                }
+                var wheelFilters = profile.FilterWheelSettings?.FilterWheelFilters?
+                    .Select(f => f?.Name)
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .ToList();
+
+                var result = await tsPush
+                    .PushAsync(plans, gear, profileId, default, wheelFilters)
+                    .ConfigureAwait(false);
                 InvalidateProgressCaches();
 
                 Application.Current?.Dispatcher.Invoke(() => {
-                    LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");
+                    LastActionResult = (result.Success ? "✓ " : "✗ ") + result.Summary();
                 });
-                Logger.Info($"ACP: TS sync OK — {resp?.Report?.ToShortString()}");
+                Logger.Info($"ACP: Sync All to TS: {result.Summary()}");
             } catch (AcpUnauthorizedException ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = $"✗ {ex.Message}";
