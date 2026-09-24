@@ -373,7 +373,9 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Equal("Bearer tok-123", acp.Requests[2].Authorization);
 
                 Assert.True(outcome.Uploaded);
-                Assert.Equal("✓ main profile: 2 new, 5 updated, 1 needs a choice", outcome.Line);
+                Assert.Equal(
+                    "✓ main profile: 2 new, 5 updated, 1 needs a choice. Review and apply them in ACP before anything changes.",
+                    outcome.Line);
                 Assert.Equal(Base + ReviewPath, outcome.ReviewUrl);
                 Assert.True(outcome.CopyDeleted);
                 Assert.Empty(TempCopies(copies));
@@ -634,12 +636,37 @@ namespace ACP.NINA.Plugin.Tests {
                 "{\"state\": \"ready\", \"review_url\": \"/r\", \"counts\": {\"new\": 1, \"updated\": 0, \"conflicts\": 2}}");
             Assert.Equal(TsUploadStatus.Ready, s.State);
             Assert.Equal("/r", s.ReviewUrl);
-            Assert.Equal("main profile: 1 new, 0 updated, 2 need a choice", TsUploadService.ReadyLine("main profile", s));
+            // A zero category (updated, here) is left out of the line
+            // entirely rather than printed as "0 updated".
+            Assert.Equal(
+                "main profile: 1 new, 2 need a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("main profile", s));
 
             var bare = TsUploadStatus.Parse("{\"state\": \"ready\"}");
             Assert.False(bare.HasCounts);
-            Assert.Equal("main profile: ACP has read it. Open it in ACP to review.",
+            Assert.Equal("main profile: ACP has read it. Review it in ACP.",
                 TsUploadService.ReadyLine("main profile", bare));
+        }
+
+        [Fact]
+        public void ReadyLineNamesEveryNonZeroCategoryAndSaysWhenThereIsNothingToReview() {
+            var everything = TsUploadStatus.Parse(
+                "{\"state\": \"ready\", \"counts\": {\"new\": 32, \"updated\": 5, \"conflicts\": 46}}");
+            Assert.Equal(
+                "main profile: 32 new, 5 updated, 46 need a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("main profile", everything));
+
+            var onlyOneNeedingAChoice = TsUploadStatus.Parse(
+                "{\"state\": \"ready\", \"counts\": {\"new\": 0, \"updated\": 0, \"conflicts\": 1}}");
+            Assert.Equal(
+                "main profile: 1 needs a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("main profile", onlyOneNeedingAChoice));
+
+            var nothing = TsUploadStatus.Parse(
+                "{\"state\": \"ready\", \"counts\": {\"new\": 0, \"updated\": 0, \"conflicts\": 0}}");
+            Assert.Equal(
+                "main profile: ACP found nothing new or changed. Nothing to review.",
+                TsUploadService.ReadyLine("main profile", nothing));
         }
 
         /// IProgress that records synchronously, so the test sees every line

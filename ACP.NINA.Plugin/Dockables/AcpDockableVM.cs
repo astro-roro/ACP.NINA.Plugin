@@ -378,8 +378,8 @@ namespace ACP.NINA.Plugin.Dockables {
 
         private string reviewUrl;
 
-        /// The ACP review page for the last upload. The "Open in ACP" button
-        /// shows while this is set.
+        /// The ACP review page for the last upload. The "Review and apply
+        /// in ACP" button shows while this is set.
         public string ReviewUrl {
             get => reviewUrl;
             set {
