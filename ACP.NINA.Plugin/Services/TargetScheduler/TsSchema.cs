@@ -61,6 +61,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// project.createdate is the date the project was created. Rewriting it
         /// on every push makes it the date of the last push instead.
         ///
+        /// project.flatsHandling is whether Target Scheduler takes flats for a
+        /// project. ACP has no setting for it and TsConvert only ever wrote the
+        /// constructor default, which was 0 (flats off), so every sync reset a
+        /// project back to flats off even after Rohan turned them on in Target
+        /// Scheduler. The constructor default is now 1 (flats on), matching
+        /// what Rohan's own projects use, and a new project still gets that
+        /// default on insert.
+        ///
         /// exposuretemplate's moon, twilight, humidity and dither columns are
         /// tuning Rohan does in Target Scheduler's own screens. ACP has no
         /// settings for them and TsConvert only ever writes the constructor
@@ -75,7 +83,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "exposureplan", new HashSet<string>(
                     new[] { "acquired", "accepted" }, StringComparer.OrdinalIgnoreCase) },
                 { "project", new HashSet<string>(
-                    new[] { "createdate" }, StringComparer.OrdinalIgnoreCase) },
+                    new[] { "createdate", "flatsHandling" }, StringComparer.OrdinalIgnoreCase) },
                 { "exposuretemplate", new HashSet<string>(
                     new[] {
                         "twilightlevel", "minutesOffset", "maximumhumidity",
