@@ -13,6 +13,7 @@ Plans made or changed in a rig's Target Scheduler can go back into ACP. ACP show
 ### Fixed
 
 - **"Send TS to ACP" checks the token before it starts.** It used to copy the database and try the upload before finding out the token was missing or rejected. Now it stops at once with no stored token, and checks the token against ACP with a cheap call before copying anything. A missing token, a token ACP rejects, or a server with no token set all stop the send with a matching dock line, and no copy is made.
+- **The dock's buttons are a tidy 2x2 grid.** Sync for tonight, Sync All to TS, Push to Framing and Send TS to ACP are now four equal width, equal height buttons, so none is a cramped wide row or a lone full width one. "Open in ACP" moved out of the button row and sits as a small link beside the upload result line instead, so its text is never clipped at a narrow dock width.
 
 ### Notes
 
