@@ -26,7 +26,7 @@ namespace ACP.NINA.Plugin.Dockables {
     /// Main dockable panel for the ACP plugin. Lists plans fetched from ACP,
     /// shows the currently-selected plan's geometry, and exposes the v1.0
     /// action buttons: Push to Framing (Framing Wizard) and Sync All to TS
-    /// (POSTs to the private nina_ts_sync extension).
+    /// (every plan, through the plugin's own Target Scheduler writer).
     ///
     /// Iteration 4 (this file): wires real Framing push + TS sync. Plans
     /// list and connection probing came in iteration 3.
@@ -36,6 +36,7 @@ namespace ACP.NINA.Plugin.Dockables {
         private readonly IFramingAssistantVM framingAssistantVM;
         private readonly IAcpPlateSolver plateSolver;
         private readonly ISyncForTonightRunner syncRunner;
+        private readonly ITsPushService tsPush;
         private readonly AcpSettings settings;
 
         [ImportingConstructor]
@@ -44,12 +45,14 @@ namespace ACP.NINA.Plugin.Dockables {
             IFramingAssistantVM framingAssistantVM,
             IAcpPlateSolver plateSolver,
             ISyncForTonightRunner syncRunner,
+            ITsPushService tsPush,
             [Import(AllowDefault = true)] IMessageBroker messageBroker,
             [Import(AllowDefault = true)] ITsContainerWatch containerWatch
         ) : base(profileService) {
             this.framingAssistantVM = framingAssistantVM;
             this.plateSolver = plateSolver;
             this.syncRunner = syncRunner;
+            this.tsPush = tsPush;
             Title = "Astro Coverage Planner";
 
             var resourceDict = new ResourceDictionary();
@@ -69,11 +72,19 @@ namespace ACP.NINA.Plugin.Dockables {
             );
             SyncAllToTsCommand = new RelayCommand(
                 async () => await SyncAllToTsAsync(),
-                () => IsConnected && Plans.Count > 0
+                () => IsConnected && Plans.Count > 0 && !IsSyncingAllToTs && !IsSendingTs
             );
             SyncForTonightCommand = new RelayCommand(
                 async () => await SyncForTonightAsync(),
-                () => IsConnected && !IsSyncingForTonight
+                () => IsConnected && !IsSyncingForTonight && !IsSendingTs
+            );
+            SendTsToAcpCommand = new RelayCommand(
+                async () => await SendTsToAcpAsync(),
+                () => IsConnected && !IsSyncingForTonight && !IsSyncingAllToTs && !IsSendingTs
+            );
+            OpenReviewCommand = new RelayCommand(
+                OpenReview,
+                () => !string.IsNullOrWhiteSpace(ReviewUrl)
             );
 
             // The label under the sync button names the profile the sync will
@@ -250,6 +261,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 RaisePropertyChanged(nameof(IsConnected));
                 ((RelayCommand)PushToFramingCommand).NotifyCanExecuteChanged();
                 ((RelayCommand)SyncAllToTsCommand).NotifyCanExecuteChanged();
+                ((RelayCommand)SendTsToAcpCommand).NotifyCanExecuteChanged();
             }
         }
 
@@ -315,6 +327,17 @@ namespace ACP.NINA.Plugin.Dockables {
         public ICommand PushToFramingCommand { get; }
         public ICommand SyncAllToTsCommand { get; }
         public ICommand SyncForTonightCommand { get; }
+        public ICommand SendTsToAcpCommand { get; }
+        public ICommand OpenReviewCommand { get; }
+
+        /// The three actions that touch TS each block the others while they
+        /// run, so their progress and results cannot overwrite each other on
+        /// the one result line.
+        private void NotifyActionCommands() {
+            ((RelayCommand)SyncForTonightCommand).NotifyCanExecuteChanged();
+            ((RelayCommand)SyncAllToTsCommand).NotifyCanExecuteChanged();
+            ((RelayCommand)SendTsToAcpCommand).NotifyCanExecuteChanged();
+        }
 
         // -- Action: Sync for tonight ------------------------------------------
 
@@ -325,7 +348,118 @@ namespace ACP.NINA.Plugin.Dockables {
             set {
                 isSyncingForTonight = value;
                 RaisePropertyChanged(nameof(IsSyncingForTonight));
-                ((RelayCommand)SyncForTonightCommand).NotifyCanExecuteChanged();
+                NotifyActionCommands();
+            }
+        }
+
+        private bool isSyncingAllToTs;
+
+        public bool IsSyncingAllToTs {
+            get => isSyncingAllToTs;
+            set {
+                isSyncingAllToTs = value;
+                RaisePropertyChanged(nameof(IsSyncingAllToTs));
+                NotifyActionCommands();
+            }
+        }
+
+        // -- Action: Send TS to ACP --------------------------------------------
+
+        private bool isSendingTs;
+
+        public bool IsSendingTs {
+            get => isSendingTs;
+            set {
+                isSendingTs = value;
+                RaisePropertyChanged(nameof(IsSendingTs));
+                NotifyActionCommands();
+            }
+        }
+
+        private string reviewUrl;
+
+        /// The ACP review page for the last upload. The "Open in ACP" button
+        /// shows while this is set.
+        public string ReviewUrl {
+            get => reviewUrl;
+            set {
+                reviewUrl = value;
+                RaisePropertyChanged(nameof(ReviewUrl));
+                RaisePropertyChanged(nameof(HasReviewUrl));
+                ((RelayCommand)OpenReviewCommand).NotifyCanExecuteChanged();
+            }
+        }
+
+        public bool HasReviewUrl => !string.IsNullOrWhiteSpace(ReviewUrl);
+
+        /// Copy Target Scheduler's database, send it to ACP, and wait for ACP
+        /// to say what would change. Writes nothing on the rig, so it asks for
+        /// no confirmation. Spec: ts-upload-import.md, Part A.
+        private async Task SendTsToAcpAsync() {
+            if (IsSendingTs) return;
+            var profile = profileService?.ActiveProfile;
+            if (profile == null) {
+                LastActionResult = "✗ No active NINA profile, so there is nothing to send.";
+                return;
+            }
+            IsSendingTs = true;
+            ReviewUrl = null;
+            try {
+                var profiles = new List<TsUploadProfile>();
+                try {
+                    var all = profileService.Profiles;
+                    if (all != null) {
+                        foreach (var p in all) {
+                            if (p == null) continue;
+                            profiles.Add(new TsUploadProfile { Id = p.Id.ToString(), Name = p.Name });
+                        }
+                    }
+                } catch (Exception ex) {
+                    Logger.Warning($"ACP: could not list NINA profiles for the upload: {ex.Message}");
+                }
+                var activeId = profile.Id.ToString();
+                if (!profiles.Any(p => string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase))) {
+                    profiles.Add(new TsUploadProfile { Id = activeId, Name = profile.Name });
+                }
+
+                // Progress lines are posted to the UI thread and can still be
+                // queued when the result arrives. Once the result is shown,
+                // a late one is dropped rather than written over it.
+                var finished = false;
+                var status = new Progress<string>(line => {
+                    if (!finished) LastActionResult = line;
+                });
+                var service = new TsUploadService(new AcpApiClient(AcpSettings.Load().ServerUrl));
+                var outcome = await service
+                    .SendAsync(activeId, profile.Name, profiles, status, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                Application.Current?.Dispatcher.Invoke(() => {
+                    finished = true;
+                    ReviewUrl = outcome.ReviewUrl;
+                    LastActionResult = outcome.Line;
+                });
+                Logger.Info($"ACP: Send TS to ACP: {outcome.Line}");
+            } catch (Exception ex) {
+                SetResultOnUi($"✗ Send TS to ACP failed: {ex.Message}");
+                Logger.Error($"ACP: Send TS to ACP failed: {ex}");
+            } finally {
+                Application.Current?.Dispatcher.Invoke(() => IsSendingTs = false);
+            }
+        }
+
+        /// Open the review page in the default browser. The URL has already
+        /// been pinned to the configured ACP server by AcpApiClient.Resolve.
+        private void OpenReview() {
+            var url = ReviewUrl;
+            if (string.IsNullOrWhiteSpace(url)) return;
+            try {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) {
+                    UseShellExecute = true,
+                });
+            } catch (Exception ex) {
+                LastActionResult = $"Could not open the browser. The review page is {url}";
+                Logger.Warning($"ACP: could not open {url}: {ex.Message}");
             }
         }
 
@@ -720,17 +854,55 @@ namespace ACP.NINA.Plugin.Dockables {
                 }
             }
 
+            // Every plan, written by the plugin's own Target Scheduler writer.
+            // This used to ask ACP's nina-ts-sync extension to do the write,
+            // which only works when ACP runs on the NINA machine: anywhere else
+            // the route is missing (a 404) and the extension cannot reach this
+            // machine's database anyway. The plugin's writer is the same one
+            // Sync for tonight uses, so both buttons write the same rows and
+            // both map plan filters onto the wheel's names. No solve, no match
+            // and no profile write-back: that is Sync for tonight's job.
+            if (IsSyncingAllToTs) return;
+            IsSyncingAllToTs = true;
             try {
                 LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
 
-                var client = new AcpApiClient(settings.ServerUrl);
-                var resp = await client.SyncToTsAsync(profileId).ConfigureAwait(false);
+                var client = new AcpApiClient(AcpSettings.Load().ServerUrl);
+                var plans = (await client.GetPlansAsync().ConfigureAwait(false))?.Plans ?? new List<Plan>();
+                GearResponse gear = null;
+                try {
+                    gear = await client.GetGearAsync().ConfigureAwait(false);
+                } catch (AcpUnauthorizedException) {
+                    throw;
+                } catch (Exception ex) {
+                    // Without gear the rows still load, with no mosaic panels
+                    // and default exposure settings, as Sync for tonight does.
+                    Logger.Warning($"ACP: could not read gear for Sync All to TS: {ex.Message}");
+                }
+                var wheelFilters = profile.FilterWheelSettings?.FilterWheelFilters?
+                    .Select(f => f?.Name)
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .ToList();
+
+                var result = await tsPush
+                    .PushAsync(plans, gear, profileId, default, wheelFilters)
+                    .ConfigureAwait(false);
                 InvalidateProgressCaches();
 
+                // Tell ACP what was written. A failure costs a warning, not
+                // the sync.
+                string linksWarning = null;
+                if (result.Success) {
+                    linksWarning = await TsLinksReporter.PostAsync(client, result, profileId)
+                        .ConfigureAwait(false);
+                }
+                var line = (result.Success ? "✓ " : "✗ ") + result.Summary() +
+                           (linksWarning == null ? string.Empty : " " + linksWarning);
+
                 Application.Current?.Dispatcher.Invoke(() => {
-                    LastActionResult = "✓ " + (resp?.Report?.ToShortString() ?? "Sync complete.");
+                    LastActionResult = line;
                 });
-                Logger.Info($"ACP: TS sync OK — {resp?.Report?.ToShortString()}");
+                Logger.Info($"ACP: Sync All to TS: {line}");
             } catch (AcpUnauthorizedException ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = $"✗ {ex.Message}";
@@ -741,6 +913,8 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = $"✗ TS sync failed: {ex.Message}";
                 });
                 Logger.Error($"ACP: TS sync failed: {ex}");
+            } finally {
+                Application.Current?.Dispatcher.Invoke(() => IsSyncingAllToTs = false);
             }
         }
     }

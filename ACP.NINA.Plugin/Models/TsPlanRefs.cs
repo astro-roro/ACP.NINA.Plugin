@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 
@@ -37,5 +38,30 @@ namespace ACP.NINA.Plugin.Models {
         /// the Python extension uses.
         public Dictionary<string, int> ExposurePlanIds { get; set; }
             = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        /// Read a ts_refs block. Anything that is not an integer where an Id
+        /// should be is skipped rather than thrown on, so one odd entry costs
+        /// that entry and nothing else.
+        public static TsPlanRefs FromJson(string planId, string profileId, JObject refs) {
+            var mapped = new TsPlanRefs {
+                AcpPlanId = planId,
+                ProfileId = profileId,
+                ProjectId = refs?["project_id"]?.Type == JTokenType.Integer
+                    ? (int?)refs["project_id"]
+                    : null,
+            };
+            CopyInts(refs?["target_ids_by_panel"] as JObject, mapped.TargetIdsByPanel);
+            CopyInts(refs?["template_ids_by_filter"] as JObject, mapped.TemplateIdsByFilter);
+            CopyInts(refs?["exposure_plan_ids"] as JObject, mapped.ExposurePlanIds);
+            return mapped;
+        }
+
+        private static void CopyInts(JObject from, IDictionary<string, int> into) {
+            if (from == null) return;
+            foreach (var pair in from) {
+                if (pair.Value == null || pair.Value.Type != JTokenType.Integer) continue;
+                into[pair.Key] = (int)pair.Value;
+            }
+        }
     }
 }

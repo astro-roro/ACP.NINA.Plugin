@@ -78,6 +78,38 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return columns.Where(c => !skip.Contains(c)).ToList();
         }
 
+        /// The only columns written to a row found through a plan's ts_refs.
+        ///
+        /// A row found that way was usually made by hand in Target Scheduler
+        /// and imported into ACP. ACP holds a value for every other column only
+        /// because the entity classes carry Target Scheduler's defaults, so
+        /// writing them would switch the grader off, clear the description,
+        /// reset a target's epoch and reactivate a project the user parked.
+        /// These are the fields ACP actually edits. The guid is never written
+        /// either: the row keeps the identity Target Scheduler gave it.
+        ///
+        /// Templates are absent on purpose. A template found through ts_refs is
+        /// shared with whatever else uses it, so it is pointed at, never
+        /// rewritten.
+        private static readonly Dictionary<string, HashSet<string>> pinnedUpdateColumns =
+            new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
+                { "project", new HashSet<string>(
+                    new[] { "name", "priority", "minimumaltitude", "meridianwindow" },
+                    StringComparer.OrdinalIgnoreCase) },
+                { "target", new HashSet<string>(
+                    new[] { "name", "ra", "dec", "rotation" }, StringComparer.OrdinalIgnoreCase) },
+                { "exposureplan", new HashSet<string>(
+                    new[] { "exposure", "desired" }, StringComparer.OrdinalIgnoreCase) },
+            };
+
+        /// Narrow `columns` to the ones a ts_refs update may write, order
+        /// preserved. Empty for a table with no entry.
+        public static List<string> ColumnsForPinnedUpdate(string table, IEnumerable<string> columns) {
+            HashSet<string> keep;
+            if (!pinnedUpdateColumns.TryGetValue(table, out keep)) return new List<string>();
+            return columns.Where(keep.Contains).ToList();
+        }
+
         /// The message shape the Python extension raises, word for word, so a
         /// user who has seen one tool refuse recognises the other.
         public static string UnsupportedMessage(int found) {
