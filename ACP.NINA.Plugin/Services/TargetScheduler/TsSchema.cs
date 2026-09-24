@@ -61,14 +61,28 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// project.createdate is the date the project was created. Rewriting it
         /// on every push makes it the date of the last push instead.
         ///
-        /// Everything else the push writes is still overwritten on update. That
-        /// is a wider question about settings columns, deliberately left open.
+        /// exposuretemplate's moon, twilight, humidity and dither columns are
+        /// tuning Rohan does in Target Scheduler's own screens. ACP has no
+        /// settings for them and TsConvert only ever writes the constructor
+        /// defaults, so leaving them updatable meant every sync reset his
+        /// tuning to those defaults. The rule: ACP owns the columns it has
+        /// settings for (profileId, name, filtername, guid, defaultexposure,
+        /// gain, offset, bin, readoutmode) and those still update on every
+        /// sync. Target Scheduler owns the rest, and a new template still gets
+        /// the defaults on insert.
         private static readonly Dictionary<string, HashSet<string>> insertOnlyColumns =
             new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
                 { "exposureplan", new HashSet<string>(
                     new[] { "acquired", "accepted" }, StringComparer.OrdinalIgnoreCase) },
                 { "project", new HashSet<string>(
                     new[] { "createdate" }, StringComparer.OrdinalIgnoreCase) },
+                { "exposuretemplate", new HashSet<string>(
+                    new[] {
+                        "twilightlevel", "minutesOffset", "maximumhumidity",
+                        "moonavoidanceenabled", "moonavoidanceseparation",
+                        "moonavoidancewidth", "moonrelaxscale", "moonrelaxmaxaltitude",
+                        "moonrelaxminaltitude", "moondownenabled", "ditherevery",
+                    }, StringComparer.OrdinalIgnoreCase) },
             };
 
         /// Drop the insert-only columns from `columns`, order preserved.
