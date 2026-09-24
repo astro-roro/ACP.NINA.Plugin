@@ -111,7 +111,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public long? ActiveDate { get; set; }
         public long? InactiveDate { get; set; }
         public int IsMosaic { get; set; }
-        public int FlatsHandling { get; set; }
+        /// 1 = flats on, matching the default Rohan's own projects use.
+        public int FlatsHandling { get; set; } = 1;
         public int MinimumTime { get; set; }
         public double MinimumAltitude { get; set; }
         /// The column really does use a capital A from v23 onwards.
