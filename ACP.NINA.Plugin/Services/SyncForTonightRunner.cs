@@ -175,8 +175,15 @@ namespace ACP.NINA.Plugin.Services {
             }
 
             var profileId = profileService?.ActiveProfile?.Id.ToString();
+            // Slot names from the profile rather than the wheel, so a daytime
+            // sync with nothing connected still writes names Target Scheduler
+            // can match.
+            var wheelFilters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters?
+                .Select(f => f?.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .ToList();
             outcome.TsPush = await tsPush
-                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token)
+                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token, wheelFilters)
                 .ConfigureAwait(false);
             outcome.Lines.Add(outcome.TsPush.Summary());
 

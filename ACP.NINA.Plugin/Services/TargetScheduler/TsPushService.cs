@@ -38,6 +38,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// How many attempts it took, which is 1 unless the database was locked.
         public int Attempts { get; set; } = 1;
 
+        /// Plan filter names written under the wheel's spelling, plan name to slot.
+        public SortedDictionary<string, string> FilterRenames { get; } =
+            new SortedDictionary<string, string>(StringComparer.Ordinal);
+
+        /// Plan filter names the wheel has no slot for.
+        public List<string> FiltersNotOnWheel { get; } = new List<string>();
+
         /// The line the spec asks for: N plans synced, M left out and why.
         public string Summary() {
             if (!Success) return Failure ?? "The Target Scheduler sync did not run.";
@@ -52,6 +59,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (Attempts > 1) {
                 line += $" The database was locked, so it took {Attempts} attempts.";
             }
+            if (FilterRenames.Count > 0) {
+                var pairs = string.Join(", ", FilterRenames.Select(kv => $"{kv.Key} as {kv.Value}"));
+                line += $" Filters written under the wheel's names: {pairs}.";
+            }
+            if (FiltersNotOnWheel.Count > 0) {
+                line += $" The filter wheel has no slot for {string.Join(", ", FiltersNotOnWheel)}, " +
+                        "so Target Scheduler will not run those exposures.";
+            }
             return line;
         }
     }
@@ -64,11 +79,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Never writes while a Target Scheduler container is running, takes a
         /// backup before the first write, and refuses a schema version outside
         /// the supported range before touching a row.
+        ///
+        /// `wheelFilters` are the profile's filter wheel slot names. When given,
+        /// templates are written under those names; see TsConvert.BuildPayload.
         Task<TsPushResult> PushAsync(
             IReadOnlyList<Plan> plans,
             GearResponse gear,
             string profileId,
-            CancellationToken token = default
+            CancellationToken token = default,
+            IReadOnlyList<string> wheelFilters = null
         );
     }
 
@@ -113,7 +132,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             IReadOnlyList<Plan> plans,
             GearResponse gear,
             string profileId,
-            CancellationToken token = default
+            CancellationToken token = default,
+            IReadOnlyList<string> wheelFilters = null
         ) {
             var result = new TsPushResult();
             plans = plans ?? new List<Plan>();
@@ -176,7 +196,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                 TsSyncPayload payload;
                 try {
-                    payload = TsConvert.BuildPayload(plans, gear, profileId, clock());
+                    payload = TsConvert.BuildPayload(plans, gear, profileId, clock(), wheelFilters);
+                    foreach (var kv in payload.FilterRenames) result.FilterRenames[kv.Key] = kv.Value;
+                    result.FiltersNotOnWheel.AddRange(payload.FiltersNotOnWheel);
                 } catch (TsPushValidationException ex) {
                     // A plan that cannot be identified. The message says what to
                     // rename, and nothing was written.
