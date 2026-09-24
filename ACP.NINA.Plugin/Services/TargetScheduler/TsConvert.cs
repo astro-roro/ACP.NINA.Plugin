@@ -38,11 +38,20 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// `createDateUnix` is passed in rather than read from the clock so a
         /// test can compare its rows to the ones the Python extension writes
         /// under a frozen clock.
+        ///
+        /// `wheelFilters` are the slot names in the NINA profile's filter wheel.
+        /// When given, each template's filter name is written under the wheel's
+        /// spelling (see TsFilterNames), because Target Scheduler matches by
+        /// exact name. Identity is left alone: the template guid still comes
+        /// from the plan's own filter name, so a re-push updates the same rows
+        /// and the Python extension still finds them. Null keeps the plan's
+        /// names as they are, which is what the Python extension does.
         public static TsSyncPayload BuildPayload(
             IEnumerable<Plan> plans,
             GearResponse gear,
             string profileId,
-            long createDateUnix
+            long createDateUnix,
+            IReadOnlyList<string> wheelFilters = null
         ) {
             var payload = new TsSyncPayload { ProfileId = profileId };
             var planList = (plans ?? Enumerable.Empty<Plan>()).Where(p => p != null).ToList();
@@ -124,10 +133,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             ? filterCfg.TsTemplateName
                             : (camera != null ? $"{goal.Key} ({camera.Name})" : goal.Key);
 
+                        var filterName = goal.Key;
+                        if (wheelFilters != null && wheelFilters.Count > 0) {
+                            var slot = TsFilterNames.ResolveToWheel(goal.Key, wheelFilters);
+                            if (slot == null) {
+                                payload.FiltersNotOnWheel.Add(goal.Key);
+                            } else if (!string.Equals(slot, goal.Key, StringComparison.Ordinal)) {
+                                payload.FilterRenames[goal.Key] = slot;
+                                filterName = slot;
+                            }
+                        }
+
                         payload.Templates.Add(new TsExposureTemplate {
                             ProfileId = profileId,
                             Name = templateName,
-                            FilterName = goal.Key,
+                            FilterName = filterName,
                             Guid = templateGuid,
                             DefaultExposure = FirstTruthy(
                                 filterCfg?.DefaultSubS, goal.Value?.SubExposureS, 300.0),

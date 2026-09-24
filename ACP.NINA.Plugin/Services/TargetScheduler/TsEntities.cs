@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace ACP.NINA.Plugin.Services.TargetScheduler {
@@ -257,6 +258,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public string ProfileId { get; set; }
 
         public List<TsExposureTemplate> Templates { get; } = new List<TsExposureTemplate>();
+
+        /// Plan filter names that were written under the wheel's own spelling,
+        /// for example "OIII" written as "O". Empty when no wheel names were
+        /// given or every plan already used them.
+        public SortedDictionary<string, string> FilterRenames { get; } =
+            new SortedDictionary<string, string>(StringComparer.Ordinal);
+
+        /// Plan filter names with no matching slot on the wheel. They are
+        /// written as they are, and Target Scheduler will not run them.
+        public SortedSet<string> FiltersNotOnWheel { get; } =
+            new SortedSet<string>(StringComparer.Ordinal);
 
         public List<TsProject> Projects { get; } = new List<TsProject>();
 
