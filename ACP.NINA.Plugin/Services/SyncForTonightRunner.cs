@@ -34,6 +34,9 @@ namespace ACP.NINA.Plugin.Services {
         /// the spec says the dock has to say out loud.
         public bool SolveWasReused { get; set; }
 
+        /// Set when the push worked but ACP could not be told about it.
+        public string LinksWarning { get; set; }
+
         /// The lines to report, in order. The sequencer log writes them one per
         /// line; the dock joins them.
         public List<string> Lines { get; set; } = new List<string>();
@@ -59,7 +62,8 @@ namespace ACP.NINA.Plugin.Services {
                     ? "profile focal length unchanged"
                     : $"focal length {WriteBack.OldFocalLengthMm:F1} to {WriteBack.NewFocalLengthMm:F1} mm";
 
-                return $"{loaded}, {focal}.";
+                var line = $"{loaded}, {focal}.";
+                return LinksWarning == null ? line : $"{line} {LinksWarning}";
             }
         }
     }
@@ -189,6 +193,16 @@ namespace ACP.NINA.Plugin.Services {
 
             if (outcome.TsPush.Success && !string.IsNullOrEmpty(outcome.TsPush.BackupPath)) {
                 outcome.Lines.Add($"The database was copied to {outcome.TsPush.BackupPath} first.");
+            }
+
+            // Tell ACP what was written, so its record of this rig's last sync
+            // is current. A failure is a warning on the result, never a failed
+            // run.
+            if (outcome.TsPush.Success) {
+                outcome.LinksWarning = await TsLinksReporter
+                    .PostAsync(client, outcome.TsPush, profileId, token)
+                    .ConfigureAwait(false);
+                if (outcome.LinksWarning != null) outcome.Lines.Add(outcome.LinksWarning);
             }
 
             // A push that did not run is not a failed night: the fingerprint is

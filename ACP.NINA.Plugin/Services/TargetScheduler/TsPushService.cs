@@ -27,6 +27,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Plans that produced at least one exposure plan row.
         public List<string> Pushed { get; } = new List<string>();
 
+        /// The ACP ids of the plans in Pushed. Only these get a link posted
+        /// back to ACP: a plan left out has no rows on this rig, and a link
+        /// would put it in this rig's scope for the next upload.
+        public HashSet<string> PushedPlanIds { get; } = new HashSet<string>(StringComparer.Ordinal);
+
         /// Plans the push itself could not use, and why, keyed by plan name.
         public List<string> LeftOut { get; } = new List<string>();
 
@@ -296,8 +301,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     .SelectMany(kv => kv.Value)
                     .Any(t => targetsWithPlans.Contains(t.Guid) && BelongsTo(t.Name, plan));
 
-                if (reached) result.Pushed.Add(name);
-                else result.LeftOut.Add($"{name} (nothing to write for it)");
+                if (reached) {
+                    result.Pushed.Add(name);
+                    if (!string.IsNullOrWhiteSpace(plan.Id)) result.PushedPlanIds.Add(plan.Id);
+                } else result.LeftOut.Add($"{name} (nothing to write for it)");
             }
         }
 

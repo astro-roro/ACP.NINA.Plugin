@@ -12,9 +12,10 @@ namespace ACP.NINA.Plugin.Services {
     /// Works out which Target Scheduler rows belong to which ACP plan, by
     /// recomputing the deterministic guids rather than remembering anything.
     ///
-    /// Why not read a stored mapping: the v3.1 push builds exactly this in
-    /// TsPushResult.PlanStates and then drops it on the floor, because nothing
-    /// persists it yet. Rather than add a state file that can go stale, get
+    /// Why not read a stored mapping: the push builds exactly this in
+    /// TsPushResult.PlanStates and posts it to ACP's POST /links, but ACP may
+    /// not have it (an older extension, a failed post, rows written from
+    /// another machine). Rather than add a state file that can go stale, get
     /// out of step with the database, or simply not exist yet on a machine
     /// that has only ever synced from the Python extension, this recomputes
     /// the mapping from the two things that are always true: what plans ACP

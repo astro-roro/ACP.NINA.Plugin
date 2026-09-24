@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased: Send TS to ACP
+
+Plans made or changed in a rig's Target Scheduler can go back into ACP. ACP shows what would change and nothing changes until Apply is pressed there.
+
+### Added
+
+- **"Send TS to ACP" in the dock.** It copies Target Scheduler's database with SQLite's backup API, so committed rows still in the WAL file come along and row ids stay the same, then uploads the copy to `POST /api/ext/nina-ts-sync/import/uploads` with the stored token. The dock shows copying, the upload percentage, then ACP's counts ("Voyager main: 2 new, 5 updated, 1 needs a choice") and an "Open in ACP" button for the review page. The copy is deleted whether the upload worked or not. Nothing on the rig is written.
+- **Push state goes back to ACP after every sync.** After Sync for tonight or Sync All to TS, the plugin posts each pushed plan's TS row ids and snapshot to `POST /api/ext/nina-ts-sync/links`, so ACP's record of this rig's last sync is current and the next upload does not report conflicts that are not real. If that post fails, the sync still counts and the dock says ACP was not told.
+- **Per-rig links are read first.** The writer finds a plan's TS rows through `ts_links[<profile>]` before falling back to `ts_refs`, so a plan used on two rigs keeps each rig's rows.
+
+### Notes
+
+- The upload sends the whole database file for now. Sending just the rows as JSON is a planned clean-up.
+
 ## 3.2.0 (unreleased)
 
 ACP finds out what tonight actually acquired, while it is being acquired.
