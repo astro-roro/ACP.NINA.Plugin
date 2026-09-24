@@ -50,6 +50,14 @@ namespace ACP.NINA.Plugin.Models {
         /// plan list. TsConvert reads it; see TsPlanRefs.FromJson.
         [JsonProperty("ts_refs")]
         public JToken TsRefs { get; set; }
+
+        /// One link per NINA profile, keyed by the profile GUID. Each holds the
+        /// machine it was made from, the refs in the same shape as ts_refs, the
+        /// base snapshot, and when it was written. ACP writes these on an
+        /// upload apply and when the plugin posts its push state back. Raw JSON
+        /// for the same reason as ts_refs. TsConvert.RefsFor reads it first.
+        [JsonProperty("ts_links")]
+        public JToken TsLinks { get; set; }
     }
 
     public class PlanTarget {

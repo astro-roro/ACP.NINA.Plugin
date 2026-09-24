@@ -406,10 +406,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         // -- Small helpers ---------------------------------------------------
 
-        /// The plan's ts_refs, or null when it has none or they were taken
-        /// under another NINA profile. Row Ids are only unique within one
-        /// database, and a profile's refs say nothing about another's rows.
+        /// The plan's refs for this profile, or null when it has none. Row Ids
+        /// are only unique within one database, and a profile's refs say
+        /// nothing about another's rows.
+        ///
+        /// The per-profile link in ts_links wins. ts_refs is the fallback,
+        /// used only when its profile_id is this profile, which is what a plan
+        /// last synced before ts_links existed still carries.
         public static TsPlanRefs RefsFor(Plan plan, string profileId) {
+            var links = plan?.TsLinks as Newtonsoft.Json.Linq.JObject;
+            if (links != null && !string.IsNullOrWhiteSpace(profileId)) {
+                foreach (var pair in links) {
+                    if (!string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                    var linkRefs = (pair.Value as Newtonsoft.Json.Linq.JObject)?["refs"]
+                        as Newtonsoft.Json.Linq.JObject;
+                    if (linkRefs != null) return TsPlanRefs.FromJson(plan.Id, profileId, linkRefs);
+                }
+            }
+
             var block = plan?.TsRefs as Newtonsoft.Json.Linq.JObject;
             if (block == null) return null;
             var refsProfile = (string)(block["profile_id"] as Newtonsoft.Json.Linq.JValue);

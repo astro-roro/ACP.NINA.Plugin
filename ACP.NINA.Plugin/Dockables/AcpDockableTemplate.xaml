@@ -140,6 +140,25 @@
                             Command="{Binding SyncAllToTsCommand}"
                             Content="Sync All to TS" />
                 </Grid>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0"
+                            Height="32"
+                            Command="{Binding SendTsToAcpCommand}"
+                            Content="Send TS to ACP"
+                            ToolTip="Sends a read-only copy of Target Scheduler's database to ACP. ACP shows what would change before anything does. Nothing in TS changes." />
+                    <Button Grid.Column="1"
+                            Height="32"
+                            Margin="6,0,0,0"
+                            Padding="10,0"
+                            Command="{Binding OpenReviewCommand}"
+                            Content="Open in ACP"
+                            ToolTip="Opens ACP's review page for this upload in your browser. Nothing changes in ACP until you press Apply there."
+                            Visibility="{Binding HasReviewUrl, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
+                </Grid>
                 <Button Margin="0,6,0,0"
                         Height="32"
                         Command="{Binding SyncForTonightCommand}"
