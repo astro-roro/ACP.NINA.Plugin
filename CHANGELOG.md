@@ -25,6 +25,10 @@ ACP finds out what tonight actually acquired, while it is being acquired.
 - **"Report progress to ACP while imaging"** on the options page, on by default. Turning it off is honest about the cost: the Target Scheduler sync writes ACP's view of the counts back into Target Scheduler, so hours that go stale in ACP can walk the real counts backwards on a later sync.
 - **A dock footer line** reading "Progress sent 22 s ago", or the last error when there is one.
 
+### Fixed
+
+- **A sync no longer resets the moon, twilight, humidity and dither tuning on an exposure template.** Those columns belong to Target Scheduler's own screens, and the plugin used to overwrite them with its constructor defaults on every push. ACP still owns and updates profileId, name, filtername, guid, defaultexposure, gain, offset, bin and readoutmode. A new template still gets the current defaults on insert.
+
 ### Notes
 
 - Hours only ever go up. ACP refuses to lower a stored `actual_hours` unless it is told to force it, and this plugin never asks it to: a count that goes backwards in Target Scheduler is a culled frame or a reset project, and rewinding a plan someone has watched fill up is worse than being one session stale.
