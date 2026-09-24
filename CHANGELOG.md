@@ -10,6 +10,10 @@ Plans made or changed in a rig's Target Scheduler can go back into ACP. ACP show
 - **Push state goes back to ACP after every sync.** After Sync for tonight or Sync All to TS, the plugin posts each pushed plan's TS row ids and snapshot to `POST /api/ext/nina-ts-sync/links`, so ACP's record of this rig's last sync is current and the next upload does not report conflicts that are not real. If that post fails, the sync still counts and the dock says ACP was not told.
 - **Per-rig links are read first.** The writer finds a plan's TS rows through `ts_links[<profile>]` before falling back to `ts_refs`, so a plan used on two rigs keeps each rig's rows.
 
+### Fixed
+
+- **"Send TS to ACP" checks the token before it starts.** It used to copy the database and try the upload before finding out the token was missing or rejected. Now it stops at once with no stored token, and checks the token against ACP with a cheap call before copying anything. A missing token, a token ACP rejects, or a server with no token set all stop the send with a matching dock line, and no copy is made.
+
 ### Notes
 
 - The upload sends the whole database file for now. Sending just the rows as JSON is a planned clean-up.
