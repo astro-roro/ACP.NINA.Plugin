@@ -42,13 +42,24 @@ namespace ACP.NINA.Plugin.Services {
 
         public const string InterruptedLine = "✗ Upload interrupted. Nothing changed in ACP. Try again.";
 
+        public const string NoTokenLine =
+            "✗ No ACP token is set. Add one on the ACP plugin's Options page.";
+
         private readonly AcpApiClient client;
         private readonly Func<TimeSpan, CancellationToken, Task> delay;
+        private readonly Func<bool> hasToken;
 
-        /// `delay` is the test seam for the two second poll.
-        public TsUploadService(AcpApiClient client, Func<TimeSpan, CancellationToken, Task> delay = null) {
+        /// `delay` is the test seam for the two second poll. `hasToken` is the
+        /// test seam for the stored-token check: it defaults to Credential
+        /// Manager through TokenStore, which a test would rather not touch.
+        public TsUploadService(
+            AcpApiClient client,
+            Func<TimeSpan, CancellationToken, Task> delay = null,
+            Func<bool> hasToken = null
+        ) {
             this.client = client ?? throw new ArgumentNullException(nameof(client));
             this.delay = delay ?? ((t, ct) => Task.Delay(t, ct));
+            this.hasToken = hasToken ?? TokenStore.HasToken;
         }
 
         /// Where the database is. Null means the usual install path.
@@ -73,6 +84,38 @@ namespace ACP.NINA.Plugin.Services {
                 outcome.Line = "✗ No active NINA profile, so there is nothing to send.";
                 outcome.CopyDeleted = true;
                 return outcome;
+            }
+
+            // Nothing is copied or sent until ACP is known to accept it. A
+            // missing token never leaves the plugin, and a token ACP has
+            // already rejected never triggers a copy of the database either.
+            if (!hasToken()) {
+                outcome.Line = NoTokenLine;
+                outcome.CopyDeleted = true;
+                return outcome;
+            }
+
+            status?.Report($"Sending profile {label}: checking the ACP token...");
+            try {
+                await client.GetVersionAsync(ct).ConfigureAwait(false);
+            } catch (AcpUnauthorizedException ex) {
+                // ACP rejected the token itself (401).
+                outcome.Line = "✗ " + ex.Message;
+                outcome.CopyDeleted = true;
+                return outcome;
+            } catch (AcpHttpException ex) when (ex.Status == HttpStatusCode.Forbidden) {
+                // ACP's own server has no token configured (403).
+                outcome.Line = "✗ " + DescribeRefusal(ex);
+                outcome.CopyDeleted = true;
+                return outcome;
+            } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+                throw;
+            } catch (Exception) {
+                // Anything else here, a stale ACP with no /api/version, a
+                // dropped connection, a timeout, is not a token problem.
+                // The copy and upload below talk to the same server and
+                // fail the same way if it is genuinely unreachable, with
+                // their own handling already in place for that.
             }
 
             status?.Report($"Sending profile {label}: copying Target Scheduler's database...");
