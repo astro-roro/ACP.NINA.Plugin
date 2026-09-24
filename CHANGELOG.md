@@ -28,6 +28,7 @@ ACP finds out what tonight actually acquired, while it is being acquired.
 ### Fixed
 
 - **A sync no longer resets the moon, twilight, humidity and dither tuning on an exposure template.** Those columns belong to Target Scheduler's own screens, and the plugin used to overwrite them with its constructor defaults on every push. ACP still owns and updates profileId, name, filtername, guid, defaultexposure, gain, offset, bin and readoutmode. A new template still gets the current defaults on insert.
+- **A sync no longer resets a project's flats handling.** ACP has no setting for whether Target Scheduler takes flats, so every push overwrote it with the constructor default. That default was 0 (flats off), so a project turned on to take flats in Target Scheduler had that switched off again on the next sync. The default is now 1 (flats on), matching what Rohan's own projects use, and a change made in Target Scheduler survives the next push.
 
 ### Notes
 

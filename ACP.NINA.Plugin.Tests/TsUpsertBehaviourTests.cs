@@ -387,6 +387,63 @@ namespace ACP.NINA.Plugin.Tests {
         }
     }
 
+    /// project.flatsHandling is Target Scheduler's own setting for whether it
+    /// takes flats for a project. ACP has no control for it, so a sync must
+    /// never reset a change Rohan made by hand in Target Scheduler.
+    public class TsProjectFlatsHandlingTests {
+
+        private static TsSyncPayload OnePlan() {
+            return TsConvert.BuildPayload(
+                new List<Plan> { TsTestPlans.Plan("p", projectName: "P", targetName: "T") },
+                TsTestPlans.Gear(), TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
+        }
+
+        [Fact]
+        public void ANewProjectGetsFlatsOn() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("defaults.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    TsUpsert.Apply(db, OnePlan());
+
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "SELECT flatsHandling FROM project";
+                        using (var reader = cmd.ExecuteReader()) {
+                            Assert.True(reader.Read());
+                            Assert.Equal(1L, reader.GetInt64(0));
+                        }
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void AChangeMadeInTargetSchedulerSurvivesTheNextPush() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("resync.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    TsUpsert.Apply(db, OnePlan());
+
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "UPDATE project SET flatsHandling = 0";
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    var outcome = TsUpsert.Apply(db, OnePlan());
+
+                    Assert.Equal(1, outcome.Project.Updated);
+                    Assert.Equal(0, outcome.Project.Inserted);
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "SELECT flatsHandling FROM project";
+                        using (var reader = cmd.ExecuteReader()) {
+                            Assert.True(reader.Read());
+                            Assert.Equal(0L, reader.GetInt64(0));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Reading acquired counts back out. Mirrors tests/test_read_acquired.py.
     public class TsReadAcquiredTests {
 
