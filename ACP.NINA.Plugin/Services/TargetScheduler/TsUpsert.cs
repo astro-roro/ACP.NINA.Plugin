@@ -260,12 +260,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // 0) By the Id the plan's ts_refs name. ResolvePins has already
             // checked the row exists and sits where the refs say, so this is
             // the row the plan came from. A project row follows the same
-            // three column sets as the guid and claim paths below (see
-            // TsSchema.ColumnsForPinnedUpdate); every other table writes only
-            // the fields ACP edits.
+            // three column sets as the guid and claim paths below, minus
+            // guid: the row keeps the identity Target Scheduler gave it. See
+            // TsSchema.ColumnsForPinnedProjectUpdate. Every other table
+            // writes only the fields ACP edits (TsSchema.ColumnsForPinnedUpdate).
             if (entity.PinnedId.HasValue) {
                 if (table == "project") CheckStateConflict(conn, entity as TsProject, entity.PinnedId.Value, outcome);
-                var pinnedCols = table == "project" ? updateCols : TsSchema.ColumnsForPinnedUpdate(table, cols);
+                var pinnedCols = table == "project"
+                    ? TsSchema.ColumnsForPinnedProjectUpdate(updateCols)
+                    : TsSchema.ColumnsForPinnedUpdate(table, cols);
                 if (pinnedCols.Count > 0) {
                     var pinnedSet = string.Join(", ", pinnedCols.Select(c => $"{Quote(c)} = ${c}"));
                     ExecuteWithValues(
