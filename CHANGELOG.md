@@ -6,9 +6,15 @@ Plans made or changed in a rig's Target Scheduler can go back into ACP. ACP show
 
 ### Added
 
-- **"Send TS to ACP" in the dock.** It copies Target Scheduler's database with SQLite's backup API, so committed rows still in the WAL file come along and row ids stay the same, then uploads the copy to `POST /api/ext/nina-ts-sync/import/uploads` with the stored token. The dock shows copying, the upload percentage, then ACP's counts ("Voyager main: 2 new, 5 updated, 1 needs a choice") and an "Open in ACP" button for the review page. The copy is deleted whether the upload worked or not. Nothing on the rig is written.
+- **"Send TS to ACP" in the dock.** It copies Target Scheduler's database with SQLite's backup API, so committed rows still in the WAL file come along and row ids stay the same, then uploads the copy to `POST /api/ext/nina-ts-sync/import/uploads` with the stored token. The dock shows copying, the upload percentage, then ACP's counts ("Voyager main: 32 new, 46 need a choice. Review and apply them in ACP before anything changes.") and a "Review and apply in ACP" button for the review page. The copy is deleted whether the upload worked or not. Nothing on the rig is written.
 - **Push state goes back to ACP after every sync.** After Sync for tonight or Sync All to TS, the plugin posts each pushed plan's TS row ids and snapshot to `POST /api/ext/nina-ts-sync/links`, so ACP's record of this rig's last sync is current and the next upload does not report conflicts that are not real. If that post fails, the sync still counts and the dock says ACP was not told.
 - **Per-rig links are read first.** The writer finds a plan's TS rows through `ts_links[<profile>]` before falling back to `ts_refs`, so a plan used on two rigs keeps each rig's rows.
+
+### Fixed
+
+- **"Send TS to ACP" checks the token before it starts.** It used to copy the database and try the upload before finding out the token was missing or rejected. Now it stops at once with no stored token, and checks the token against ACP with a cheap call before copying anything. A missing token, a token ACP rejects, or a server with no token set all stop the send with a matching dock line, and no copy is made.
+- **The dock's buttons are a tidy 2x2 grid.** Sync for tonight, Sync All to TS, Push to Framing and Send TS to ACP are now four equal width, equal height buttons, so none is a cramped wide row or a lone full width one. "Open in ACP" moved out of the button row and sits as a small link beside the upload result line instead, so its text is never clipped at a narrow dock width.
+- **The dock says plainly when a review is waiting, and where.** After an upload, the buttons are more compact (shorter, smaller text) so the plan list keeps most of the dock's height. "Open in ACP" is renamed "Review and apply in ACP", since a plain "Open" gave no sense that anything needed doing. The result line spells out what is waiting ("32 new, 46 need a choice. Review and apply them in ACP before anything changes.") and says so plainly when nothing is ("ACP found nothing new or changed. Nothing to review."). The button's tooltip names the review page it opens.
 
 ### Notes
 

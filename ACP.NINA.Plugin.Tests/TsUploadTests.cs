@@ -135,13 +135,20 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
+        // hasToken defaults to true: TsUploadService itself defaults to
+        // TokenStore.HasToken, which is a real Windows Credential Manager
+        // read. Every test here is about the ACP conversation, not about
+        // what happens to be stored on the machine running the test, so the
+        // seam is always overridden unless a test is specifically exercising
+        // the no-token path.
         private static TsUploadService Service(ScriptedAcp acp, string dbPath, string tempDir,
-                                               string token = "tok-123", List<TimeSpan> waits = null) {
+                                               string token = "tok-123", List<TimeSpan> waits = null,
+                                               bool hasToken = true) {
             var client = new AcpApiClient(Base, () => token, acp);
             return new TsUploadService(client, (t, ct) => {
                 waits?.Add(t);
                 return Task.CompletedTask;
-            }) {
+            }, () => hasToken) {
                 DbPathOverride = dbPath,
                 TempDirOverride = tempDir,
             };
@@ -236,17 +243,84 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         [Fact]
-        public async Task AVersion22DatabaseIsRefusedBeforeAnyHttpCall() {
+        public async Task AVersion22DatabaseIsRefusedBeforeTheUploadHttpCall() {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(22, tmp.File("schedulerdb.sqlite"));
                 var acp = new ScriptedAcp(_ => ScriptedAcp.Json(HttpStatusCode.Accepted, Accepted));
 
                 var outcome = await Service(acp, path, tmp.Path).SendAsync(Profile, "Voyager main", Profiles(), null);
 
-                Assert.Empty(acp.Requests);
+                // The token check still goes out, since it needs no copy of
+                // the database, but the schema refusal stops the send before
+                // the actual upload is ever attempted.
+                Assert.Single(acp.Requests);
+                Assert.Equal("/api/version", acp.Requests[0].Path);
                 Assert.False(outcome.Uploaded);
                 Assert.Equal("✗ " + TsSchema.UnsupportedMessage(22), outcome.Line);
                 Assert.Empty(TempCopies(tmp.Path));
+            }
+        }
+
+        // -- The token check, before anything is copied or sent -------------
+
+        [Fact]
+        public async Task NoStoredTokenSendsNoRequestAndMakesNoCopy() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("schedulerdb.sqlite"));
+                var copies = Directory.CreateDirectory(tmp.File("copies")).FullName;
+                var acp = new ScriptedAcp(_ => ScriptedAcp.Json(HttpStatusCode.Accepted, Accepted));
+                var client = new AcpApiClient(Base, () => null, acp);
+                var service = new TsUploadService(client, hasToken: () => false) {
+                    DbPathOverride = path,
+                    TempDirOverride = copies,
+                };
+
+                var outcome = await service.SendAsync(Profile, "Voyager main", Profiles(), null);
+
+                Assert.Empty(acp.Requests);
+                Assert.False(outcome.Uploaded);
+                Assert.Equal(TsUploadService.NoTokenLine, outcome.Line);
+                Assert.True(outcome.CopyDeleted);
+                Assert.Empty(TempCopies(copies));
+            }
+        }
+
+        [Fact]
+        public async Task ARejectedTokenMakesNoCopy() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("schedulerdb.sqlite"));
+                var copies = Directory.CreateDirectory(tmp.File("copies")).FullName;
+                var acp = new ScriptedAcp(_ => ScriptedAcp.Json(
+                    HttpStatusCode.Unauthorized, "{\"error\": \"unauthorized\"}"));
+
+                var outcome = await Service(acp, path, copies).SendAsync(Profile, "Voyager main", Profiles(), null);
+
+                Assert.Single(acp.Requests);
+                Assert.Equal("/api/version", acp.Requests[0].Path);
+                Assert.False(outcome.Uploaded);
+                Assert.Equal("✗ ACP rejected the token", outcome.Line);
+                Assert.True(outcome.CopyDeleted);
+                Assert.Empty(TempCopies(copies));
+            }
+        }
+
+        [Fact]
+        public async Task AServerWithNoTokenSetMakesNoCopy() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("schedulerdb.sqlite"));
+                var copies = Directory.CreateDirectory(tmp.File("copies")).FullName;
+                var acp = new ScriptedAcp(_ => ScriptedAcp.Json(
+                    HttpStatusCode.Forbidden,
+                    "{\"error\": \"ACP needs an access token set before it accepts uploads\"}"));
+
+                var outcome = await Service(acp, path, copies).SendAsync(Profile, "Voyager main", Profiles(), null);
+
+                Assert.Single(acp.Requests);
+                Assert.Equal("/api/version", acp.Requests[0].Path);
+                Assert.False(outcome.Uploaded);
+                Assert.Equal("✗ ACP needs an access token set before it accepts uploads", outcome.Line);
+                Assert.True(outcome.CopyDeleted);
+                Assert.Empty(TempCopies(copies));
             }
         }
 
@@ -270,7 +344,12 @@ namespace ACP.NINA.Plugin.Tests {
                 var outcome = await Service(acp, path, copies)
                     .SendAsync(Profile, "Voyager main", Profiles(), new SyncProgress(lines));
 
-                var upload = acp.Requests[0];
+                // First the token check, with the bearer header, before
+                // anything is copied.
+                Assert.Equal("/api/version", acp.Requests[0].Path);
+                Assert.Equal("Bearer tok-123", acp.Requests[0].Authorization);
+
+                var upload = acp.Requests[1];
                 Assert.Equal(HttpMethod.Post, upload.Method);
                 Assert.Equal(AcpApiClient.TsUploadPath, upload.Path);
                 Assert.Equal("Bearer tok-123", upload.Authorization);
@@ -290,11 +369,13 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.False(string.IsNullOrEmpty((string)meta["plugin_version"]));
 
                 // Then the status poll, with the same header.
-                Assert.Equal(StatusPath, acp.Requests[1].Path);
-                Assert.Equal("Bearer tok-123", acp.Requests[1].Authorization);
+                Assert.Equal(StatusPath, acp.Requests[2].Path);
+                Assert.Equal("Bearer tok-123", acp.Requests[2].Authorization);
 
                 Assert.True(outcome.Uploaded);
-                Assert.Equal("✓ Voyager main: 2 new, 5 updated, 1 needs a choice", outcome.Line);
+                Assert.Equal(
+                    "✓ Voyager main: 2 new, 5 updated, 1 needs a choice. Review and apply them in ACP before anything changes.",
+                    outcome.Line);
                 Assert.Equal(Base + ReviewPath, outcome.ReviewUrl);
                 Assert.True(outcome.CopyDeleted);
                 Assert.Empty(TempCopies(copies));
@@ -304,28 +385,35 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         public static IEnumerable<object[]> Refusals() {
-            yield return new object[] { HttpStatusCode.Unauthorized, "{\"error\": \"unauthorized\"}", "✗ ACP rejected the token" };
+            // 401 and 403 are token problems, so the pre-flight token check
+            // catches them on its own request; the upload is never attempted.
+            yield return new object[] {
+                HttpStatusCode.Unauthorized, "{\"error\": \"unauthorized\"}", "✗ ACP rejected the token", 1,
+            };
             yield return new object[] {
                 HttpStatusCode.Forbidden,
                 "{\"error\": \"ACP needs an access token set before it accepts uploads\"}",
-                "✗ ACP needs an access token set before it accepts uploads",
+                "✗ ACP needs an access token set before it accepts uploads", 1,
             };
+            // 413 and 415 are about the file itself, not the token, so the
+            // pre-flight check passes and the refusal comes from the actual
+            // upload, the second request.
             yield return new object[] {
                 HttpStatusCode.RequestEntityTooLarge,
                 "{\"error\": \"The upload is over the 64 MB limit\"}",
-                "✗ The upload is over the 64 MB limit",
+                "✗ The upload is over the 64 MB limit", 2,
             };
             yield return new object[] {
                 HttpStatusCode.UnsupportedMediaType,
                 "{\"error\": \"not a SQLite database\"}",
-                "✗ ACP says this is not a SQLite database: not a SQLite database",
+                "✗ ACP says this is not a SQLite database: not a SQLite database", 2,
             };
         }
 
         [Theory]
         [MemberData(nameof(Refusals))]
         public async Task EachRefusalGivesItsDockLineAndTheCopyIsDeleted(
-            HttpStatusCode status, string body, string expectedLine
+            HttpStatusCode status, string body, string expectedLine, int expectedRequestCount
         ) {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File("schedulerdb.sqlite"));
@@ -335,7 +423,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var service = Service(acp, path, copies);
                 var outcome = await service.SendAsync(Profile, "Voyager main", Profiles(), null);
 
-                Assert.Single(acp.Requests);
+                Assert.Equal(expectedRequestCount, acp.Requests.Count);
                 Assert.False(outcome.Uploaded);
                 Assert.Equal(expectedLine, outcome.Line);
                 Assert.Null(outcome.ReviewUrl);
@@ -393,8 +481,9 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Equal(Base + ReviewPath, outcome.ReviewUrl);
                 Assert.All(waits, w => Assert.Equal(TimeSpan.FromSeconds(2), w));
                 Assert.Equal(60, waits.Count);
-                // One upload, then a poll before each wait and one after the last.
-                Assert.Equal(1 + 61, acp.Requests.Count);
+                // One token check, one upload, then a poll before each wait
+                // and one after the last.
+                Assert.Equal(1 + 1 + 61, acp.Requests.Count);
             }
         }
 
@@ -547,12 +636,37 @@ namespace ACP.NINA.Plugin.Tests {
                 "{\"state\": \"ready\", \"review_url\": \"/r\", \"counts\": {\"new\": 1, \"updated\": 0, \"conflicts\": 2}}");
             Assert.Equal(TsUploadStatus.Ready, s.State);
             Assert.Equal("/r", s.ReviewUrl);
-            Assert.Equal("Voyager main: 1 new, 0 updated, 2 need a choice", TsUploadService.ReadyLine("Voyager main", s));
+            // A zero category (updated, here) is left out of the line
+            // entirely rather than printed as "0 updated".
+            Assert.Equal(
+                "Voyager main: 1 new, 2 need a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("Voyager main", s));
 
             var bare = TsUploadStatus.Parse("{\"state\": \"ready\"}");
             Assert.False(bare.HasCounts);
-            Assert.Equal("Voyager main: ACP has read it. Open it in ACP to review.",
+            Assert.Equal("Voyager main: ACP has read it. Review it in ACP.",
                 TsUploadService.ReadyLine("Voyager main", bare));
+        }
+
+        [Fact]
+        public void ReadyLineNamesEveryNonZeroCategoryAndSaysWhenThereIsNothingToReview() {
+            var everything = TsUploadStatus.Parse(
+                "{\"state\": \"ready\", \"counts\": {\"new\": 32, \"updated\": 5, \"conflicts\": 46}}");
+            Assert.Equal(
+                "Voyager main: 32 new, 5 updated, 46 need a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("Voyager main", everything));
+
+            var onlyOneNeedingAChoice = TsUploadStatus.Parse(
+                "{\"state\": \"ready\", \"counts\": {\"new\": 0, \"updated\": 0, \"conflicts\": 1}}");
+            Assert.Equal(
+                "Voyager main: 1 needs a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("Voyager main", onlyOneNeedingAChoice));
+
+            var nothing = TsUploadStatus.Parse(
+                "{\"state\": \"ready\", \"counts\": {\"new\": 0, \"updated\": 0, \"conflicts\": 0}}");
+            Assert.Equal(
+                "Voyager main: ACP found nothing new or changed. Nothing to review.",
+                TsUploadService.ReadyLine("Voyager main", nothing));
         }
 
         /// IProgress that records synchronously, so the test sees every line
