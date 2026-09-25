@@ -187,6 +187,45 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
+        [Fact]
+        public void APinnedProjectUpdateNeverRewritesTheGuid() {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("pinned-guid.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    TsUpsert.Apply(db, OnePlan());
+                    int projectId;
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "SELECT Id FROM project";
+                        projectId = Convert.ToInt32(cmd.ExecuteScalar());
+                    }
+                    // Simulate the row being one Target Scheduler made by hand
+                    // and imported into ACP: a foreign guid, found again only
+                    // through ts_refs.
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "UPDATE project SET guid = 'a-hand-made-guid'";
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    var plan = TsTestPlans.Plan("p", projectName: "P", targetName: "T");
+                    plan.TsRefs = new Newtonsoft.Json.Linq.JObject {
+                        { "profile_id", TsTestPlans.ProfileId },
+                        { "project_id", projectId },
+                    };
+                    var payload = TsConvert.BuildPayload(
+                        new List<Plan> { plan }, TsTestPlans.Gear(), TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
+
+                    var outcome = TsUpsert.Apply(db, payload);
+                    Assert.Equal(1, outcome.Project.Pinned);
+
+                    using (var cmd = db.Connection.CreateCommand()) {
+                        cmd.CommandText = "SELECT guid FROM project WHERE Id = $id";
+                        cmd.Parameters.AddWithValue("$id", projectId);
+                        Assert.Equal("a-hand-made-guid", (string)cmd.ExecuteScalar());
+                    }
+                }
+            }
+        }
+
         private static void AssertProject(SqliteConnection conn, int state, int priority, int minimumtime) {
             using (var cmd = conn.CreateCommand()) {
                 cmd.CommandText = "SELECT state, priority, minimumtime FROM project";

@@ -136,6 +136,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return columns.Where(c => !ConditionalProjectColumns.Contains(c) || proj.ConditionalColumnsToWrite.Contains(c)).ToList();
         }
 
+        /// The same three column sets as an ordinary project update
+        /// (ColumnsForUpdate plus ColumnsForConditionalUpdate), minus guid.
+        /// A row found through ts_refs keeps the identity Target Scheduler
+        /// gave it (see the note on pinnedUpdateColumns below), which the
+        /// guid- and claim-found paths do not need to guard because writing
+        /// their own guid back is either a no-op (guid match) or the
+        /// intended stamp (a claim). Only the pinned path needs this.
+        public static List<string> ColumnsForPinnedProjectUpdate(IEnumerable<string> updateColumns) {
+            return updateColumns.Where(c => !string.Equals(c, "guid", StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
         /// The only columns written to a row found through a plan's ts_refs.
         ///
         /// A row found that way was usually made by hand in Target Scheduler
