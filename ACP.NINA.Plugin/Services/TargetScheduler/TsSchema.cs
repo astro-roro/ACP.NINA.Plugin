@@ -69,6 +69,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// what Rohan's own projects use, and a new project still gets that
         /// default on insert.
         ///
+        /// The rest of the project row, per docs/specs/ts-project-settings.md
+        /// section 4: custom horizon and its offset, filter switch frequency,
+        /// dither, smart exposure order, the grader, maximum altitude, flats
+        /// handling (above) and the description are all rig tuning Rohan does
+        /// in Target Scheduler's own screens. ACP has no settings for any of
+        /// them, so writing them on update reset that tuning on every push,
+        /// which is the bug this list fixes. A new project still gets Target
+        /// Scheduler's own defaults on insert.
+        ///
         /// exposuretemplate's moon, twilight, humidity and dither columns are
         /// tuning Rohan does in Target Scheduler's own screens. ACP has no
         /// settings for them and TsConvert only ever writes the constructor
@@ -83,7 +92,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "exposureplan", new HashSet<string>(
                     new[] { "acquired", "accepted" }, StringComparer.OrdinalIgnoreCase) },
                 { "project", new HashSet<string>(
-                    new[] { "createdate", "flatsHandling" }, StringComparer.OrdinalIgnoreCase) },
+                    new[] {
+                        "createdate", "flatsHandling", "usecustomhorizon", "horizonoffset",
+                        "filterswitchfrequency", "ditherevery", "smartexposureorder",
+                        "enablegrader", "maximumAltitude", "description",
+                    }, StringComparer.OrdinalIgnoreCase) },
                 { "exposuretemplate", new HashSet<string>(
                     new[] {
                         "twilightlevel", "minutesOffset", "maximumhumidity",
@@ -93,11 +106,34 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }, StringComparer.OrdinalIgnoreCase) },
             };
 
+        /// The project columns ACP owns and syncs both ways: state, priority
+        /// and minimum time, plus the two dates that follow a written state.
+        /// Per docs/specs/ts-project-settings.md section 4, these are written
+        /// on update only when ACP changed the value since the last sync on
+        /// this rig, never unconditionally like the ACP-always-owns columns
+        /// and never held back like the TS-owns columns above. TsConvert works
+        /// out which of these a given push should write and records that on
+        /// TsProject.ConditionalColumnsToWrite; TsUpsert reads it here.
+        public static readonly HashSet<string> ConditionalProjectColumns =
+            new HashSet<string>(
+                new[] { "state", "priority", "minimumtime", "activedate", "inactivedate" },
+                StringComparer.OrdinalIgnoreCase);
+
         /// Drop the insert-only columns from `columns`, order preserved.
         public static List<string> ColumnsForUpdate(string table, IEnumerable<string> columns) {
             HashSet<string> skip;
             if (!insertOnlyColumns.TryGetValue(table, out skip)) return columns.ToList();
             return columns.Where(c => !skip.Contains(c)).ToList();
+        }
+
+        /// Narrow `columns` further for an update to `entity`: a conditional
+        /// project column (see ConditionalProjectColumns) is dropped unless
+        /// the entity says this push should write it. Every other column
+        /// passes through unchanged, so this is safe to call for any table.
+        public static List<string> ColumnsForConditionalUpdate(string table, IEnumerable<string> columns, TsEntity entity) {
+            var proj = entity as TsProject;
+            if (proj == null) return columns.ToList();
+            return columns.Where(c => !ConditionalProjectColumns.Contains(c) || proj.ConditionalColumnsToWrite.Contains(c)).ToList();
         }
 
         /// The only columns written to a row found through a plan's ts_refs.
@@ -113,11 +149,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Templates are absent on purpose. A template found through ts_refs is
         /// shared with whatever else uses it, so it is pointed at, never
         /// rewritten.
+        ///
+        /// project has no entry here any more: per
+        /// docs/specs/ts-project-settings.md section 4, a row found through
+        /// ts_refs now follows the same three column sets as a row found by
+        /// guid or claimed by name (see ColumnsForUpdate and
+        /// ColumnsForConditionalUpdate). TsUpsert special-cases the project
+        /// table to use that shared set instead of this dictionary.
         private static readonly Dictionary<string, HashSet<string>> pinnedUpdateColumns =
             new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
-                { "project", new HashSet<string>(
-                    new[] { "name", "priority", "minimumaltitude", "meridianwindow" },
-                    StringComparer.OrdinalIgnoreCase) },
                 { "target", new HashSet<string>(
                     new[] { "name", "ra", "dec", "rotation" }, StringComparer.OrdinalIgnoreCase) },
                 { "exposureplan", new HashSet<string>(

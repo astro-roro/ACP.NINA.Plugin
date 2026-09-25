@@ -166,7 +166,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Anything the snapshot does not have is left out, because the user
         /// having already deleted the Target Scheduler row is the same
         /// situation as never having written it: there is no remote value.
-        public static JObject BuildBaseSnapshot(TsSnapshot snap, Plan plan, string profileId) {
+        ///
+        /// `pushedProject` and `outcome` are the TsProject this push computed
+        /// for this plan's project and the write outcome, both optional. When
+        /// given, they decide the base for state, priority and minimumtime
+        /// (see the block below); when null, those three fields are left out,
+        /// which is always safe, just conservative. TsPushService passes both
+        /// after a push; a caller building a base outside a push, if one ever
+        /// exists, gets the conservative behaviour for free.
+        public static JObject BuildBaseSnapshot(
+            TsSnapshot snap, Plan plan, string profileId,
+            TsProject pushedProject = null, TsSyncOutcome outcome = null
+        ) {
             var projectName = TsConvert.ProjectNameOf(plan);
             int rows, cols;
             string baseName;
@@ -186,16 +197,49 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "exposure_plans_by_panel_filter", plansByPanelFilter },
             };
 
-            int projectId;
-            if (snap.ProjectIdByGuid.TryGetValue(TsGuid.Project(profileId, projectName), out projectId)) {
-                var proj = snap.ProjectsById[projectId];
-                snapshot["project"] = new JObject {
+            // The pinned id wins over the guid, the same order TsUpsert writes
+            // in. A project made by hand in Target Scheduler carries its own
+            // guid, not ACP's TsGuid, so the guid lookup alone would find
+            // nothing for it and the base snapshot would have no project
+            // block at all. See docs/specs/ts-project-settings.md section 3.
+            TsProject proj = null;
+            var pinnedProjectId = TsConvert.RefsFor(plan, profileId)?.ProjectId;
+            if (pinnedProjectId.HasValue) {
+                snap.ProjectsById.TryGetValue(pinnedProjectId.Value, out proj);
+            }
+            if (proj == null) {
+                int projectId;
+                if (snap.ProjectIdByGuid.TryGetValue(TsGuid.Project(profileId, projectName), out projectId)) {
+                    proj = snap.ProjectsById[projectId];
+                }
+            }
+            if (proj != null) {
+                var projectBlock = new JObject {
                     { "name", proj.Name },
-                    { "priority", proj.Priority },
                     { "minimumaltitude", proj.MinimumAltitude },
                     { "meridianwindow", proj.MeridianWindow },
                     { "enablegrader", proj.EnableGrader },
                 };
+
+                // state, priority and minimumtime never come from what Target
+                // Scheduler actually holds: this push may have deliberately
+                // left one of them alone (section 5's conflict rule), and
+                // reading it back here would make that value look agreed on,
+                // so the next push could overwrite it. ACP's own computed
+                // value is the only safe source, and only once there is
+                // either an existing base to carry forward or a fresh insert
+                // that is guaranteed to hold exactly what was written. See
+                // docs/specs/ts-project-settings.md section 5, "No base".
+                var establishBase = pushedProject != null &&
+                    (pushedProject.HasBase ||
+                     (outcome != null && outcome.InsertedProjectGuids.Contains(pushedProject.Guid)));
+                if (establishBase) {
+                    projectBlock["state"] = pushedProject.State;
+                    projectBlock["priority"] = pushedProject.Priority;
+                    projectBlock["minimumtime"] = pushedProject.MinimumTime;
+                }
+
+                snapshot["project"] = projectBlock;
             }
 
             for (var r = 1; r <= rows; r++) {
