@@ -28,6 +28,21 @@ namespace ACP.NINA.Plugin.Tests {
             Exec(conn, $"UPDATE project SET createdate = {OlderCreateDate} WHERE Id = 1");
         }
 
+        /// Tuning Rohan does in Target Scheduler's own screens, none of which
+        /// ACP has a setting for. A second push must leave every one of these
+        /// alone. Matches ts_owned_columns_survive_a_second_push in
+        /// golden-rows.json.
+        public static void TuneRigByHand(SqliteConnection conn) {
+            Exec(conn, "UPDATE project SET ditherevery = 3, enablegrader = 1, usecustomhorizon = 1");
+        }
+
+        /// A project paused directly in Target Scheduler, between two pushes
+        /// that never change ACP's own idea of the state. Matches
+        /// ts_pause_survives_a_push in golden-rows.json.
+        public static void PauseInTargetScheduler(SqliteConnection conn) {
+            Exec(conn, "UPDATE project SET state = 2");
+        }
+
         /// Restamp every ACP row the way the pre-length-prefix code would have.
         ///
         /// The old recipe is written out here rather than called through

@@ -60,6 +60,9 @@ namespace ACP.NINA.Plugin.Tests {
         [Theory]
         [InlineData("counts_survive_a_second_push")]
         [InlineData("migrated_from_the_old_recipe")]
+        [InlineData("ts_owned_columns_survive_a_second_push")]
+        [InlineData("ts_pause_survives_a_push")]
+        [InlineData("acp_pause_reaches_ts")]
         public void ASecondPushWritesTheSameRowsAsThePythonExtension(string scenario) {
             using (var tmp = new TempDir()) {
                 var actual = PushScenario(scenario, tmp.File($"{scenario}.sqlite"));
@@ -281,12 +284,16 @@ namespace ACP.NINA.Plugin.Tests {
             };
         }
 
-        /// Push, apply the scenario's hand edits, push the same payload again.
-        /// The steps match tests/dump_golden_rows.py in the extension repo.
+        /// Push, apply the scenario's hand edits, push again. The two pause
+        /// scenarios push a different payload the second time, because what
+        /// changes between the two pushes is ACP's own idea of the state, not
+        /// just what happened on the rig. The steps match
+        /// tests/dump_golden_rows.py in the extension repo.
         private static PushResult PushScenario(string scenario, string path) {
             TsFixtures.MakeDb(28, path);
             using (var db = TargetSchedulerDb.Open(path)) {
-                TsUpsert.Apply(db, BuildPayload());
+                var firstPayload = FirstPayloadFor(scenario);
+                TsUpsert.Apply(db, firstPayload);
 
                 switch (scenario) {
                     case "counts_survive_a_second_push":
@@ -295,11 +302,21 @@ namespace ACP.NINA.Plugin.Tests {
                     case "migrated_from_the_old_recipe":
                         TsScenarios.WindBackToTheOldRecipe(db.Connection, TsTestPlans.ProfileId);
                         break;
+                    case "ts_owned_columns_survive_a_second_push":
+                        TsScenarios.TuneRigByHand(db.Connection);
+                        break;
+                    case "ts_pause_survives_a_push":
+                        TsScenarios.PauseInTargetScheduler(db.Connection);
+                        break;
+                    case "acp_pause_reaches_ts":
+                        // No hand edit: Target Scheduler is left exactly as
+                        // the first push made it, still active.
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
                 }
 
-                var outcome = TsUpsert.Apply(db, BuildPayload());
+                var outcome = TsUpsert.Apply(db, SecondPayloadFor(scenario));
                 var tables = Dump(db.Connection);
                 return new PushResult {
                     Tables = tables,
@@ -307,6 +324,46 @@ namespace ACP.NINA.Plugin.Tests {
                     Outcome = outcome,
                 };
             }
+        }
+
+        private static TsSyncPayload FirstPayloadFor(string scenario) {
+            switch (scenario) {
+                case "ts_pause_survives_a_push":
+                    return PauseScenarioPayload("pause-survives", "Pause Survives", "active", withBase: false);
+                case "acp_pause_reaches_ts":
+                    return PauseScenarioPayload("acp-pause-reaches", "ACP Pause Reaches", "active", withBase: false);
+                default:
+                    return BuildPayload();
+            }
+        }
+
+        private static TsSyncPayload SecondPayloadFor(string scenario) {
+            switch (scenario) {
+                // Base says active, matching what ACP still believes: the
+                // push must not undo the pause a hand edit just made.
+                case "ts_pause_survives_a_push":
+                    return PauseScenarioPayload(
+                        "pause-survives", "Pause Survives", "active", withBase: true, baseState: 1);
+                // Base says active, but ACP now says inactive: ACP changed it
+                // since the base, so the push writes inactive even though
+                // Target Scheduler was never touched by hand.
+                case "acp_pause_reaches_ts":
+                    return PauseScenarioPayload(
+                        "acp-pause-reaches", "ACP Pause Reaches", "inactive", withBase: true, baseState: 1);
+                default:
+                    return BuildPayload();
+            }
+        }
+
+        private static TsSyncPayload PauseScenarioPayload(
+            string planId, string projectName, string state, bool withBase, int baseState = 0
+        ) {
+            var plan = TsTestPlans.Plan(planId, projectName: projectName, state: state);
+            if (withBase) {
+                TsTestPlans.WithBase(plan, TsTestPlans.ProfileId, state: baseState, priority: 1, minimumTime: 0);
+            }
+            return TsConvert.BuildPayload(
+                new List<Plan> { plan }, TsTestPlans.Gear(), TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
         }
 
         /// Every row of every table the push writes, ordered by Id, as JSON so

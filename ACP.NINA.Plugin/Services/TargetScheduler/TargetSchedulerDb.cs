@@ -261,6 +261,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         MeridianWindow = ReadInt(r, "meridianwindow"),
                         EnableGrader = ReadInt(r, "enablegrader"),
                         State = ReadInt(r, "state", 1),
+                        MinimumTime = ReadInt(r, "minimumtime"),
                     };
                     snap.ProjectsById[id] = proj;
                     if (!string.IsNullOrEmpty(proj.Guid)) snap.ProjectIdByGuid[proj.Guid] = id;

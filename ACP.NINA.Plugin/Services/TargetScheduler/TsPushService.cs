@@ -72,6 +72,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 line += $" The filter wheel has no slot for {string.Join(", ", FiltersNotOnWheel)}, " +
                         "so Target Scheduler will not run those exposures.";
             }
+            if (Outcome.ConflictLines.Count > 0) {
+                line += " " + string.Join(" ", Outcome.ConflictLines.Select(l => l + "."));
+            }
             return line;
         }
     }
@@ -93,6 +96,20 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             string profileId,
             CancellationToken token = default,
             IReadOnlyList<string> wheelFilters = null
+        );
+
+        /// Write the state column, and only that column, for every plan in
+        /// `heldPlans` that already has a Target Scheduler row for `profileId`.
+        /// No row is ever inserted here. See TsHeldStates and
+        /// docs/specs/ts-project-settings.md section 6. Null on any failure
+        /// that would also have failed a push (busy container, bad schema,
+        /// locked database); the caller treats a null result as "nothing was
+        /// held", not as an error worth its own failure message, because a
+        /// held write is a courtesy on top of the real push.
+        Task<TsHeldStates.Outcome> WriteHeldStatesAsync(
+            IReadOnlyList<Plan> heldPlans,
+            string profileId,
+            CancellationToken token = default
         );
     }
 
@@ -252,12 +269,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 // next sync has a base to diff against.
                 try {
                     var snapshot = db.ReadAll(profileId);
+                    var projectByGuid = payload.Projects.ToDictionary(p => p.Guid, p => p);
                     foreach (var plan in plans) {
+                        TsProject pushedProject;
+                        projectByGuid.TryGetValue(
+                            TsGuid.Project(profileId, TsConvert.ProjectNameOf(plan)), out pushedProject);
                         result.PlanStates.Add(new TsPlanState {
                             PlanId = plan.Id,
                             Refs = TsState.BuildRefs(
                                 snapshot, plan, profileId, db.UserVersion, TsState.OperationPush),
-                            BaseSnapshot = TsState.BuildBaseSnapshot(snapshot, plan, profileId),
+                            BaseSnapshot = TsState.BuildBaseSnapshot(
+                                snapshot, plan, profileId, pushedProject, result.Outcome),
                         });
                     }
                 } catch (Exception ex) {
@@ -269,6 +291,39 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                 result.Success = true;
                 return result;
+            }
+        }
+
+        public async Task<TsHeldStates.Outcome> WriteHeldStatesAsync(
+            IReadOnlyList<Plan> heldPlans,
+            string profileId,
+            CancellationToken token = default
+        ) {
+            heldPlans = heldPlans ?? new List<Plan>();
+            if (heldPlans.Count == 0) return new TsHeldStates.Outcome();
+            if (string.IsNullOrWhiteSpace(profileId)) return null;
+            if (containerWatch != null && containerWatch.IsRunning) return null;
+
+            TargetSchedulerDb db;
+            try {
+                db = openDb(DbPathOverride);
+            } catch (Exception) {
+                return null;
+            }
+
+            using (db) {
+                try {
+                    return await db.RunWriteAsync(
+                        conn => TsHeldStates.Apply(
+                            conn, db.UserVersion, db.ColumnsByTable, heldPlans, profileId, clock()),
+                        token
+                    ).ConfigureAwait(false);
+                } catch (Microsoft.Data.Sqlite.SqliteException ex) when (TargetSchedulerDb.IsLocked(ex)) {
+                    return null;
+                } catch (Exception ex) {
+                    Logger.Warning($"ACP: could not write held project states: {ex.Message}");
+                    return null;
+                }
             }
         }
 
