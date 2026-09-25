@@ -121,63 +121,80 @@
                 </StackPanel>
             </Border>
 
-            <!-- Row 4: action buttons -->
+            <!-- Row 4: action buttons, a 2x2 grid of equal width so nothing
+                 is ever squeezed at a narrow dock width. Compact (24px,
+                 small padding and text) so the plan list above keeps most
+                 of the dock's height. Sync for tonight and Sync All to TS
+                 lead, since they are the everyday actions; Push to Framing
+                 and Send TS to ACP follow. -->
             <StackPanel Grid.Row="4"
                         Margin="0,8,0,0"
                         Orientation="Vertical">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="6" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0"
-                            Height="32"
-                            Command="{Binding PushToFramingCommand}"
-                            Content="Push to Framing" />
-                    <Button Grid.Column="2"
-                            Height="32"
+                <UniformGrid Rows="2" Columns="2">
+                    <Button Height="24"
+                            Margin="0,0,3,3"
+                            Padding="4,0"
+                            FontSize="11"
+                            Command="{Binding SyncForTonightCommand}"
+                            Content="Sync for tonight"
+                            ToolTip="Solves a frame from where the mount is pointing, works out the connected gear from it, and asks ACP which plans fit tonight. Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out. Reuses a solve from the last hour rather than taking another one." />
+                    <Button Height="24"
+                            Margin="3,0,0,3"
+                            Padding="4,0"
+                            FontSize="11"
                             Command="{Binding SyncAllToTsCommand}"
                             Content="Sync All to TS" />
-                </Grid>
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0"
-                            Height="32"
+                    <Button Height="24"
+                            Margin="0,3,3,0"
+                            Padding="4,0"
+                            FontSize="11"
+                            Command="{Binding PushToFramingCommand}"
+                            Content="Push to Framing" />
+                    <Button Height="24"
+                            Margin="3,3,0,0"
+                            Padding="4,0"
+                            FontSize="11"
                             Command="{Binding SendTsToAcpCommand}"
                             Content="Send TS to ACP"
                             ToolTip="Sends a read-only copy of Target Scheduler's database to ACP. ACP shows what would change before anything does. Nothing in TS changes." />
-                    <Button Grid.Column="1"
-                            Height="32"
-                            Margin="6,0,0,0"
-                            Padding="10,0"
-                            Command="{Binding OpenReviewCommand}"
-                            Content="Open in ACP"
-                            ToolTip="Opens ACP's review page for this upload in your browser. Nothing changes in ACP until you press Apply there."
-                            Visibility="{Binding HasReviewUrl, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
-                </Grid>
-                <Button Margin="0,6,0,0"
-                        Height="32"
-                        Command="{Binding SyncForTonightCommand}"
-                        Content="Sync for tonight"
-                        ToolTip="Solves a frame from where the mount is pointing, works out the connected gear from it, and asks ACP which plans fit tonight. Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out. Reuses a solve from the last hour rather than taking another one." />
-                <TextBlock Margin="0,4,0,0"
+                </UniformGrid>
+                <TextBlock Margin="0,6,0,0"
                            FontSize="11"
                            Opacity="0.7">
                     <Run Text="Will sync to profile: &quot;" /><Run Text="{Binding ActiveProfileName, Mode=OneWay}" /><Run Text="&quot;" />
                 </TextBlock>
             </StackPanel>
 
-            <!-- Row 5: last action result -->
-            <TextBlock Grid.Row="5"
-                       Margin="0,8,0,0"
-                       FontSize="11"
-                       Opacity="0.85"
-                       TextWrapping="Wrap"
-                       Text="{Binding LastActionResult}" />
+            <!-- Row 5: last action result, with Review and apply in ACP
+                 beside it as a small link-style button once an upload has
+                 a review page to open. The text column is star-width so
+                 the button never clips it; the result wraps under the
+                 button at a narrow width instead. The button is named as
+                 an action (Review AND apply), because a plain "Open" gave
+                 no sense that anything was waiting to be looked at. -->
+            <Grid Grid.Row="5" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           FontSize="11"
+                           Opacity="0.85"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Text="{Binding LastActionResult}" />
+                <Button Grid.Column="1"
+                        Margin="6,0,0,0"
+                        Padding="6,2"
+                        FontSize="11"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        VerticalAlignment="Top"
+                        Command="{Binding OpenReviewCommand}"
+                        Content="Review and apply in ACP"
+                        ToolTip="Opens ACP's review page for this upload in your browser, where you choose what to apply. Nothing changes until you press Apply there."
+                        Visibility="{Binding HasReviewUrl, Converter={StaticResource BooleanToVisibilityCollapsedConverter}}" />
+            </Grid>
 
             <!-- Row 6: progress reporting footer (Part F) -->
             <TextBlock Grid.Row="6"
