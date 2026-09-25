@@ -28,9 +28,16 @@ namespace ACP.NINA.Plugin.Models {
 
     public class PlanMatch {
 
-        /// One of the four values in MatchVerdict.
+        /// One of the values in MatchVerdict.
         [JsonProperty("verdict")]
         public string Verdict { get; set; }
+
+        /// Only set alongside MatchVerdict.Held: the plan's own state, echoed
+        /// here for convenience. The plan's own State field (MatchedPlan
+        /// inherits Plan) carries the same value; this is a shortcut so the
+        /// dock does not have to reach through both.
+        [JsonProperty("state")]
+        public string State { get; set; }
 
         [JsonProperty("pixel_scale_ratio")]
         public double? PixelScaleRatio { get; set; }
@@ -65,13 +72,19 @@ namespace ACP.NINA.Plugin.Models {
         public int Unconstrained { get; set; }
     }
 
-    /// The four verdicts the ACP side returns. String constants rather than an
-    /// enum because an unrecognised verdict from a newer server must not throw
+    /// The verdicts the ACP side returns. String constants rather than an enum
+    /// because an unrecognised verdict from a newer server must not throw
     /// during deserialisation; it falls through to "not a fit" instead.
     public static class MatchVerdict {
         public const string Fit = "fit";
         public const string FitWithWarnings = "fit_with_warnings";
         public const string NoFit = "no_fit";
         public const string Unconstrained = "unconstrained";
+
+        /// A draft, inactive or closed plan, returned only when the
+        /// fingerprint said supports_state. It gets no fit judgement and never
+        /// counts in MatchSummary; see
+        /// docs/specs/ts-project-settings.md section 6.
+        public const string Held = "held";
     }
 }

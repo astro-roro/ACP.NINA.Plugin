@@ -47,6 +47,14 @@ namespace ACP.NINA.Plugin.Models {
         /// "fit". Only meaningful on the match request.
         [JsonProperty("mode", NullValueHandling = NullValueHandling.Ignore)]
         public string Mode { get; set; }
+
+        /// Tells /api/plans/match this plugin understands plan state, so it
+        /// can return every plan including a paused one, with a "held" verdict
+        /// rather than leaving it out. See
+        /// docs/specs/ts-project-settings.md section 6. Always true for this
+        /// plugin; there is no version of it that predates the field.
+        [JsonProperty("supports_state")]
+        public bool SupportsState { get; set; } = true;
     }
 
     public class FingerprintCamera {

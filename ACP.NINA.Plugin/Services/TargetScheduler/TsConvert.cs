@@ -21,6 +21,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "low", 0 }, { "normal", 1 }, { "high", 2 },
             };
 
+        /// ACP's four project states to Target Scheduler's integer, matching
+        /// the import mapping in docs/specs/ts-project-settings.md section 3.
+        public static readonly IReadOnlyDictionary<string, int> StateToTsInt =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                { "draft", 0 }, { "active", 1 }, { "inactive", 2 }, { "closed", 3 },
+            };
+
+        /// The order state resolves in when a project's plans disagree: the
+        /// most-running value wins, so one active plan keeps the project
+        /// imaging. Matches docs/specs/ts-project-settings.md section 1.
+        private static readonly string[] StatePrecedence = { "active", "inactive", "draft", "closed" };
+
         /// Seeded on a freshly inserted project only. Names have to match
         /// Target Scheduler's ScoringRule.GetAllScoringRules(); when in doubt
         /// seed nothing and let the plugin populate on next start.
@@ -78,23 +90,47 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 double minAltitude;
                 int meridianWindow;
                 string priorityName;
-                ProjectConstraints(group.Value, out minAltitude, out meridianWindow, out priorityName);
+                string stateName;
+                int minimumTime;
+                ProjectConstraints(
+                    group.Value, out minAltitude, out meridianWindow, out priorityName,
+                    out stateName, out minimumTime);
+
+                var tsState = StateToTsInt[stateName];
+                var tsPriority = RankOf(priorityName);
 
                 var proj = new TsProject {
                     ProfileId = profileId,
                     Name = projectName,
                     Guid = TsGuid.Project(profileId, projectName),
-                    State = 1,
-                    Priority = RankOf(priorityName),
+                    State = tsState,
+                    Priority = tsPriority,
                     CreateDate = createDateUnix,
                     MinimumAltitude = minAltitude,
                     MeridianWindow = meridianWindow,
+                    MinimumTime = minimumTime,
+                    // Set for insert correctness whenever the resolved state
+                    // is active or inactive/closed. Whether the update
+                    // actually writes either column follows
+                    // ConditionalColumnsToWrite below, per section 4: "The
+                    // writer adds the matching one only when it writes
+                    // state, so they never change on their own."
+                    ActiveDate = tsState == StateToTsInt["active"] ? createDateUnix : (long?)null,
+                    InactiveDate = tsState == StateToTsInt["inactive"] || tsState == StateToTsInt["closed"]
+                        ? createDateUnix
+                        : (long?)null,
                     // The first plan in the group whose refs name a project.
                     // TsUpsert checks it still exists in this profile.
                     PinnedId = group.Value
                         .Select(p => RefsFor(p, profileId)?.ProjectId)
                         .FirstOrDefault(id => id.HasValue),
                 };
+                var baseProject = group.Value
+                    .Select(p => BaseProjectFor(p, profileId))
+                    .FirstOrDefault(b => b != null);
+                proj.HasBase = baseProject != null;
+                proj.ConditionalColumnsToWrite = ConditionalColumnsFor(
+                    baseProject, tsState, tsPriority, minimumTime);
                 payload.Projects.Add(proj);
                 payload.RuleWeightsByProjectGuid[proj.Guid] = DefaultRuleWeights
                     .Select(kv => new TsRuleWeight { ProjectId = 0, Name = kv.Key, Weight = kv.Value })
@@ -312,7 +348,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         }
 
         public static void ProjectConstraints(
-            List<Plan> group, out double minAltitude, out int meridianWindow, out string priorityName
+            List<Plan> group, out double minAltitude, out int meridianWindow, out string priorityName,
+            out string stateName, out int minimumTime
         ) {
             minAltitude = group.Max(p => p.MinAltitudeDeg ?? 0.0);
 
@@ -331,12 +368,78 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
             priorityName = best.Priority ?? "normal";
+
+            stateName = GroupState(group);
+            // The largest wins, the same rule as minimum altitude. Missing is 0.
+            minimumTime = group.Max(p => p.MinimumTimeMin ?? 0);
+        }
+
+        /// The most-running state among a project's plans, in the order
+        /// active, inactive, draft, closed, per
+        /// docs/specs/ts-project-settings.md section 1. A plan with no state
+        /// at all reads as active, matching the "absent means active" rule.
+        public static string GroupState(List<Plan> group) {
+            var present = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in group) {
+                var s = string.IsNullOrWhiteSpace(p.State) ? "active" : p.State;
+                present.Add(s);
+            }
+            foreach (var candidate in StatePrecedence) {
+                if (present.Contains(candidate)) return candidate;
+            }
+            return "active";
         }
 
         public static int RankOf(string priority) {
             int rank;
             if (priority != null && PriorityRank.TryGetValue(priority, out rank)) return rank;
             return 1;
+        }
+
+        /// Which of state, priority and minimumtime this push should actually
+        /// write, per the conflict rule in
+        /// docs/specs/ts-project-settings.md section 5: write ACP's value only
+        /// when ACP changed it since the last sync on this rig. The base is
+        /// the first plan in the group that carries one, read from
+        /// ts_links[profileId].base_snapshot.project. A group with no base at
+        /// all writes none of the three on update (the values still land on
+        /// insert, since an insert writes every column regardless of this
+        /// set). A base missing a field it predates reads the default from
+        /// section 3: state absent is active, minimumtime absent is 0.
+        private static HashSet<string> ConditionalColumnsFor(
+            Newtonsoft.Json.Linq.JObject baseProject, int tsState, int tsPriority, int minimumTime
+        ) {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (baseProject == null) return result;
+
+            var baseState = (int?)baseProject["state"] ?? StateToTsInt["active"];
+            var basePriority = (int?)baseProject["priority"] ?? RankOf("normal");
+            var baseMinimumTime = (int?)baseProject["minimumtime"] ?? 0;
+
+            if (baseState != tsState) {
+                result.Add("state");
+                if (tsState == StateToTsInt["active"]) result.Add("activedate");
+                else if (tsState == StateToTsInt["inactive"] || tsState == StateToTsInt["closed"]) result.Add("inactivedate");
+            }
+            if (basePriority != tsPriority) result.Add("priority");
+            if (baseMinimumTime != minimumTime) result.Add("minimumtime");
+            return result;
+        }
+
+        /// The base snapshot's project block for this plan and rig, or null
+        /// when there is none. Only ts_links carries a base snapshot; unlike
+        /// RefsFor, there is no ts_refs fallback, because a plan synced before
+        /// ts_links existed never had a base recorded either.
+        public static Newtonsoft.Json.Linq.JObject BaseProjectFor(Plan plan, string profileId) {
+            var links = plan?.TsLinks as Newtonsoft.Json.Linq.JObject;
+            if (links == null || string.IsNullOrWhiteSpace(profileId)) return null;
+            foreach (var pair in links) {
+                if (!string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                var baseSnapshot = (pair.Value as Newtonsoft.Json.Linq.JObject)?["base_snapshot"]
+                    as Newtonsoft.Json.Linq.JObject;
+                return baseSnapshot?["project"] as Newtonsoft.Json.Linq.JObject;
+            }
+            return null;
         }
 
         // -- Geometry --------------------------------------------------------

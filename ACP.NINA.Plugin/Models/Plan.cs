@@ -29,6 +29,11 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("meridian_window_min")]
         public int? MeridianWindowMin { get; set; }
 
+        /// Minutes, 0 or more. Absent means 0. ACP owns this and syncs it
+        /// both ways, per docs/specs/ts-project-settings.md.
+        [JsonProperty("minimum_time_min")]
+        public int? MinimumTimeMin { get; set; }
+
         [JsonProperty("telescope_id")]
         public string TelescopeId { get; set; }
 
