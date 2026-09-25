@@ -125,6 +125,28 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public int SmartExposureOrder { get; set; }
         public int EnableGrader { get; set; }
 
+        /// Which of TsSchema.ConditionalProjectColumns this push should
+        /// actually write on update: ACP changed that setting since the last
+        /// sync on this rig (docs/specs/ts-project-settings.md section 5).
+        /// TsConvert fills this in per project group. Empty means the update
+        /// touches none of state, priority, minimumtime, activedate or
+        /// inactivedate, leaving whatever Target Scheduler already has. Not a
+        /// column itself.
+        public HashSet<string> ConditionalColumnsToWrite { get; set; } =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// Whether this project had a recorded base
+        /// (ts_links[profileId].base_snapshot.project) before this push, set
+        /// by TsConvert. Read by TsState.BuildBaseSnapshot: the next base for
+        /// state, priority and minimumtime is ACP's own value whenever a base
+        /// already existed or this push just inserted the row, and is left
+        /// out entirely otherwise, per docs/specs/ts-project-settings.md
+        /// section 5's "no base" rule. Never read from what Target Scheduler
+        /// actually holds for these three columns, because that can be a
+        /// value from the rig this push deliberately chose not to overwrite.
+        /// Not a column.
+        public bool HasBase { get; set; }
+
         private static readonly string[] cols = {
             "profileId", "name", "guid", "description", "state", "priority",
             "createdate", "activedate", "inactivedate", "isMosaic", "flatsHandling",

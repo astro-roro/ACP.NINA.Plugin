@@ -80,10 +80,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var pid = UpsertByGuid(
                     conn, "project", proj, outcome.Project,
                     userVersion, columnsByTable,
-                    claimKeys: new[] { "profileId", "name" });
+                    claimKeys: new[] { "profileId", "name" },
+                    outcome: outcome);
                 projectIdByGuid[proj.Guid] = pid;
 
                 if (outcome.Project.Inserted > insertedBefore) {
+                    outcome.InsertedProjectGuids.Add(proj.Guid);
                     List<TsRuleWeight> weights;
                     if (payload.RuleWeightsByProjectGuid.TryGetValue(proj.Guid, out weights)
                         && weights.Count > 0
@@ -240,22 +242,30 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             TsTableCounts counts,
             int userVersion,
             IReadOnlyDictionary<string, HashSet<string>> columnsByTable,
-            string[] claimKeys
+            string[] claimKeys,
+            TsSyncOutcome outcome = null
         ) {
             var cols = WritableColumns(table, entity.Columns, userVersion, columnsByTable);
 
             // The UPDATE never touches the insert-only columns: the frame
             // counts on an exposure plan and a project's creation date belong
-            // to whoever wrote them first. See TsSchema.ColumnsForUpdate.
-            var updateCols = TsSchema.ColumnsForUpdate(table, cols);
+            // to whoever wrote them first. See TsSchema.ColumnsForUpdate. Nor
+            // does it touch a conditional project column (state, priority,
+            // minimumtime and the two dates) unless TsConvert decided this
+            // push should write it; see TsSchema.ColumnsForConditionalUpdate.
+            var updateCols = TsSchema.ColumnsForConditionalUpdate(
+                table, TsSchema.ColumnsForUpdate(table, cols), entity);
             var setClause = string.Join(", ", updateCols.Select(c => $"{Quote(c)} = ${c}"));
 
             // 0) By the Id the plan's ts_refs name. ResolvePins has already
             // checked the row exists and sits where the refs say, so this is
-            // the row the plan came from. Only the fields ACP edits are
-            // written; see TsSchema.ColumnsForPinnedUpdate.
+            // the row the plan came from. A project row follows the same
+            // three column sets as the guid and claim paths below (see
+            // TsSchema.ColumnsForPinnedUpdate); every other table writes only
+            // the fields ACP edits.
             if (entity.PinnedId.HasValue) {
-                var pinnedCols = TsSchema.ColumnsForPinnedUpdate(table, cols);
+                if (table == "project") CheckStateConflict(conn, entity as TsProject, entity.PinnedId.Value, outcome);
+                var pinnedCols = table == "project" ? updateCols : TsSchema.ColumnsForPinnedUpdate(table, cols);
                 if (pinnedCols.Count > 0) {
                     var pinnedSet = string.Join(", ", pinnedCols.Select(c => $"{Quote(c)} = ${c}"));
                     ExecuteWithValues(
@@ -271,6 +281,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "$g", entity.Guid },
             });
             if (existingId.HasValue) {
+                if (table == "project") CheckStateConflict(conn, entity as TsProject, existingId.Value, outcome);
                 ExecuteWithValues(
                     conn, $"UPDATE {table} SET {setClause} WHERE Id = $__id",
                     updateCols, entity, existingId.Value);
@@ -290,6 +301,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         // is an update of a row that already existed, so the
                         // insert-only columns are left alone here too: the
                         // frames it has already taken are not ours to reset.
+                        if (table == "project") CheckStateConflict(conn, entity as TsProject, claim.Item1, outcome);
                         ExecuteWithValues(
                             conn, $"UPDATE {table} SET {setClause} WHERE Id = $__id",
                             updateCols, entity, claim.Item1);
@@ -318,6 +330,53 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var id = Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
                 counts.Inserted++;
                 return id;
+            }
+        }
+
+        /// The two dock lines from docs/specs/ts-project-settings.md section 5,
+        /// read out before the update below overwrites (or deliberately
+        /// leaves alone) the state column. Both compare against the row Target
+        /// Scheduler holds right now, which the ordinary base comparison in
+        /// TsConvert never sees.
+        ///
+        /// ACP wins: this push is about to write state because ACP changed it
+        /// since the base, and doing so actually changes what the live row
+        /// holds. Section 5's own example pairs this message with a live row
+        /// that still equals the base (TS simply never moved), so the check is
+        /// "does the write change anything live", not "did TS's row diverge
+        /// from the base independently".
+        ///
+        /// TS only: this push is leaving state alone (ACP has not changed it
+        /// since the base) and the live row disagrees with ACP's value
+        /// anyway. Nothing was written; the line says an upload would bring
+        /// the rig's change into ACP.
+        private static void CheckStateConflict(SqliteConnection conn, TsProject proj, int id, TsSyncOutcome outcome) {
+            if (proj == null || outcome == null) return;
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "SELECT state FROM project WHERE Id = $id";
+                cmd.Parameters.AddWithValue("$id", id);
+                var value = cmd.ExecuteScalar();
+                if (value == null || value == DBNull.Value) return;
+                var liveState = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+                if (liveState == proj.State) return;
+
+                if (proj.ConditionalColumnsToWrite.Contains("state")) {
+                    outcome.ConflictLines.Add(
+                        $"{proj.Name}: paused from ACP, which undid a change made in TS");
+                } else {
+                    outcome.ConflictLines.Add(
+                        $"{proj.Name}: TS has it {StateName(liveState)}, send TS to ACP to bring that in");
+                }
+            }
+        }
+
+        private static string StateName(int tsState) {
+            switch (tsState) {
+                case 0: return "draft";
+                case 1: return "active";
+                case 2: return "inactive";
+                case 3: return "closed";
+                default: return tsState.ToString(CultureInfo.InvariantCulture);
             }
         }
 
@@ -561,7 +620,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// current one. Zero on a database that has already been migrated.
         public int MigratedGuids { get; set; }
 
+        /// Guids of projects this push inserted rather than updated. Read by
+        /// TsState.BuildBaseSnapshot to know when it is safe to establish a
+        /// base for state, priority and minimumtime from ACP's own value: a
+        /// brand new row is guaranteed to hold exactly what was just written.
+        public HashSet<string> InsertedProjectGuids { get; } = new HashSet<string>(StringComparer.Ordinal);
+
         public List<string> Notes { get; } = new List<string>();
+
+        /// One line per project where this push's state decision met a value
+        /// Target Scheduler already held that ACP did not expect, per
+        /// docs/specs/ts-project-settings.md section 5. Worded for the dock
+        /// and the sequencer log, not just diagnostics like Notes above.
+        public List<string> ConflictLines { get; } = new List<string>();
 
         public string ToShortString() {
             var line =

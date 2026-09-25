@@ -30,6 +30,11 @@ namespace ACP.NINA.Plugin.Services {
         /// getting that far.
         public TsPushResult TsPush { get; set; }
 
+        /// What writing the paused, draft and closed projects' state did, if
+        /// anything was held. Null when nothing was held or the write could
+        /// not run; see docs/specs/ts-project-settings.md section 6.
+        public TsHeldStates.Outcome HeldStates { get; set; }
+
         /// Whether the solve was taken now or reused from an earlier one, which
         /// the spec says the dock has to say out loud.
         public bool SolveWasReused { get; set; }
@@ -168,6 +173,28 @@ namespace ACP.NINA.Plugin.Services {
             outcome.Selected = MatchSelection.SelectForMode(outcome.Match, settings.SyncMode);
             outcome.Lines.Add(MatchSelection.Summarise(outcome.Match, settings.SyncMode));
 
+            var profileId = profileService?.ActiveProfile?.Id.ToString();
+
+            // A paused plan is not loaded, so the push below never touches its
+            // row and Target Scheduler would keep imaging it. This writes the
+            // state column, and only that column, to the row it already has.
+            // Runs whether or not anything was selected to load tonight, and
+            // never counts as a reason the run failed: it is a courtesy on
+            // top of the real push. See docs/specs/ts-project-settings.md
+            // section 6.
+            var held = outcome.Match?.Plans?
+                .Where(p => p?.Match?.Verdict == MatchVerdict.Held)
+                .Cast<Plan>()
+                .ToList();
+            if (held != null && held.Count > 0 && !string.IsNullOrWhiteSpace(profileId)) {
+                var heldOutcome = await tsPush.WriteHeldStatesAsync(held, profileId, token).ConfigureAwait(false);
+                var heldLine = heldOutcome?.Summary();
+                if (heldLine != null) {
+                    outcome.HeldStates = heldOutcome;
+                    outcome.Lines.Add(heldLine);
+                }
+            }
+
             // The mode has already decided what Selected holds: everything, or
             // only the plans that fit plus the ones with no gear set. The push
             // takes that list as given.
@@ -178,7 +205,6 @@ namespace ACP.NINA.Plugin.Services {
                 return outcome;
             }
 
-            var profileId = profileService?.ActiveProfile?.Id.ToString();
             // Slot names from the profile rather than the wheel, so a daytime
             // sync with nothing connected still writes names Target Scheduler
             // can match.

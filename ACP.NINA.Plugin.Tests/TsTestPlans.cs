@@ -1,4 +1,5 @@
 using ACP.NINA.Plugin.Models;
+using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 
 namespace ACP.NINA.Plugin.Tests {
@@ -60,16 +61,19 @@ namespace ACP.NINA.Plugin.Tests {
             Dictionary<string, FilterGoal> filterGoals = null,
             string priority = "normal",
             double minAltitudeDeg = 30,
-            int? meridianWindowMin = null
+            int? meridianWindowMin = null,
+            string state = "active",
+            int? minimumTimeMin = null
         ) {
             return new Plan {
                 Id = id,
                 Guid = "guid-" + id,
                 ProjectName = projectName ?? ("Project " + id),
-                State = "active",
+                State = state,
                 Priority = priority,
                 MinAltitudeDeg = minAltitudeDeg,
                 MeridianWindowMin = meridianWindowMin,
+                MinimumTimeMin = minimumTimeMin,
                 TelescopeId = telescopeId,
                 CameraId = cameraId,
                 Target = new PlanTarget {
@@ -91,17 +95,25 @@ namespace ACP.NINA.Plugin.Tests {
         /// the order the Python fixture declares. It decides nothing about
         /// correctness, because every row is found by its guid, but keeping it
         /// means the row Ids line up with the golden capture too.
+        ///
+        /// A spread of state, priority and minimum time, matching
+        /// tests/plans.py in the extension: Single Target is active and
+        /// normal, Mosaic is inactive with high priority, Two Filters is
+        /// draft with a minimum time of 30. See docs/specs/ts-project-settings.md
+        /// section 4, "Golden parity".
         public static List<Plan> ThreePlans() {
             return new List<Plan> {
                 Plan("single", projectName: "Single Target", targetName: "NGC 253"),
                 Plan("mosaic", projectName: "Mosaic", targetName: "M31",
-                     rows: 2, cols: 2, overlapPct: 15, ra: 10.68, dec: 41.27),
+                     rows: 2, cols: 2, overlapPct: 15, ra: 10.68, dec: 41.27,
+                     state: "inactive", priority: "high"),
                 Plan("twofilter", projectName: "Two Filters", targetName: "NGC 7000",
                      ra: 314.7, dec: 44.5,
                      filterGoals: new Dictionary<string, FilterGoal> {
                          { "Ha", new FilterGoal { TargetHours = 4.0, SubExposureS = 600 } },
                          { "OIII", new FilterGoal { TargetHours = 2.0, SubExposureS = 300 } },
-                     }),
+                     },
+                     state: "draft", minimumTimeMin: 30),
             };
         }
 
@@ -109,6 +121,26 @@ namespace ACP.NINA.Plugin.Tests {
         /// for the strictest wins tests.
         public static List<Plan> SharedProject(params Plan[] plans) {
             return new List<Plan>(plans);
+        }
+
+        /// Stamp `plan` with a base snapshot for `profileId`, as if a previous
+        /// push or upload had recorded one, in the shape
+        /// TsConvert.BaseProjectFor reads. `state`, `priority` and
+        /// `minimumTime` are the TS integers/values the base held; a null
+        /// leaves that field out of the base, matching a base captured before
+        /// docs/specs/ts-project-settings.md was built.
+        public static void WithBase(
+            Plan plan, string profileId, int? state = null, int? priority = null, int? minimumTime = null
+        ) {
+            var project = new JObject();
+            if (state.HasValue) project["state"] = state.Value;
+            if (priority.HasValue) project["priority"] = priority.Value;
+            if (minimumTime.HasValue) project["minimumtime"] = minimumTime.Value;
+            plan.TsLinks = new JObject {
+                { profileId, new JObject {
+                    { "base_snapshot", new JObject { { "project", project } } },
+                } },
+            };
         }
     }
 }
