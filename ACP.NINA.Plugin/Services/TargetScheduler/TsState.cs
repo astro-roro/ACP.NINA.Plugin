@@ -98,16 +98,36 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             ResolvePanels(plan, out rows, out cols, out baseName);
             var cameraId = (plan?.CameraId ?? string.Empty).Trim();
 
-            var projectGuid = TsGuid.Project(profileId, projectName);
+            // The pinned ids win over the guid, the same order TsUpsert writes
+            // in. A row made in Target Scheduler keeps its own guid when a pin
+            // updates it, so the guid lookup alone finds nothing for it, and the
+            // link written back would name no project. ts_links wins over
+            // ts_refs, so that empty link then hides the good one and the next
+            // push duplicates the project. That is what happened on 2026-10-09.
+            // A pinned id is kept only while its row is still in this profile's
+            // snapshot under the same parent.
+            var pinned = TsConvert.RefsFor(plan, profileId);
+
             int projectId;
-            var haveProjectId = snap.ProjectIdByGuid.TryGetValue(projectGuid, out projectId);
+            var haveProjectId = pinned?.ProjectId != null && snap.ProjectsById.ContainsKey(pinned.ProjectId.Value);
+            if (haveProjectId) {
+                projectId = pinned.ProjectId.Value;
+            } else {
+                haveProjectId = snap.ProjectIdByGuid.TryGetValue(TsGuid.Project(profileId, projectName), out projectId);
+            }
 
             var targetIdsByPanel = new JObject();
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
                     int tid;
-                    if (snap.TargetIdByGuid.TryGetValue(TsGuid.Target(profileId, projectName, name), out tid)) {
+                    TsTarget pinnedTarget;
+                    if (haveProjectId && pinned != null
+                        && pinned.TargetIdsByPanel.TryGetValue(PanelKey(r, c), out tid)
+                        && snap.TargetsById.TryGetValue(tid, out pinnedTarget)
+                        && pinnedTarget.ProjectId == projectId) {
+                        targetIdsByPanel[PanelKey(r, c)] = tid;
+                    } else if (snap.TargetIdByGuid.TryGetValue(TsGuid.Target(profileId, projectName, name), out tid)) {
                         targetIdsByPanel[PanelKey(r, c)] = tid;
                     }
                 }
@@ -116,7 +136,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var templateIdsByFilter = new JObject();
             foreach (var filterName in FilterNames(plan)) {
                 int tplId;
-                if (snap.TemplateIdByGuid.TryGetValue(TsGuid.Template(profileId, filterName, cameraId), out tplId)) {
+                if (pinned != null
+                    && pinned.TemplateIdsByFilter.TryGetValue(filterName, out tplId)
+                    && snap.TemplatesById.ContainsKey(tplId)) {
+                    templateIdsByFilter[filterName] = tplId;
+                } else if (snap.TemplateIdByGuid.TryGetValue(TsGuid.Template(profileId, filterName, cameraId), out tplId)) {
                     templateIdsByFilter[filterName] = tplId;
                 }
             }
@@ -126,15 +150,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
                     var targetGuid = TsGuid.Target(profileId, projectName, name);
+                    var panelTargetId = targetIdsByPanel[PanelKey(r, c)];
+                    var tid = panelTargetId != null ? (int)panelTargetId : 0;
                     foreach (var filterName in FilterNames(plan)) {
+                        var key = $"{tid}_{filterName}";
                         int planId;
-                        if (!snap.PlanIdByGuid.TryGetValue(
+                        TsExposurePlan pinnedPlan;
+                        if (pinned != null
+                            && pinned.ExposurePlanIds.TryGetValue(key, out planId)
+                            && snap.PlansById.TryGetValue(planId, out pinnedPlan)
+                            && pinnedPlan.TargetId == tid) {
+                            exposurePlanIds[key] = planId;
+                        } else if (snap.PlanIdByGuid.TryGetValue(
                                 TsGuid.ExposurePlan(profileId, targetGuid, filterName), out planId)) {
-                            continue;
+                            exposurePlanIds[key] = planId;
                         }
-                        var panelTargetId = targetIdsByPanel[PanelKey(r, c)];
-                        var tid = panelTargetId != null ? (int)panelTargetId : 0;
-                        exposurePlanIds[$"{tid}_{filterName}"] = planId;
                     }
                 }
             }
