@@ -167,11 +167,15 @@ namespace ACP.NINA.Plugin.Tests {
                 var path = SnapshotDb(tmp);
                 var plans = Plans();
                 foreach (var p in plans) p.TsRefs["profile_id"] = "some-other-profile";
+                var before = ReadAll(path)["project"].Count;
 
-                var outcome = Apply(path, plans);
+                // The refs are ignored, so each plan would land beside its
+                // same-name project in this profile: the 2026-10-09 duplicates.
+                // The sync now refuses and writes nothing.
+                var ex = Assert.Throws<TsPushValidationException>(() => Apply(path, plans));
 
-                Assert.Equal(0, outcome.Project.Pinned + outcome.Target.Pinned + outcome.ExposurePlan.Pinned);
-                Assert.Equal(3, outcome.Project.Inserted);
+                Assert.Contains("Nothing was synced", ex.Message);
+                Assert.Equal(before, ReadAll(path)["project"].Count);
             }
         }
 
