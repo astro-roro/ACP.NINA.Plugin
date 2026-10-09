@@ -122,21 +122,22 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         [Fact]
-        public async Task WithoutRefsTheSamePlansComeBackAsDuplicates() {
-            // The behaviour the refs fix, pinned down so the reason for them
-            // stays visible: every hand-made row already has a guid, so
-            // nothing is found and nothing can be claimed.
+        public async Task WithoutRefsTheSamePlansAreRefusedRatherThanDuplicated() {
+            // Why the refs matter: every hand-made row already has a guid, so
+            // without refs nothing is found and nothing can be claimed. That
+            // used to insert a second copy of each project (2026-10-09, 13
+            // projects). The push now fails and writes nothing.
             using (var tmp = new TempDir()) {
                 var path = SnapshotDb(tmp);
                 var plans = Plans();
                 foreach (var p in plans) p.TsRefs = null;
+                var before = ReadAll(path)["project"].Count;
 
                 var result = await ServiceFor(path).PushAsync(plans, Gear(), ProfileId, default, Wheel);
 
-                Assert.True(result.Success, result.Failure);
-                Assert.Equal(3, result.Outcome.Project.Inserted);
-                Assert.Equal(0, result.Outcome.Project.Claimed);
-                Assert.Equal(16, result.Outcome.ExposurePlan.Inserted);
+                Assert.False(result.Success);
+                Assert.Contains("Nothing was synced", result.Failure);
+                Assert.Equal(before, ReadAll(path)["project"].Count);
             }
         }
 
