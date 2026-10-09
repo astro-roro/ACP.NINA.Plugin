@@ -154,7 +154,9 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         [Fact]
-        public void ARowStampedBySomebodyElseIsLeftAloneAndANewRowGoesInBesideIt() {
+        public void ASameNameProjectStampedBySomebodyElseStopsTheSyncAndWritesNothing() {
+            // Was: insert a second project beside it. On 2026-10-09 that put a
+            // second copy of 13 projects into TS. Now the sync refuses.
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File("foreign.sqlite"));
                 using (var db = TargetSchedulerDb.Open(path)) {
@@ -162,13 +164,13 @@ namespace ACP.NINA.Plugin.Tests {
                         "INSERT INTO project (profileId, name, state, priority, guid) " +
                         $"VALUES ('{TsTestPlans.ProfileId}', 'Theirs', 1, 1, 'not-our-stamp')");
 
-                    var outcome = TsUpsert.Apply(db, OneProject("Theirs"));
+                    var ex = Assert.Throws<TsPushValidationException>(
+                        () => TsUpsert.Apply(db, OneProject("Theirs")));
 
-                    Assert.Equal(1, outcome.Project.Inserted);
-                    Assert.Equal(0, outcome.Project.Claimed);
-                    Assert.Equal(2L, Scalar(db.Connection, "SELECT COUNT(*) FROM project"));
-                    // Their stamp survives untouched. Fighting over another
-                    // tool's identity is worse than a duplicate the user can see.
+                    Assert.Contains("'Theirs'", ex.Message);
+                    Assert.Contains("Nothing was synced", ex.Message);
+                    Assert.Equal(1L, Scalar(db.Connection, "SELECT COUNT(*) FROM project"));
+                    Assert.Equal(0L, Scalar(db.Connection, "SELECT COUNT(*) FROM target"));
                     Assert.Equal(1L, Scalar(db.Connection,
                         "SELECT COUNT(*) FROM project WHERE guid = 'not-our-stamp'"));
                 }

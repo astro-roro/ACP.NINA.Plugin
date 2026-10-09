@@ -57,6 +57,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // is written by Id below, ahead of the guid and the name.
             var neededTemplateGuids = ResolvePins(conn, payload, outcome);
 
+            // 0c) Refuse to create a second project beside one of the same name.
+            RefuseDuplicateProjects(conn, payload);
+
             // 1) Exposure templates. Filter wheel slot names are unique within
             // a profile by convention, so a name collision is a real conflict.
             var templateIdByGuid = new Dictionary<string, int>();
@@ -400,6 +403,39 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// exposure plan with no row of its own yet uses the template the refs
         /// give for its filter, when there is one. Returns null when no entity
         /// carried a pin at all, which leaves the old path untouched.
+        /// Stops the sync, before anything is written, when it would insert a
+        /// project beside an existing project of the same name in this profile.
+        ///
+        /// That happens when a plan's link to its Target Scheduler rows is
+        /// missing or no longer holds and the existing row carries a guid this
+        /// sync did not write, so neither the guid nor the name claim can take
+        /// it. On 2026-10-09 it put a second copy of 13 projects into Target
+        /// Scheduler, which then imaged the old copies while ACP followed the
+        /// new ones. A duplicate costs a night's progress, so the sync now
+        /// refuses and says how to link the projects instead.
+        private static void RefuseDuplicateProjects(SqliteConnection conn, TsSyncPayload payload) {
+            var clashes = new List<string>();
+            foreach (var proj in payload.Projects) {
+                if (proj.PinnedId.HasValue) continue;
+                var mine = SelectId(conn, "project", "guid = $g",
+                    new Dictionary<string, object> { { "$g", proj.Guid } });
+                if (mine.HasValue) continue;
+                var other = SelectIdAndGuid(conn, "project", "\"profileId\" = $profileId AND \"name\" = $name",
+                    new Dictionary<string, object> {
+                        { "$profileId", proj.ProfileId }, { "$name", proj.Name },
+                    });
+                // An unstamped row is claimed below, which is not a duplicate.
+                if (other != null && !string.IsNullOrWhiteSpace(other.Item2)) clashes.Add(proj.Name);
+            }
+            if (clashes.Count == 0) return;
+            throw new TsPushValidationException(
+                "Nothing was synced. Target Scheduler already has " +
+                (clashes.Count == 1 ? "a project" : $"{clashes.Count} projects") +
+                " named " + string.Join(", ", clashes.Select(n => $"'{n}'")) +
+                " that this sync cannot match to their ACP plans, so it would have made a second copy. " +
+                "In NINA press Send TS to ACP and link them on ACP's review page, then sync again.");
+        }
+
         private static HashSet<string> ResolvePins(
             SqliteConnection conn, TsSyncPayload payload, TsSyncOutcome outcome
         ) {
