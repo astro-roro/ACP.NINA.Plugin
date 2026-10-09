@@ -247,6 +247,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         token
                     ).ConfigureAwait(false);
                     result.Attempts = attempts;
+                    // Every note says why a row was not matched the way its plan
+                    // expected (a link that no longer holds, a legacy rule name
+                    // replaced). They used to go nowhere, which hid why the
+                    // 2026-10-09 sync made duplicates.
+                    foreach (var note in result.Outcome.Notes) {
+                        Logger.Info($"ACP: sync note: {note}");
+                    }
                     if (result.Outcome.MigratedGuids > 0) {
                         Logger.Info(
                             $"ACP: migrated {result.Outcome.MigratedGuids} Target Scheduler " +
