@@ -182,16 +182,57 @@ namespace ACP.NINA.Plugin.Tests {
                 using (var db = TargetSchedulerDb.Open(path)) {
                     var first = TsUpsert.Apply(db, OneProject("Fresh"));
                     Assert.Equal(1, first.RuleWeightSeededProjects);
-                    Assert.Equal(5L, Scalar(db.Connection, "SELECT COUNT(*) FROM ruleweight"));
+                    Assert.Equal(8L, Scalar(db.Connection, "SELECT COUNT(*) FROM ruleweight"));
+                    // The name Target Scheduler looks up, not an internal one.
+                    Assert.Equal(1L, Scalar(db.Connection,
+                        "SELECT COUNT(*) FROM ruleweight WHERE name = 'Meridian Flip Penalty'"));
 
-                    Exec(db.Connection, "UPDATE ruleweight SET weight = 99 WHERE name = 'PercentComplete'");
+                    Exec(db.Connection, "UPDATE ruleweight SET weight = 99 WHERE name = 'Percent Complete'");
                     var second = TsUpsert.Apply(db, OneProject("Fresh"));
 
                     Assert.Equal(0, second.RuleWeightSeededProjects);
-                    Assert.Equal(5L, Scalar(db.Connection, "SELECT COUNT(*) FROM ruleweight"));
+                    Assert.Equal(8L, Scalar(db.Connection, "SELECT COUNT(*) FROM ruleweight"));
                     // The user's tuning survives a re-sync.
                     Assert.Equal(99.0, Convert.ToDouble(Scalar(db.Connection,
-                        "SELECT weight FROM ruleweight WHERE name = 'PercentComplete'")));
+                        "SELECT weight FROM ruleweight WHERE name = 'Percent Complete'")));
+                }
+            }
+        }
+
+        [Fact]
+        public void LegacyRuleNamesAreReplacedAndTunedWeightsSurvive() {
+            // The two broken shapes seen on Voyager on 2026-10-09: the five
+            // legacy rows alone (a bad sync's inserts), and the eight real rows
+            // plus the five legacy ones (a bad sync, then a NINA restart).
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File("heal.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    TsUpsert.Apply(db, OneProject("Fresh"));
+                    var pid = Convert.ToInt64(Scalar(db.Connection, "SELECT Id FROM project"));
+                    Exec(db.Connection, "UPDATE ruleweight SET weight = 99 WHERE name = 'Percent Complete'");
+                    foreach (var legacy in TsConvert.LegacyRuleNames) {
+                        Exec(db.Connection,
+                            $"INSERT INTO ruleweight (projectid, name, weight) VALUES ({pid}, '{legacy}', 50)");
+                    }
+
+                    var mixed = TsUpsert.Apply(db, OneProject("Fresh"));
+                    Assert.Single(mixed.Notes, n => n.Contains("legacy rule weight"));
+                    Assert.Equal(8L, Scalar(db.Connection, "SELECT COUNT(*) FROM ruleweight"));
+                    Assert.Equal(99.0, Convert.ToDouble(Scalar(db.Connection,
+                        "SELECT weight FROM ruleweight WHERE name = 'Percent Complete'")));
+
+                    Exec(db.Connection, "DELETE FROM ruleweight");
+                    foreach (var legacy in TsConvert.LegacyRuleNames) {
+                        Exec(db.Connection,
+                            $"INSERT INTO ruleweight (projectid, name, weight) VALUES ({pid}, '{legacy}', 50)");
+                    }
+                    TsUpsert.Apply(db, OneProject("Fresh"));
+                    Assert.Equal(8L, Scalar(db.Connection, "SELECT COUNT(*) FROM ruleweight"));
+                    Assert.Equal(0L, Scalar(db.Connection,
+                        "SELECT COUNT(*) FROM ruleweight WHERE name IN " +
+                        "('PercentComplete','MeridianWindow','MosaicCompletion','SettingSoonest','SmartExposure')"));
+                    Assert.Equal(75.0, Convert.ToDouble(Scalar(db.Connection,
+                        "SELECT weight FROM ruleweight WHERE name = 'Meridian Window Priority'")));
                 }
             }
         }

@@ -224,7 +224,7 @@ namespace ACP.NINA.Plugin.Tests {
                     Assert.Equal(3, CountRows(db.Connection, "project"));
                     // Rule weights are seeded once, on the insert, and never
                     // touched again, because they are the user's to tune.
-                    Assert.Equal(15, CountRows(db.Connection, "ruleweight"));
+                    Assert.Equal(24, CountRows(db.Connection, "ruleweight"));
                 }
             }
         }
