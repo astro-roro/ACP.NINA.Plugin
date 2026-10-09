@@ -66,6 +66,78 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
+        /// The links a push writes back must still pin the same rows next time.
+        /// They used to be read back by ACP's own guids only, which projects
+        /// made in Target Scheduler do not carry, so an imported plan's link
+        /// came back with no project and no targets. ts_links wins over
+        /// ts_refs, so that empty link hid the good one, and the following
+        /// push inserted a second copy of every imported project. That is the
+        /// 2026-09-25 push followed by the 2026-10-09 00:50 duplicates.
+        [Fact]
+        public async Task TheLinksAPushWritesBackPinTheSameRowsOnTheNextPush() {
+            using (var tmp = new TempDir()) {
+                var path = SnapshotDb(tmp);
+                var plans = Plans();
+
+                var first = await ServiceFor(path).PushAsync(plans, Gear(), ProfileId, default, Wheel);
+                Assert.True(first.Success, first.Failure);
+
+                foreach (var state in first.PlanStates) {
+                    Assert.True(state.Refs["project_id"]?.Type == JTokenType.Integer,
+                        $"{state.PlanId}: written-back refs have no project_id: {state.Refs}");
+                    var plan = plans.Single(p => p.Id == state.PlanId);
+                    plan.TsLinks = new JObject {
+                        { ProfileId, new JObject { { "machine", "TEST" }, { "refs", state.Refs } } },
+                    };
+                }
+                var before = ReadAll(path);
+
+                var second = await ServiceFor(path).PushAsync(plans, Gear(), ProfileId, default, Wheel);
+
+                Assert.True(second.Success, second.Failure);
+                Assert.Equal(0, second.Outcome.Project.Inserted);
+                Assert.Equal(0, second.Outcome.Target.Inserted);
+                Assert.Equal(0, second.Outcome.ExposurePlan.Inserted);
+                Assert.Equal(3, second.Outcome.Project.Pinned);
+                Assert.Equal(3, second.Outcome.Target.Pinned);
+                Assert.Equal(16, second.Outcome.ExposurePlan.Pinned);
+                var after = ReadAll(path);
+                foreach (var table in Tables) {
+                    Assert.True(before[table].Keys.SequenceEqual(after[table].Keys), $"{table} rows changed");
+                }
+            }
+        }
+
+        /// The links already in ACP from before the fix name no project. They
+        /// must not hide the plan's ts_refs.
+        [Fact]
+        public async Task ALinkThatNamesNoProjectFallsBackToTsRefs() {
+            using (var tmp = new TempDir()) {
+                var path = SnapshotDb(tmp);
+                var plans = Plans();
+                foreach (var plan in plans) {
+                    plan.TsLinks = new JObject {
+                        { ProfileId, new JObject {
+                            { "machine", "VOYAGER" },
+                            { "refs", new JObject {
+                                { "profile_id", ProfileId },
+                                { "project_id", JValue.CreateNull() },
+                                { "target_ids_by_panel", new JObject() },
+                                { "template_ids_by_filter", new JObject() },
+                                { "exposure_plan_ids", new JObject() },
+                            } },
+                        } },
+                    };
+                }
+
+                var result = await ServiceFor(path).PushAsync(plans, Gear(), ProfileId, default, Wheel);
+
+                Assert.True(result.Success, result.Failure);
+                Assert.Equal(0, result.Outcome.Project.Inserted);
+                Assert.Equal(3, result.Outcome.Project.Pinned);
+            }
+        }
+
         [Fact]
         public async Task APinnedRowKeepsEverythingACPDoesNotEdit() {
             using (var tmp = new TempDir()) {

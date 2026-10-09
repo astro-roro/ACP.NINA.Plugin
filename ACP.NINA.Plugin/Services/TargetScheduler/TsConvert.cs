@@ -529,7 +529,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         ///
         /// The per-profile link in ts_links wins. ts_refs is the fallback,
         /// used only when its profile_id is this profile, which is what a plan
-        /// last synced before ts_links existed still carries.
+        /// last synced before ts_links existed still carries. A link that
+        /// names no project also falls back: until 2026-10-09 a push wrote
+        /// exactly that for projects made in Target Scheduler, and letting it
+        /// win hid good ts_refs and duplicated 13 projects.
         public static TsPlanRefs RefsFor(Plan plan, string profileId) {
             var links = plan?.TsLinks as Newtonsoft.Json.Linq.JObject;
             if (links != null && !string.IsNullOrWhiteSpace(profileId)) {
@@ -537,7 +540,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     if (!string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)) continue;
                     var linkRefs = (pair.Value as Newtonsoft.Json.Linq.JObject)?["refs"]
                         as Newtonsoft.Json.Linq.JObject;
-                    if (linkRefs != null) return TsPlanRefs.FromJson(plan.Id, profileId, linkRefs);
+                    if (linkRefs == null) continue;
+                    var fromLink = TsPlanRefs.FromJson(plan.Id, profileId, linkRefs);
+                    if (fromLink.ProjectId.HasValue) return fromLink;
                 }
             }
 
