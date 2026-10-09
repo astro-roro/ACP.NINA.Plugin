@@ -33,17 +33,31 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// imaging. Matches docs/specs/ts-project-settings.md section 1.
         private static readonly string[] StatePrecedence = { "active", "inactive", "draft", "closed" };
 
-        /// Seeded on a freshly inserted project only. Names have to match
-        /// Target Scheduler's ScoringRule.GetAllScoringRules(); when in doubt
-        /// seed nothing and let the plugin populate on next start.
+        /// Seeded on a freshly inserted project. Target Scheduler looks a
+        /// project's weights up by each scoring rule's display name and throws
+        /// when one is missing, so planning fails for every target until NINA
+        /// restarts and Target Scheduler repairs the rows. These are the eight
+        /// rules Target Scheduler 5 defines, at its own DEFAULT_WEIGHT x 100.
+        /// Matches DEFAULT_RULE_WEIGHTS in nina_ts_sync.
         public static readonly IReadOnlyList<KeyValuePair<string, double>> DefaultRuleWeights =
             new List<KeyValuePair<string, double>> {
-                new KeyValuePair<string, double>("PercentComplete", 50.0),
-                new KeyValuePair<string, double>("MeridianWindow", 50.0),
-                new KeyValuePair<string, double>("MosaicCompletion", 50.0),
-                new KeyValuePair<string, double>("SettingSoonest", 50.0),
-                new KeyValuePair<string, double>("SmartExposure", 50.0),
+                new KeyValuePair<string, double>("Percent Complete", 50.0),
+                new KeyValuePair<string, double>("Project Priority", 50.0),
+                new KeyValuePair<string, double>("Setting Soonest", 50.0),
+                new KeyValuePair<string, double>("Meridian Window Priority", 75.0),
+                new KeyValuePair<string, double>("Target Switch Penalty", 67.0),
+                new KeyValuePair<string, double>("Mosaic Completion", 0.0),
+                new KeyValuePair<string, double>("Smart Exposure Order", 0.0),
+                new KeyValuePair<string, double>("Meridian Flip Penalty", 0.0),
             };
+
+        /// The internal names earlier versions seeded by mistake (2026-10-09:
+        /// planning threw "The given key 'Meridian Flip Penalty' was not
+        /// present in the dictionary"). A sync that finds them on a project it
+        /// touches removes them and adds whichever real names are missing.
+        public static readonly ISet<string> LegacyRuleNames = new HashSet<string>(StringComparer.Ordinal) {
+            "PercentComplete", "MeridianWindow", "MosaicCompletion", "SettingSoonest", "SmartExposure",
+        };
 
         /// Build the payload for a run.
         ///

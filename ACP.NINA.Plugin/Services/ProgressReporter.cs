@@ -162,6 +162,27 @@ namespace ACP.NINA.Plugin.Services {
             }
 
             _ = FallbackLoopAsync(timerCts.Token);
+            _ = StartupReportAsync(timerCts.Token);
+        }
+
+        /// How long after NINA starts to report every plan once, so the
+        /// profile and the Target Scheduler database have settled.
+        public static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(30);
+
+        /// One report of every plan shortly after NINA starts, whether or not a
+        /// Target Scheduler container ever runs. After a fully cloudy night the
+        /// container never starts, so without this ACP would not see the
+        /// previous night's counts until the next clear one.
+        private async Task StartupReportAsync(CancellationToken ct) {
+            try {
+                await Task.Delay(StartupDelay, ct).ConfigureAwait(false);
+                var sent = await ReportAllAsync(ct).ConfigureAwait(false);
+                Logger.Info($"ACP: startup progress report sent for {sent} plan(s).");
+            } catch (OperationCanceledException) {
+            } catch (Exception ex) {
+                SetError($"Progress report failed: {ex.Message}");
+                Logger.Warning($"ACP: startup progress report failed: {ex.Message}");
+            }
         }
 
         private static IEnumerable<string> AllTopics() {

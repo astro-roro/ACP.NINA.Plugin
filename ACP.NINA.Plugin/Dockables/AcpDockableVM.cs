@@ -434,10 +434,25 @@ namespace ACP.NINA.Plugin.Dockables {
                     .SendAsync(activeId, profile.Name, profiles, status, CancellationToken.None)
                     .ConfigureAwait(false);
 
+                // The upload carries plan settings for review, not frame counts;
+                // those travel on the progress endpoint. Report every linked
+                // plan now too, so one button brings ACP fully up to date.
+                var line = outcome.Line;
+                var reporter = progressReporter;
+                if (reporter != null) {
+                    try {
+                        var reported = await reporter.ReportAllAsync(CancellationToken.None).ConfigureAwait(false);
+                        line += $" Acquired hours sent for {reported} plan(s).";
+                    } catch (Exception ex) {
+                        line += $" Acquired hours not sent: {ex.Message}";
+                        Logger.Warning($"ACP: progress report after Send TS to ACP failed: {ex.Message}");
+                    }
+                }
+
                 Application.Current?.Dispatcher.Invoke(() => {
                     finished = true;
                     ReviewUrl = outcome.ReviewUrl;
-                    LastActionResult = outcome.Line;
+                    LastActionResult = line;
                 });
                 Logger.Info($"ACP: Send TS to ACP: {outcome.Line}");
             } catch (Exception ex) {

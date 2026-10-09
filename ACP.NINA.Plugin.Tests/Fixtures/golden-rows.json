@@ -98,33 +98,51 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           }
         ],
         "target": [
@@ -383,93 +401,147 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
           },
           {
             "Id": 6,
-            "name": "PercentComplete",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 7,
-            "name": "MeridianWindow",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 8,
-            "name": "MosaicCompletion",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 9,
-            "name": "SettingSoonest",
+            "name": "Percent Complete",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 10,
-            "name": "SmartExposure",
+            "name": "Project Priority",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 11,
-            "name": "PercentComplete",
-            "projectid": 3,
+            "name": "Setting Soonest",
+            "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 12,
-            "name": "MeridianWindow",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Meridian Window Priority",
+            "projectid": 2,
+            "weight": 75.0
           },
           {
             "Id": 13,
-            "name": "MosaicCompletion",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Target Switch Penalty",
+            "projectid": 2,
+            "weight": 67.0
           },
           {
             "Id": 14,
-            "name": "SettingSoonest",
+            "name": "Mosaic Completion",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 15,
+            "name": "Smart Exposure Order",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 16,
+            "name": "Meridian Flip Penalty",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 17,
+            "name": "Percent Complete",
             "projectid": 3,
             "weight": 50.0
           },
           {
-            "Id": 15,
-            "name": "SmartExposure",
+            "Id": 18,
+            "name": "Project Priority",
             "projectid": 3,
             "weight": 50.0
+          },
+          {
+            "Id": 19,
+            "name": "Setting Soonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 20,
+            "name": "Meridian Window Priority",
+            "projectid": 3,
+            "weight": 75.0
+          },
+          {
+            "Id": 21,
+            "name": "Target Switch Penalty",
+            "projectid": 3,
+            "weight": 67.0
+          },
+          {
+            "Id": 22,
+            "name": "Mosaic Completion",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 23,
+            "name": "Smart Exposure Order",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 24,
+            "name": "Meridian Flip Penalty",
+            "projectid": 3,
+            "weight": 0.0
           }
         ],
         "target": [
@@ -798,93 +870,147 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
           },
           {
             "Id": 6,
-            "name": "PercentComplete",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 7,
-            "name": "MeridianWindow",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 8,
-            "name": "MosaicCompletion",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 9,
-            "name": "SettingSoonest",
+            "name": "Percent Complete",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 10,
-            "name": "SmartExposure",
+            "name": "Project Priority",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 11,
-            "name": "PercentComplete",
-            "projectid": 3,
+            "name": "Setting Soonest",
+            "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 12,
-            "name": "MeridianWindow",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Meridian Window Priority",
+            "projectid": 2,
+            "weight": 75.0
           },
           {
             "Id": 13,
-            "name": "MosaicCompletion",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Target Switch Penalty",
+            "projectid": 2,
+            "weight": 67.0
           },
           {
             "Id": 14,
-            "name": "SettingSoonest",
+            "name": "Mosaic Completion",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 15,
+            "name": "Smart Exposure Order",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 16,
+            "name": "Meridian Flip Penalty",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 17,
+            "name": "Percent Complete",
             "projectid": 3,
             "weight": 50.0
           },
           {
-            "Id": 15,
-            "name": "SmartExposure",
+            "Id": 18,
+            "name": "Project Priority",
             "projectid": 3,
             "weight": 50.0
+          },
+          {
+            "Id": 19,
+            "name": "Setting Soonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 20,
+            "name": "Meridian Window Priority",
+            "projectid": 3,
+            "weight": 75.0
+          },
+          {
+            "Id": 21,
+            "name": "Target Switch Penalty",
+            "projectid": 3,
+            "weight": 67.0
+          },
+          {
+            "Id": 22,
+            "name": "Mosaic Completion",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 23,
+            "name": "Smart Exposure Order",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 24,
+            "name": "Meridian Flip Penalty",
+            "projectid": 3,
+            "weight": 0.0
           }
         ],
         "target": [
@@ -1213,93 +1339,147 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
           },
           {
             "Id": 6,
-            "name": "PercentComplete",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 7,
-            "name": "MeridianWindow",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 8,
-            "name": "MosaicCompletion",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 9,
-            "name": "SettingSoonest",
+            "name": "Percent Complete",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 10,
-            "name": "SmartExposure",
+            "name": "Project Priority",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 11,
-            "name": "PercentComplete",
-            "projectid": 3,
+            "name": "Setting Soonest",
+            "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 12,
-            "name": "MeridianWindow",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Meridian Window Priority",
+            "projectid": 2,
+            "weight": 75.0
           },
           {
             "Id": 13,
-            "name": "MosaicCompletion",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Target Switch Penalty",
+            "projectid": 2,
+            "weight": 67.0
           },
           {
             "Id": 14,
-            "name": "SettingSoonest",
+            "name": "Mosaic Completion",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 15,
+            "name": "Smart Exposure Order",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 16,
+            "name": "Meridian Flip Penalty",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 17,
+            "name": "Percent Complete",
             "projectid": 3,
             "weight": 50.0
           },
           {
-            "Id": 15,
-            "name": "SmartExposure",
+            "Id": 18,
+            "name": "Project Priority",
             "projectid": 3,
             "weight": 50.0
+          },
+          {
+            "Id": 19,
+            "name": "Setting Soonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 20,
+            "name": "Meridian Window Priority",
+            "projectid": 3,
+            "weight": 75.0
+          },
+          {
+            "Id": 21,
+            "name": "Target Switch Penalty",
+            "projectid": 3,
+            "weight": 67.0
+          },
+          {
+            "Id": 22,
+            "name": "Mosaic Completion",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 23,
+            "name": "Smart Exposure Order",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 24,
+            "name": "Meridian Flip Penalty",
+            "projectid": 3,
+            "weight": 0.0
           }
         ],
         "target": [
@@ -1485,33 +1665,51 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           }
         ],
         "target": [
@@ -1772,93 +1970,147 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
           },
           {
             "Id": 6,
-            "name": "PercentComplete",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 7,
-            "name": "MeridianWindow",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 8,
-            "name": "MosaicCompletion",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 9,
-            "name": "SettingSoonest",
+            "name": "Percent Complete",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 10,
-            "name": "SmartExposure",
+            "name": "Project Priority",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 11,
-            "name": "PercentComplete",
-            "projectid": 3,
+            "name": "Setting Soonest",
+            "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 12,
-            "name": "MeridianWindow",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Meridian Window Priority",
+            "projectid": 2,
+            "weight": 75.0
           },
           {
             "Id": 13,
-            "name": "MosaicCompletion",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Target Switch Penalty",
+            "projectid": 2,
+            "weight": 67.0
           },
           {
             "Id": 14,
-            "name": "SettingSoonest",
+            "name": "Mosaic Completion",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 15,
+            "name": "Smart Exposure Order",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 16,
+            "name": "Meridian Flip Penalty",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 17,
+            "name": "Percent Complete",
             "projectid": 3,
             "weight": 50.0
           },
           {
-            "Id": 15,
-            "name": "SmartExposure",
+            "Id": 18,
+            "name": "Project Priority",
             "projectid": 3,
             "weight": 50.0
+          },
+          {
+            "Id": 19,
+            "name": "Setting Soonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 20,
+            "name": "Meridian Window Priority",
+            "projectid": 3,
+            "weight": 75.0
+          },
+          {
+            "Id": 21,
+            "name": "Target Switch Penalty",
+            "projectid": 3,
+            "weight": 67.0
+          },
+          {
+            "Id": 22,
+            "name": "Mosaic Completion",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 23,
+            "name": "Smart Exposure Order",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 24,
+            "name": "Meridian Flip Penalty",
+            "projectid": 3,
+            "weight": 0.0
           }
         ],
         "target": [
@@ -2181,93 +2433,147 @@
         "ruleweight": [
           {
             "Id": 1,
-            "name": "PercentComplete",
+            "name": "Percent Complete",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 2,
-            "name": "MeridianWindow",
+            "name": "Project Priority",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 3,
-            "name": "MosaicCompletion",
+            "name": "Setting Soonest",
             "projectid": 1,
             "weight": 50.0
           },
           {
             "Id": 4,
-            "name": "SettingSoonest",
+            "name": "Meridian Window Priority",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 75.0
           },
           {
             "Id": 5,
-            "name": "SmartExposure",
+            "name": "Target Switch Penalty",
             "projectid": 1,
-            "weight": 50.0
+            "weight": 67.0
           },
           {
             "Id": 6,
-            "name": "PercentComplete",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 7,
-            "name": "MeridianWindow",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 8,
-            "name": "MosaicCompletion",
-            "projectid": 2,
-            "weight": 50.0
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
           },
           {
             "Id": 9,
-            "name": "SettingSoonest",
+            "name": "Percent Complete",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 10,
-            "name": "SmartExposure",
+            "name": "Project Priority",
             "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 11,
-            "name": "PercentComplete",
-            "projectid": 3,
+            "name": "Setting Soonest",
+            "projectid": 2,
             "weight": 50.0
           },
           {
             "Id": 12,
-            "name": "MeridianWindow",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Meridian Window Priority",
+            "projectid": 2,
+            "weight": 75.0
           },
           {
             "Id": 13,
-            "name": "MosaicCompletion",
-            "projectid": 3,
-            "weight": 50.0
+            "name": "Target Switch Penalty",
+            "projectid": 2,
+            "weight": 67.0
           },
           {
             "Id": 14,
-            "name": "SettingSoonest",
+            "name": "Mosaic Completion",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 15,
+            "name": "Smart Exposure Order",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 16,
+            "name": "Meridian Flip Penalty",
+            "projectid": 2,
+            "weight": 0.0
+          },
+          {
+            "Id": 17,
+            "name": "Percent Complete",
             "projectid": 3,
             "weight": 50.0
           },
           {
-            "Id": 15,
-            "name": "SmartExposure",
+            "Id": 18,
+            "name": "Project Priority",
             "projectid": 3,
             "weight": 50.0
+          },
+          {
+            "Id": 19,
+            "name": "Setting Soonest",
+            "projectid": 3,
+            "weight": 50.0
+          },
+          {
+            "Id": 20,
+            "name": "Meridian Window Priority",
+            "projectid": 3,
+            "weight": 75.0
+          },
+          {
+            "Id": 21,
+            "name": "Target Switch Penalty",
+            "projectid": 3,
+            "weight": 67.0
+          },
+          {
+            "Id": 22,
+            "name": "Mosaic Completion",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 23,
+            "name": "Smart Exposure Order",
+            "projectid": 3,
+            "weight": 0.0
+          },
+          {
+            "Id": 24,
+            "name": "Meridian Flip Penalty",
+            "projectid": 3,
+            "weight": 0.0
           }
         ],
         "target": [

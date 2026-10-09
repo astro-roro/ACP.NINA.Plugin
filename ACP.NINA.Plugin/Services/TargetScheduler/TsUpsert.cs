@@ -84,14 +84,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     outcome: outcome);
                 projectIdByGuid[proj.Guid] = pid;
 
+                List<TsRuleWeight> weights;
+                payload.RuleWeightsByProjectGuid.TryGetValue(proj.Guid, out weights);
                 if (outcome.Project.Inserted > insertedBefore) {
                     outcome.InsertedProjectGuids.Add(proj.Guid);
-                    List<TsRuleWeight> weights;
-                    if (payload.RuleWeightsByProjectGuid.TryGetValue(proj.Guid, out weights)
-                        && weights.Count > 0
-                        && SeedRuleWeights(conn, pid, weights)) {
+                    if (weights != null && weights.Count > 0 && SeedRuleWeights(conn, pid, weights)) {
                         outcome.RuleWeightSeededProjects++;
                     }
+                } else if (weights != null && weights.Count > 0 && HealLegacyRuleWeights(conn, pid, weights)) {
+                    outcome.Notes.Add($"project {proj.Name}: replaced legacy rule weight names");
                 }
             }
 
@@ -584,6 +585,50 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         "INSERT INTO ruleweight (projectid, name, weight) VALUES ($p, $n, $w)";
                     cmd.Parameters.AddWithValue("$p", projectId);
                     cmd.Parameters.AddWithValue("$n", (object)w.Name ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("$w", w.Weight);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            return true;
+        }
+
+        /// Replace rule weights an earlier version seeded under the wrong names.
+        ///
+        /// Only acts on a project carrying one of TsConvert.LegacyRuleNames,
+        /// so a project made by hand in Target Scheduler is never touched. The
+        /// legacy rows go, and each real rule name the project lacks is added
+        /// at its default. Rows already under a real name keep their weight.
+        /// Returns true when anything changed. Matches nina_ts_sync.
+        private static bool HealLegacyRuleWeights(
+            SqliteConnection conn, int projectId, List<TsRuleWeight> weights
+        ) {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "SELECT name FROM ruleweight WHERE projectid = $p";
+                cmd.Parameters.AddWithValue("$p", projectId);
+                using (var r = cmd.ExecuteReader()) {
+                    while (r.Read()) {
+                        if (!r.IsDBNull(0)) names.Add(r.GetString(0));
+                    }
+                }
+            }
+            var legacy = names.Where(n => TsConvert.LegacyRuleNames.Contains(n)).ToList();
+            if (legacy.Count == 0) return false;
+            foreach (var name in legacy) {
+                using (var cmd = conn.CreateCommand()) {
+                    cmd.CommandText = "DELETE FROM ruleweight WHERE projectid = $p AND name = $n";
+                    cmd.Parameters.AddWithValue("$p", projectId);
+                    cmd.Parameters.AddWithValue("$n", name);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            foreach (var w in weights) {
+                if (w.Name == null || names.Contains(w.Name)) continue;
+                using (var cmd = conn.CreateCommand()) {
+                    cmd.CommandText =
+                        "INSERT INTO ruleweight (projectid, name, weight) VALUES ($p, $n, $w)";
+                    cmd.Parameters.AddWithValue("$p", projectId);
+                    cmd.Parameters.AddWithValue("$n", w.Name);
                     cmd.Parameters.AddWithValue("$w", w.Weight);
                     cmd.ExecuteNonQuery();
                 }
