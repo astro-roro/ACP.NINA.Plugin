@@ -195,8 +195,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public double Ra { get; set; }
         /// Degrees.
         public double Dec { get; set; }
-        /// 1 = J2000.
-        public int EpochCode { get; set; } = 1;
+        /// NINA's Epoch enum: JNOW 0, B1950 1, J2000 2, J2050 3. ACP holds J2000.
+        public int EpochCode { get; set; } = 2;
         public double Rotation { get; set; }
         public double Roi { get; set; } = 100.0;
         /// Left behind by Migrate/17.sql when per-target exposure order moved
