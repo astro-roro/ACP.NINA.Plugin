@@ -90,9 +90,30 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 $"{NamePart(profileId)}/target/{NamePart(projectName)}/{NamePart(targetName)}");
         }
 
+        /// The recipe keyed by one goal key ("R", or "R Stars" for a star
+        /// goal). Pushes before filter rows stamped every exposure plan with
+        /// it; the push now uses it only to find those plans and restamp them
+        /// with RowPlan. Matches exposure_plan_guid in nina_ts_sync.
         public static string ExposurePlan(string profileId, string targetGuid, string filterName) {
             return Stable(
                 $"{NamePart(profileId)}/plan/{NamePart(targetGuid)}/{NamePart(filterName)}");
+        }
+
+        /// The exposure plan of one filter row on one target. Matches
+        /// row_plan_guid in nina_ts_sync.
+        public static string RowPlan(string profileId, string targetGuid, string filterName, string templateName) {
+            return Stable(
+                $"{NamePart(profileId)}/plan/{NamePart(targetGuid)}/" +
+                $"{NamePart(filterName)}/{NamePart(templateName)}");
+        }
+
+        /// The guid stamped on a template the push inserts for a filter row.
+        /// Only ever written on insert: a template is found by profile and
+        /// name, never by this guid. Matches row_template_guid in nina_ts_sync.
+        public static string RowTemplate(string profileId, string filterName, string cameraId, string templateName) {
+            return Stable(
+                $"{NamePart(profileId)}/template/{NamePart(filterName)}/" +
+                $"{NamePart(cameraId)}/{NamePart(templateName)}");
         }
 
         // -- The pre-length-prefix recipe, for the migration only -------------

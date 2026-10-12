@@ -245,12 +245,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public int Accepted { get; set; }
         public int Enabled { get; set; } = 1;
 
-        /// The template Id the plan's ts_refs give for this filter, if any.
-        /// When set and still valid, the plan points at that template and the
-        /// template ACP would have built for the filter is not needed. Not a
-        /// column.
-        public int? PinnedTemplateId { get; set; }
-
         private static readonly string[] cols = {
             "profileId", "targetid", "exposureTemplateId", "guid", "exposure",
             "desired", "acquired", "accepted", "enabled",
@@ -331,5 +325,50 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// derives from their own rows.
         public Dictionary<string, string> LegacyTemplateGuidByGuid { get; } =
             new Dictionary<string, string>();
+
+        /// How to find each exposure plan when its own guid misses, and
+        /// whether this push may write its exposure. Keyed by the plan's row
+        /// guid. Matches plan_lookup_by_guid in nina_ts_sync.
+        public Dictionary<string, TsPlanLookup> PlanLookupByGuid { get; } =
+            new Dictionary<string, TsPlanLookup>(StringComparer.Ordinal);
+
+        /// Exposure plans of rows removed in ACP, per target guid. The push
+        /// sets enabled to 0 on each, never deleting it.
+        public Dictionary<string, List<TsRemovedPlan>> RemovedByTargetGuid { get; } =
+            new Dictionary<string, List<TsRemovedPlan>>(StringComparer.Ordinal);
+
+        /// Canonical filter names on the cameras this push's plans use. A
+        /// template on the profile whose filter is none of these is listed in
+        /// the outcome.
+        public HashSet<string> CameraFilters { get; } = new HashSet<string>(StringComparer.Ordinal);
+    }
+
+    /// Where else a row's exposure plan may be, in the order
+    /// docs/specs/goal-panel-and-ts-order.md section 3 gives, after its own
+    /// guid: the id ts_links pins for this row and panel, then the goal-key
+    /// recipes (the template's name, then the filter's for the first row of
+    /// that filter only). WriteExposure is true when the row's filter or
+    /// template differs from the base, the one update that writes exposure.
+    public class TsPlanLookup {
+        public string Label { get; set; }
+        public int? PinnedId { get; set; }
+        public List<string> OldGuids { get; } = new List<string>();
+        public bool WriteExposure { get; set; }
+
+        /// The template ts_links pins for this row. Used instead of inserting
+        /// the row's template when TS has none of that name and the row's
+        /// template has not changed since the base: a plan imported from TS
+        /// still points at the user's own template, whose name ACP may not
+        /// know yet. Matches pinned_template_id in nina_ts_sync.
+        public int? PinnedTemplateId { get; set; }
+    }
+
+    /// An exposure plan ts_links pins to a row ACP no longer has. Guids are
+    /// the identities ACP could have stamped on it, from the filter and
+    /// template the base recorded for that row; a plan carrying none of them
+    /// was not ACP's and is left alone.
+    public class TsRemovedPlan {
+        public int PlanId { get; set; }
+        public HashSet<string> Guids { get; } = new HashSet<string>(StringComparer.Ordinal);
     }
 }

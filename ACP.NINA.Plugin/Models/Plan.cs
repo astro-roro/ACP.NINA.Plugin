@@ -43,6 +43,16 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("target")]
         public PlanTarget Target { get; set; }
 
+        /// The plan's goals as an ordered list of filter rows, in shooting
+        /// order (docs/specs/goal-panel-and-ts-order.md section 3). Null from
+        /// an ACP that predates rows; TsRows.RowsOf then derives them from
+        /// FilterGoals.
+        [JsonProperty("filter_rows")]
+        public List<FilterRow> FilterRows { get; set; }
+
+        /// The old per-filter goals. A current ACP still serves a derived
+        /// copy for older plugins; this plugin reads it only when the plan
+        /// has no FilterRows.
         [JsonProperty("filter_goals")]
         public Dictionary<string, FilterGoal> FilterGoals { get; set; }
 
@@ -91,6 +101,37 @@ namespace ACP.NINA.Plugin.Models {
 
         [JsonProperty("overlap_pct")]
         public double OverlapPct { get; set; }
+    }
+
+    /// One filter row: a filter, a Target Scheduler template and a goal in
+    /// hours ("h") or frames ("fr"). `aac` is AAC's to write and is not
+    /// read here.
+    public class FilterRow {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("filter")]
+        public string Filter { get; set; }
+
+        [JsonProperty("template")]
+        public string Template { get; set; }
+
+        /// The sub TS uses for this row, in seconds. What the writers divide
+        /// an hour goal by.
+        [JsonProperty("template_sub_s")]
+        public double? TemplateSubS { get; set; }
+
+        [JsonProperty("unit")]
+        public string Unit { get; set; }
+
+        [JsonProperty("target_hours")]
+        public double? TargetHours { get; set; }
+
+        [JsonProperty("target_frames")]
+        public double? TargetFrames { get; set; }
+
+        [JsonProperty("actual_hours")]
+        public double? ActualHours { get; set; }
     }
 
     public class FilterGoal {

@@ -89,8 +89,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// the defaults on insert.
         private static readonly Dictionary<string, HashSet<string>> insertOnlyColumns =
             new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
+                // exposure is written as -1 on insert, and on update only when
+                // the row's filter or template changed (TsPlanLookup.
+                // WriteExposure). Every plan an older push made carries an
+                // explicit sub, and rewriting it would change what TS shoots
+                // (docs/specs/goal-panel-and-ts-order.md section 3).
                 { "exposureplan", new HashSet<string>(
-                    new[] { "acquired", "accepted" }, StringComparer.OrdinalIgnoreCase) },
+                    new[] { "acquired", "accepted", "exposure" }, StringComparer.OrdinalIgnoreCase) },
                 { "project", new HashSet<string>(
                     new[] {
                         "createdate", "flatsHandling", "usecustomhorizon", "horizonoffset",

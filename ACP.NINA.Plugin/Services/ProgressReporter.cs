@@ -381,6 +381,7 @@ namespace ACP.NINA.Plugin.Services {
 
             return new ProgressRequest {
                 Filters = filters,
+                Entries = ProgressMath.BuildEntries(rows),
                 Source = "ts",
                 At = clock().ToUniversalTime()
                     .ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture),

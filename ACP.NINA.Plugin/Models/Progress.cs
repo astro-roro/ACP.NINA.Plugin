@@ -20,6 +20,24 @@ namespace ACP.NINA.Plugin.Models {
         public int AcquiredCount { get; set; }
     }
 
+    /// One exposure plan's progress, as a current ACP's
+    /// POST /api/plans/<id>/progress reads it: the filter and the template
+    /// together name the filter row.
+    public class ProgressEntry {
+
+        [JsonProperty("filter")]
+        public string Filter { get; set; }
+
+        [JsonProperty("template")]
+        public string Template { get; set; }
+
+        [JsonProperty("acquired_hours")]
+        public double AcquiredHours { get; set; }
+
+        [JsonProperty("acquired_count")]
+        public int AcquiredCount { get; set; }
+    }
+
     /// The request body for POST /api/plans/<id>/progress.
     ///
     /// "source" is always "ts" from this plugin. ACP uses it to tell plugin
@@ -27,9 +45,15 @@ namespace ACP.NINA.Plugin.Models {
     /// running against the same plan on a same machine setup.
     public class ProgressRequest {
 
+        /// Per filter, for an ACP from before filter rows. A current ACP
+        /// reads Entries instead and ignores this.
         [JsonProperty("filters")]
         public Dictionary<string, ProgressFilter> Filters { get; set; }
             = new Dictionary<string, ProgressFilter>(StringComparer.OrdinalIgnoreCase);
+
+        /// One per exposure plan, with its template.
+        [JsonProperty("entries", NullValueHandling = NullValueHandling.Ignore)]
+        public List<ProgressEntry> Entries { get; set; }
 
         [JsonProperty("source")]
         public string Source { get; set; } = "ts";
