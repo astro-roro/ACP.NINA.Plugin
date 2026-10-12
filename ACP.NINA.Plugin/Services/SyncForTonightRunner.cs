@@ -229,6 +229,11 @@ namespace ACP.NINA.Plugin.Services {
                     .PostAsync(client, outcome.TsPush, profileId, token)
                     .ConfigureAwait(false);
                 if (outcome.LinksWarning != null) outcome.Lines.Add(outcome.LinksWarning);
+
+                // The template list for ACP's drop-down. Best effort, logged
+                // on failure, never a reason to warn the user.
+                await TsTemplatesReporter.PostAsync(client, outcome.TsPush, profileId, token)
+                    .ConfigureAwait(false);
             }
 
             // A push that did not run is not a failed night: the fingerprint is

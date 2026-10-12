@@ -204,6 +204,7 @@ namespace ACP.NINA.Plugin.Services {
 
         public const string TsUploadPath = "/api/ext/nina-ts-sync/import/uploads";
         public const string TsLinksPath = "/api/ext/nina-ts-sync/links";
+        public const string TsTemplatesPath = "/api/ts-templates";
 
         /// POST the consistent copy of TS's database as multipart/form-data,
         /// with a `file` part and a `meta` JSON part. ACP answers 202 with the
@@ -248,6 +249,14 @@ namespace ACP.NINA.Plugin.Services {
             if (body == null) throw new ArgumentNullException(nameof(body));
             var content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
             await SendAsync(client, HttpMethod.Post, baseUrl + TsLinksPath, content, ct).ConfigureAwait(false);
+        }
+
+        /// POST the profile's Target Scheduler exposure templates, replacing
+        /// the list ACP holds for that profile.
+        public async Task PostTsTemplatesAsync(TsTemplatesRequest body, CancellationToken ct = default) {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            var json = JsonConvert.SerializeObject(body);
+            await SendAsync(HttpMethod.Post, TsTemplatesPath, json, ct).ConfigureAwait(false);
         }
 
         // -- Transport ------------------------------------------------------
