@@ -28,8 +28,10 @@ namespace ACP.NINA.Plugin.Tests {
     /// row they point at, which checks the wiring rather than the numbering.
     public class TsPushGoldenTests {
 
-        private static readonly string[] Tables =
-            { "exposuretemplate", "project", "target", "exposureplan", "ruleweight" };
+        private static readonly string[] Tables = {
+            "exposuretemplate", "project", "target", "exposureplan", "ruleweight",
+            "overrideexposureorderitem", "filtercadenceitem",
+        };
 
         /// Foreign key columns, and the table each one points into.
         private static readonly Dictionary<string, string> ForeignKeys =
@@ -38,6 +40,8 @@ namespace ACP.NINA.Plugin.Tests {
                 { "ruleweight.projectid", "project" },
                 { "exposureplan.targetid", "target" },
                 { "exposureplan.exposureTemplateId", "exposuretemplate" },
+                { "overrideexposureorderitem.targetid", "target" },
+                { "filtercadenceitem.targetid", "target" },
             };
 
         // -- The comparison --------------------------------------------------
@@ -69,6 +73,47 @@ namespace ACP.NINA.Plugin.Tests {
                 var expected = GoldenSlice("scenarios", scenario);
                 CompareAllTables(expected, actual);
                 AssertReportMatches(expected.Report, actual.Outcome);
+            }
+        }
+
+        /// The filter row scenarios (docs/specs/goal-panel-and-ts-order.md
+        /// tests S4 and R4), replayed step for step from
+        /// tests/row_scenarios.py. Project and target counts are left out of
+        /// the report check: a linked plan's project and target are updated
+        /// in place through ts_refs here, which the Python extension counts as
+        /// a guid update, and the rows come out the same either way.
+        [Theory]
+        [InlineData("s1_new_star_row")]
+        [InlineData("s2_existing_template")]
+        [InlineData("m2_old_writer_rows_restamped")]
+        [InlineData("m3_explicit_exposure_kept")]
+        [InlineData("m4_template_change_writes_default")]
+        [InlineData("r1_removed_row_disabled")]
+        [InlineData("r3_readded_row_enabled")]
+        [InlineData("imported_plan_keeps_its_template")]
+        public void AFilterRowPushWritesTheSameRowsAsThePythonExtension(string scenario) {
+            using (var tmp = new TempDir()) {
+                var path = TsFixtures.MakeDb(28, tmp.File($"{scenario}.sqlite"));
+                using (var db = TargetSchedulerDb.Open(path)) {
+                    var outcome = TsRowScenarios.Run(scenario, db);
+                    var tables = Dump(db.Connection);
+                    var actual = new PushResult { Tables = tables, IdToGuid = IdToGuidMaps(tables), Outcome = outcome };
+                    var expected = GoldenSlice("scenarios", scenario);
+                    CompareAllTables(expected, actual);
+
+                    var report = expected.Report;
+                    foreach (var table in new[] { "exposuretemplate", "exposureplan" }) {
+                        var counts = CountsFor(outcome, table);
+                        Assert.Equal((int)report[table]["inserted"], counts.Inserted);
+                        Assert.Equal((int)report[table]["updated"], counts.Updated);
+                        Assert.Equal((int)report[table]["claimed"], counts.Claimed);
+                    }
+                    Assert.Equal((int)report["disabled_plans"], outcome.DisabledPlans);
+                    Assert.Equal(report["exposure_mismatches"].ToObject<List<string>>(), outcome.ExposureMismatches);
+                    Assert.Equal(report["stray_templates"].ToObject<List<string>>(), outcome.StrayTemplates);
+                    Assert.Equal(report["override_rebuilt"].ToObject<List<string>>(), outcome.OverrideRebuilt);
+                    Assert.Empty(outcome.Notes);
+                }
             }
         }
 
@@ -408,6 +453,8 @@ namespace ACP.NINA.Plugin.Tests {
         ///
         /// ruleweight has no guid of its own, so it is keyed by its project's
         /// guid and its rule name, which is what makes a row unique there.
+        /// Override and cadence rows are keyed by their target's guid and
+        /// their order.
         private static Dictionary<string, Dictionary<string, JToken>> Normalise(
             string table, JArray rows, Dictionary<string, Dictionary<long, string>> idToGuid
         ) {
@@ -428,9 +475,17 @@ namespace ACP.NINA.Plugin.Tests {
                     normalised[property.Name] = property.Value;
                 }
 
-                var key = table == "ruleweight"
-                    ? $"{normalised["projectid"]}/{normalised["name"]}"
-                    : (string)row["guid"];
+                // ruleweight, override and cadence rows have no guid of their
+                // own: each is keyed by its parent's guid and what makes it
+                // unique under that parent.
+                string key;
+                if (table == "ruleweight") {
+                    key = $"{normalised["projectid"]}/{normalised["name"]}";
+                } else if (table == "overrideexposureorderitem" || table == "filtercadenceitem") {
+                    key = $"{normalised["targetid"]}/{normalised["order"]}";
+                } else {
+                    key = (string)row["guid"];
+                }
                 Assert.False(
                     result.ContainsKey(key),
                     $"{table}: two rows share the key {key}, so the guid is not unique");

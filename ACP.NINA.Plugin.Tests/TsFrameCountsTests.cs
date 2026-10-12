@@ -57,7 +57,7 @@ namespace ACP.NINA.Plugin.Tests {
                     // Four hours already in the bag on the two-filter plan's Ha
                     // goal, at 600 s a sub, so ACP computes 24 acquired on a row
                     // it is creating.
-                    plans[2].FilterGoals["Ha"].ActualHours = 4.0;
+                    plans[2].FilterRows.Single(r => r.Filter == "Ha").ActualHours = 4.0;
                     TsUpsert.Apply(db, TsConvert.BuildPayload(
                         plans, TsTestPlans.Gear(), TsTestPlans.ProfileId, TsTestPlans.FrozenNow));
 
@@ -81,7 +81,10 @@ namespace ACP.NINA.Plugin.Tests {
 
                     TsUpsert.Apply(db, Payload());
                     Assert.Equal(12, Scalar(db.Connection, "desired", "exposureplan", 1));
-                    Assert.Equal(300, Scalar(db.Connection, "exposure", "exposureplan", 1));
+                    // exposure joined the insert-only columns with filter rows
+                    // (docs/specs/goal-panel-and-ts-order.md section 3): a sub
+                    // set in TS stays while the row's template is unchanged.
+                    Assert.Equal(5, Scalar(db.Connection, "exposure", "exposureplan", 1));
                     Assert.Equal(30, Scalar(db.Connection, "minimumaltitude", "project", 1));
                 }
             }

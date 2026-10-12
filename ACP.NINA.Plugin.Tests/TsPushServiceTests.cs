@@ -121,7 +121,7 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Equal(3, result.Pushed.Count);
                 Assert.Single(result.LeftOut);
                 Assert.Contains("Empty One", result.LeftOut[0]);
-                Assert.Contains("no filter goal has any hours on it", result.LeftOut[0]);
+                Assert.Contains("no filter row has a goal", result.LeftOut[0]);
                 Assert.Contains("1 left out", result.Summary());
             }
         }
