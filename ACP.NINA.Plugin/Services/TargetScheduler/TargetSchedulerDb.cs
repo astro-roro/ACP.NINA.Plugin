@@ -262,6 +262,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         EnableGrader = ReadInt(r, "enablegrader"),
                         State = ReadInt(r, "state", 1),
                         MinimumTime = ReadInt(r, "minimumtime"),
+                        FilterSwitchFrequency = ReadInt(r, "filterswitchfrequency"),
+                        SmartExposureOrder = ReadInt(r, "smartexposureorder"),
+                        DitherEvery = ReadInt(r, "ditherevery"),
                     };
                     snap.ProjectsById[id] = proj;
                     if (!string.IsNullOrEmpty(proj.Guid)) snap.ProjectIdByGuid[proj.Guid] = id;

@@ -34,6 +34,17 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("minimum_time_min")]
         public int? MinimumTimeMin { get; set; }
 
+        /// The TS project's filter switch frequency: 0 shoots each filter
+        /// until it is done, N rotates every N frames. Null means unknown, and
+        /// the push never writes it on update.
+        /// docs/specs/goal-panel-and-ts-order.md section 4.
+        [JsonProperty("filter_switch_frequency")]
+        public int? FilterSwitchFrequency { get; set; }
+
+        /// The TS project's smart exposure order. Null means unknown, as above.
+        [JsonProperty("smart_exposure_order")]
+        public bool? SmartExposureOrder { get; set; }
+
         [JsonProperty("telescope_id")]
         public string TelescopeId { get; set; }
 

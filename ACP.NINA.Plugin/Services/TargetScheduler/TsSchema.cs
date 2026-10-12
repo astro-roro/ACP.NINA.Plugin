@@ -70,13 +70,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// default on insert.
         ///
         /// The rest of the project row, per docs/specs/ts-project-settings.md
-        /// section 4: custom horizon and its offset, filter switch frequency,
-        /// dither, smart exposure order, the grader, maximum altitude, flats
-        /// handling (above) and the description are all rig tuning Rohan does
-        /// in Target Scheduler's own screens. ACP has no settings for any of
-        /// them, so writing them on update reset that tuning on every push,
-        /// which is the bug this list fixes. A new project still gets Target
-        /// Scheduler's own defaults on insert.
+        /// section 4: custom horizon and its offset, dither, the grader,
+        /// maximum altitude, flats handling (above) and the description are
+        /// all rig tuning Rohan does in Target Scheduler's own screens. ACP
+        /// has no settings for any of them, so writing them on update reset
+        /// that tuning on every push, which is the bug this list fixes. A new
+        /// project still gets Target Scheduler's own defaults on insert. The
+        /// filter switch frequency and smart exposure order left this list
+        /// for ConditionalProjectColumns when ACP gained settings for them.
         ///
         /// exposuretemplate's moon, twilight, humidity and dither columns are
         /// tuning Rohan does in Target Scheduler's own screens. ACP has no
@@ -99,8 +100,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "project", new HashSet<string>(
                     new[] {
                         "createdate", "flatsHandling", "usecustomhorizon", "horizonoffset",
-                        "filterswitchfrequency", "ditherevery", "smartexposureorder",
-                        "enablegrader", "maximumAltitude", "description",
+                        "ditherevery", "enablegrader", "maximumAltitude", "description",
                     }, StringComparer.OrdinalIgnoreCase) },
                 { "exposuretemplate", new HashSet<string>(
                     new[] {
@@ -111,8 +111,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }, StringComparer.OrdinalIgnoreCase) },
             };
 
-        /// The project columns ACP owns and syncs both ways: state, priority
-        /// and minimum time, plus the two dates that follow a written state.
+        /// The project columns ACP owns and syncs both ways: state, priority,
+        /// minimum time, the filter switch frequency and smart exposure order
+        /// (the last two from docs/specs/goal-panel-and-ts-order.md section
+        /// 4), plus the two dates that follow a written state.
         /// Per docs/specs/ts-project-settings.md section 4, these are written
         /// on update only when ACP changed the value since the last sync on
         /// this rig, never unconditionally like the ACP-always-owns columns
@@ -121,7 +123,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// TsProject.ConditionalColumnsToWrite; TsUpsert reads it here.
         public static readonly HashSet<string> ConditionalProjectColumns =
             new HashSet<string>(
-                new[] { "state", "priority", "minimumtime", "activedate", "inactivedate" },
+                new[] {
+                    "state", "priority", "minimumtime", "activedate", "inactivedate",
+                    "filterswitchfrequency", "smartexposureorder",
+                },
                 StringComparer.OrdinalIgnoreCase);
 
         /// Drop the insert-only columns from `columns`, order preserved.

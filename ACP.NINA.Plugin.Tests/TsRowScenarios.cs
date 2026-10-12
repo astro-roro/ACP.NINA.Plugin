@@ -12,7 +12,7 @@ namespace ACP.NINA.Plugin.Tests {
     /// The filter row scenarios, step for step as tests/row_scenarios.py in
     /// the Python extension runs them for golden-rows.json
     /// (docs/specs/goal-panel-and-ts-order.md tests S1, S2, M2 to M4, R1, R3,
-    /// and the imported plan that keeps its own template). Each starts from an
+    /// F1, F2, and the imported plan that keeps its own template). Each starts from an
     /// empty database at user_version 28 and returns the last push's outcome.
     /// Every step is a push, a link, or a plain SQL edit, so the two sides
     /// start each push from the same database.
@@ -33,6 +33,9 @@ namespace ACP.NINA.Plugin.Tests {
             "derived_row_keeps_existing_template",
             "acp_migration_keeps_plans",
             "older_acp_goals",
+            "f1_switch_frequency_written",
+            "f2_switch_frequency_set_in_ts_kept",
+            "smart_order_written",
         };
 
         public static TsSyncOutcome Run(string name, TargetSchedulerDb db) {
@@ -48,6 +51,9 @@ namespace ACP.NINA.Plugin.Tests {
                 case "derived_row_keeps_existing_template": return DerivedRowKeepsExistingTemplate(db);
                 case "acp_migration_keeps_plans": return AcpMigrationKeepsPlans(db);
                 case "older_acp_goals": return OlderAcpGoals(db);
+                case "f1_switch_frequency_written": return F1(db);
+                case "f2_switch_frequency_set_in_ts_kept": return F2(db);
+                case "smart_order_written": return SmartOrderOn(db);
                 default: throw new ArgumentOutOfRangeException(nameof(name), name, null);
             }
         }
@@ -437,6 +443,55 @@ namespace ACP.NINA.Plugin.Tests {
                 { "Antlia Ha", new FilterGoal { TargetHours = 1.0, SubExposureS = 120 } },
                 { "Lum", new FilterGoal { TargetHours = 1.0, SubExposureS = 60 } },
             }));
+        }
+
+        // -- Switch frequency and smart order (tests F1 and F2) --------------
+
+        private const string M43 = "M43";
+
+        /// Two plans in project M42, M42 and M43, each with rows OIII then Ha
+        /// at 300 s and 4 frames, pushed with switch frequency `freq`, linked,
+        /// and three cadence rows left on each target. As f_state in
+        /// tests/row_scenarios.py.
+        public static Plan[] FState(TargetSchedulerDb db, int freq) {
+            var plans = new[] {
+                M42Plan(
+                    TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 4),
+                    TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4)),
+                TsTestPlans.Plan("m43", projectName: M42, targetName: M43, ra: 101.0, filterRows: new List<FilterRow> {
+                    TsTestPlans.Row("row-oiii-43", "OIII", "OIII", 300, frames: 4),
+                    TsTestPlans.Row("row-ha-43", "Ha", "Ha", 300, frames: 4),
+                }),
+            };
+            foreach (var plan in plans) plan.FilterSwitchFrequency = freq;
+            Push(db, plans);
+            Link(db, plans);
+            foreach (var name in new[] { M42, M43 }) {
+                AddCadence(db.Connection, Scalar(db.Connection, $"SELECT Id FROM target WHERE name = '{name}'"), 3);
+            }
+            return plans;
+        }
+
+        /// F1: base 0, ACP 3, TS 0. The push writes 3 and deletes the cadence
+        /// rows of both targets in the project.
+        public static TsSyncOutcome F1(TargetSchedulerDb db) {
+            var plans = FState(db, 0);
+            foreach (var plan in plans) plan.FilterSwitchFrequency = 3;
+            return Push(db, plans);
+        }
+
+        /// F2: base 0, ACP 0, TS 3. The push leaves 3 and the cadence rows.
+        public static TsSyncOutcome F2(TargetSchedulerDb db) {
+            var plans = FState(db, 0);
+            Exec(db.Connection, $"UPDATE project SET filterswitchfrequency = 3 WHERE name = '{M42}'");
+            return Push(db, plans);
+        }
+
+        /// Smart order turned on in ACP since the base.
+        public static TsSyncOutcome SmartOrderOn(TargetSchedulerDb db) {
+            var plans = FState(db, 0);
+            foreach (var plan in plans) plan.SmartExposureOrder = true;
+            return Push(db, plans);
         }
 
         private static void Exec(SqliteConnection conn, string sql) {

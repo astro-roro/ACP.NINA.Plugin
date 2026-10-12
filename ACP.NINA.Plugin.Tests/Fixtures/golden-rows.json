@@ -5,6 +5,7 @@
   "scenarios": {
     "acp_migration_keeps_plans": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -276,6 +277,7 @@
     },
     "acp_pause_reaches_ts": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -442,6 +444,7 @@
     },
     "counts_survive_a_second_push": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -917,6 +920,7 @@
     },
     "derived_row_keeps_existing_template": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -1104,8 +1108,540 @@
         ]
       }
     },
+    "f1_switch_frequency_written": {
+      "report": {
+        "cadence_reset_projects": [
+          "M42"
+        ],
+        "disabled_plans": 0,
+        "exposure_mismatches": [],
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 4
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 0
+        },
+        "migrated_guids": 0,
+        "notes": [],
+        "override_rebuilt": [],
+        "project": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 1
+        },
+        "ruleweight_seeded_projects": 0,
+        "stray_templates": [],
+        "target": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 2
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "6c7fb756-0dbd-551d-a1ac-690d8c2a9fbe",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "3adabca6-c8b2-57bb-bdd3-4fe27aa55de7",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "2889f721-8fb5-515f-94db-d6c6b0e42b74",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 4,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "a2e2e68e-2ae6-5e70-a044-c34c674b64b0",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "e88a114f-b4f3-5e67-96bf-34f36300ee20",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "efea7b0c-34cb-59fc-91a9-5d647b578883",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "filtercadenceitem": [],
+        "overrideexposureorderitem": [],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": 1700000000,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 3,
+            "flatsHandling": 1,
+            "guid": "41184a2d-2dab-5f16-a329-e3de316fd859",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "M42",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "Percent Complete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "Project Priority",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "Setting Soonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "Meridian Window Priority",
+            "projectid": 1,
+            "weight": 75.0
+          },
+          {
+            "Id": 5,
+            "name": "Target Switch Penalty",
+            "projectid": 1,
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "d99ba103-7ba4-56ab-b791-3aa8dc4c1264",
+            "name": "M42",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.666666666666667,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 2,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "bb2e7393-f70f-5f1a-ba9e-6e648fb0d57e",
+            "name": "M43",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.733333333333333,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
+    },
+    "f2_switch_frequency_set_in_ts_kept": {
+      "report": {
+        "cadence_reset_projects": [],
+        "disabled_plans": 0,
+        "exposure_mismatches": [],
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 4
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 0
+        },
+        "migrated_guids": 0,
+        "notes": [],
+        "override_rebuilt": [],
+        "project": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 1
+        },
+        "ruleweight_seeded_projects": 0,
+        "stray_templates": [],
+        "target": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 2
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "6c7fb756-0dbd-551d-a1ac-690d8c2a9fbe",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "3adabca6-c8b2-57bb-bdd3-4fe27aa55de7",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "2889f721-8fb5-515f-94db-d6c6b0e42b74",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 4,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "a2e2e68e-2ae6-5e70-a044-c34c674b64b0",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "e88a114f-b4f3-5e67-96bf-34f36300ee20",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "efea7b0c-34cb-59fc-91a9-5d647b578883",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "filtercadenceitem": [
+          {
+            "Id": 1,
+            "action": 0,
+            "next": 1,
+            "order": 1,
+            "referenceIdx": 1,
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "action": 0,
+            "next": 0,
+            "order": 2,
+            "referenceIdx": 0,
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "action": 0,
+            "next": 0,
+            "order": 3,
+            "referenceIdx": 1,
+            "targetid": 1
+          },
+          {
+            "Id": 4,
+            "action": 0,
+            "next": 1,
+            "order": 1,
+            "referenceIdx": 1,
+            "targetid": 2
+          },
+          {
+            "Id": 5,
+            "action": 0,
+            "next": 0,
+            "order": 2,
+            "referenceIdx": 0,
+            "targetid": 2
+          },
+          {
+            "Id": 6,
+            "action": 0,
+            "next": 0,
+            "order": 3,
+            "referenceIdx": 1,
+            "targetid": 2
+          }
+        ],
+        "overrideexposureorderitem": [],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": 1700000000,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 3,
+            "flatsHandling": 1,
+            "guid": "41184a2d-2dab-5f16-a329-e3de316fd859",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "M42",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "Percent Complete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "Project Priority",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "Setting Soonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "Meridian Window Priority",
+            "projectid": 1,
+            "weight": 75.0
+          },
+          {
+            "Id": 5,
+            "name": "Target Switch Penalty",
+            "projectid": 1,
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "d99ba103-7ba4-56ab-b791-3aa8dc4c1264",
+            "name": "M42",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.666666666666667,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 2,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "bb2e7393-f70f-5f1a-ba9e-6e648fb0d57e",
+            "name": "M43",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.733333333333333,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
+    },
     "imported_plan_keeps_its_template": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -1272,6 +1808,7 @@
     },
     "m2_old_writer_rows_restamped": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -1566,6 +2103,7 @@
     },
     "m3_explicit_exposure_kept": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [
           "M42 R: TS shoots 300 s, template R says 180 s"
@@ -1734,6 +2272,7 @@
     },
     "m4_template_change_writes_default": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -1923,6 +2462,7 @@
     },
     "migrated_from_the_old_recipe": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -2398,6 +2938,7 @@
     },
     "older_acp_goals": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -2704,6 +3245,7 @@
     },
     "r1_removed_row_disabled": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 1,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -2999,6 +3541,7 @@
     },
     "r3_readded_row_enabled": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -3329,6 +3872,7 @@
     },
     "s1_new_star_row": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -3495,6 +4039,7 @@
     },
     "s2_existing_template": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -3659,8 +4204,251 @@
         ]
       }
     },
+    "smart_order_written": {
+      "report": {
+        "cadence_reset_projects": [
+          "M42"
+        ],
+        "disabled_plans": 0,
+        "exposure_mismatches": [],
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 4
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 0
+        },
+        "migrated_guids": 0,
+        "notes": [],
+        "override_rebuilt": [],
+        "project": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 1
+        },
+        "ruleweight_seeded_projects": 0,
+        "stray_templates": [],
+        "target": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 2
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "6c7fb756-0dbd-551d-a1ac-690d8c2a9fbe",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "3adabca6-c8b2-57bb-bdd3-4fe27aa55de7",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "2889f721-8fb5-515f-94db-d6c6b0e42b74",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 4,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "a2e2e68e-2ae6-5e70-a044-c34c674b64b0",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "e88a114f-b4f3-5e67-96bf-34f36300ee20",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "efea7b0c-34cb-59fc-91a9-5d647b578883",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "filtercadenceitem": [],
+        "overrideexposureorderitem": [],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": 1700000000,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 0,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 1,
+            "guid": "41184a2d-2dab-5f16-a329-e3de316fd859",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "M42",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 1,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "Percent Complete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "Project Priority",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "Setting Soonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "Meridian Window Priority",
+            "projectid": 1,
+            "weight": 75.0
+          },
+          {
+            "Id": 5,
+            "name": "Target Switch Penalty",
+            "projectid": 1,
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "d99ba103-7ba4-56ab-b791-3aa8dc4c1264",
+            "name": "M42",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.666666666666667,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 2,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "bb2e7393-f70f-5f1a-ba9e-6e648fb0d57e",
+            "name": "M43",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.733333333333333,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
+    },
     "ts_owned_columns_survive_a_second_push": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -4136,6 +4924,7 @@
     },
     "ts_pause_survives_a_push": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -4304,6 +5093,7 @@
   "versions": {
     "23": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
@@ -4773,6 +5563,7 @@
     },
     "28": {
       "report": {
+        "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
         "exposureplan": {
