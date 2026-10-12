@@ -108,6 +108,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // 3) Targets. No profileId column of their own, so uniqueness is
             // scoped to the parent project.
             var targetIdByGuid = new Dictionary<string, int>();
+            var insertedTargets = new HashSet<string>(StringComparer.Ordinal);
             foreach (var group in payload.TargetsByProjectGuid) {
                 int pid;
                 if (!projectIdByGuid.TryGetValue(group.Key, out pid)) {
@@ -117,17 +118,22 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
                 foreach (var tgt in group.Value) {
                     tgt.ProjectId = pid;
+                    var targetsInsertedBefore = outcome.Target.Inserted;
                     targetIdByGuid[tgt.Guid] = UpsertByGuid(
                         conn, "target", tgt, outcome.Target,
                         userVersion, columnsByTable,
                         claimKeys: new[] { "projectid", "name" });
+                    if (outcome.Target.Inserted > targetsInsertedBefore) insertedTargets.Add(tgt.Guid);
                 }
             }
 
             // 4) Exposure plans, found by the chain in section 3's "Exposure
-            // plan identity", then disabled for rows removed in ACP. A target
+            // plan identity", then disabled for rows removed in ACP. Then each
+            // target's override rows, by section 5: ACP's order written, or the
+            // rows left as they are. Left rows still follow the plans: a target
             // whose set of enabled plans changed other than by an insert has
-            // its override rows remapped and its cadence rows deleted.
+            // them remapped, a plan that arrived gets its block on the end, and
+            // its cadence rows go.
             var usedPlanIds = new HashSet<int>();
             foreach (var group in payload.PlansByTargetGuid) {
                 int tid;
@@ -137,9 +143,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     continue;
                 }
                 var before = EnabledPlanIds(conn, tid);
-                var hadOverride = HasOverrideRows(conn, tid);
+                var tsRows = OverrideRows(conn, tid);
+                var hadOverride = tsRows.Count > 0;
                 var inserted = new HashSet<int>();
                 var written = new List<int>();
+                var writtenRows = new List<string>();
                 foreach (var plan in group.Value) {
                     string tplGuid;
                     if (!payload.TemplateGuidByPlanGuid.TryGetValue(plan.Guid, out tplGuid)
@@ -170,6 +178,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         usedPlanIds, out wasInsert);
                     usedPlanIds.Add(planId);
                     written.Add(planId);
+                    writtenRows.Add(lookup.RowId ?? plan.Guid);
                     if (wasInsert) inserted.Add(planId);
                     NoteExposureMismatch(conn, planId, lookup.Label, outcome);
                 }
@@ -196,19 +205,43 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var after = EnabledPlanIds(conn, tid);
                 // Plans this push inserted or enabled again, in the order written.
                 var arrived = written.Where(i => after.Contains(i) && !before.Contains(i)).ToList();
-                if (!after.Where(i => !inserted.Contains(i)).SequenceEqual(before)
-                    || (hadOverride && arrived.Count > 0)) {
-                    if (hadOverride) {
-                        RemapOverrideRows(conn, tid, before, after);
-                        AppendOverrideBlocks(conn, tid, after, arrived);
-                        outcome.OverrideRebuilt.Add(TargetName(conn, tid));
+                var plansMoved = !after.Where(i => !inserted.Contains(i)).SequenceEqual(before)
+                    || (hadOverride && arrived.Count > 0);
+                TsTargetOrder targetOrder;
+                payload.OrderByTargetGuid.TryGetValue(group.Key, out targetOrder);
+                bool setInTs;
+                var decision = OrderDecision(
+                    conn, tid, targetOrder, writtenRows, tsRows, insertedTargets.Contains(group.Key), out setInTs);
+                if (decision == OrderLeave) {
+                    if (plansMoved) {
+                        if (hadOverride) {
+                            RemapOverrideRows(conn, tid, before, after);
+                            AppendOverrideBlocks(conn, tid, after, arrived);
+                            outcome.OverrideRebuilt.Add(TargetName(conn, tid));
+                        }
+                        DeleteCadence(conn, tid);
                     }
-                    using (var cmd = conn.CreateCommand()) {
-                        cmd.CommandText = "DELETE FROM filtercadenceitem WHERE targetid = $t";
-                        cmd.Parameters.AddWithValue("$t", tid);
-                        cmd.ExecuteNonQuery();
+                } else {
+                    var generated = GeneratedRows(conn, tid, written, after);
+                    if (!TsOrder.SameRows(generated, tsRows)) {
+                        ReplaceOverrideRows(conn, tid, generated);
+                        DeleteCadence(conn, tid);
+                        var name = TargetName(conn, tid);
+                        outcome.OrderWritten.Add(name);
+                        if (setInTs) {
+                            outcome.Notes.Add($"{name}: ACP's filter order replaced an order set in Target Scheduler.");
+                        }
+                    } else if (plansMoved) {
+                        DeleteCadence(conn, tid);
                     }
+                    outcome.OrderSyncedTargetIds.Add(tid);
                 }
+                // Restart the walk every night (section 5): TS reuses a stored
+                // cadence before anything else (FilterCadenceFactory.cs:19-29),
+                // so without this a shortfall found in the morning waits for the
+                // whole circle. TS rebuilds the cadence from row 1 of the
+                // override rows.
+                if (HasOverrideRows(conn, tid)) DeleteCadence(conn, tid);
             }
 
             NoteStrayTemplates(conn, payload, outcome);
@@ -687,8 +720,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Keep a target's override rows pointing at the same plans after the
         /// enabled set changed. A row of a plan no longer enabled is dropped,
         /// and the rest are renumbered from 1. Returns whether the target had
-        /// any. Every row is treated as one set in TS and kept; regenerating
-        /// rows the sync wrote itself arrives with the order writer (phase 5).
+        /// any. Used only for rows the order writer leaves alone, which are
+        /// rows set in TS: rows the sync generated are built again from ACP's
+        /// order.
         private static bool RemapOverrideRows(SqliteConnection conn, int targetId, List<int> before, List<int> after) {
             var rows = new List<Tuple<int, int?>>();
             using (var cmd = conn.CreateCommand()) {
@@ -803,8 +837,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Append a block for each plan this push inserted or enabled again,
         /// in the order written. A target with override rows shoots only the
         /// plans those rows name (PlanningTarget.cs:80-97), so without this TS
-        /// would never shoot it. The spec's phase 5 "new plan rule", brought
-        /// forward; dither rows are left to the order writer. Matches
+        /// would never shoot it. Section 5's "new plan rule", for a target
+        /// whose rows the order writer left alone. Matches
         /// _append_override_blocks in nina_ts_sync/upsert.py.
         private static void AppendOverrideBlocks(SqliteConnection conn, int targetId, List<int> after, List<int> arrived) {
             if (arrived.Count == 0) return;
@@ -829,6 +863,134 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                 }
             }
+        }
+
+        private static void DeleteCadence(SqliteConnection conn, int targetId) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "DELETE FROM filtercadenceitem WHERE targetid = $t";
+                cmd.Parameters.AddWithValue("$t", targetId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// The target's override rows as (action, referenceIdx) pairs, in
+        /// order. Matches _override_rows in nina_ts_sync/upsert.py.
+        private static List<Tuple<int, int>> OverrideRows(SqliteConnection conn, int targetId) {
+            var rows = new List<Tuple<int, int>>();
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText =
+                    "SELECT \"action\", referenceIdx FROM overrideexposureorderitem " +
+                    "WHERE targetid = $t ORDER BY \"order\", Id";
+                cmd.Parameters.AddWithValue("$t", targetId);
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        rows.Add(Tuple.Create(
+                            Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture),
+                            reader.IsDBNull(1) ? -1 : Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture)));
+                    }
+                }
+            }
+            return rows;
+        }
+
+        private static void ReplaceOverrideRows(SqliteConnection conn, int targetId, List<Tuple<int, int>> rows) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "DELETE FROM overrideexposureorderitem WHERE targetid = $t";
+                cmd.Parameters.AddWithValue("$t", targetId);
+                cmd.ExecuteNonQuery();
+            }
+            var order = 1;
+            foreach (var row in rows) {
+                using (var cmd = conn.CreateCommand()) {
+                    cmd.CommandText =
+                        "INSERT INTO overrideexposureorderitem (targetid, \"order\", \"action\", referenceIdx) " +
+                        "VALUES ($t, $o, $a, $r)";
+                    cmd.Parameters.AddWithValue("$t", targetId);
+                    cmd.Parameters.AddWithValue("$o", order++);
+                    cmd.Parameters.AddWithValue("$a", row.Item1);
+                    cmd.Parameters.AddWithValue("$r", row.Item2);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// The override rows that make TS shoot ACP's order: a block per plan
+        /// in ACP's order, then dithers by TS's own rule when the project
+        /// dithers. None when that order is the natural order. An enabled plan
+        /// no ACP row wrote keeps its place after ACP's rows, in natural order,
+        /// so the order never stops TS shooting it. Matches _generated_rows in
+        /// nina_ts_sync/upsert.py.
+        private static List<Tuple<int, int>> GeneratedRows(
+            SqliteConnection conn, int targetId, List<int> acpPlanIds, List<int> after
+        ) {
+            var order = acpPlanIds.Distinct().Where(after.Contains).ToList();
+            order.AddRange(after.Where(p => !order.Contains(p)).ToList());
+            if (order.SequenceEqual(after)) return new List<Tuple<int, int>>();
+            var items = new List<Tuple<int, int>>();
+            foreach (var planId in order) {
+                var index = after.IndexOf(planId);
+                var size = BlockSize(conn, targetId, planId);
+                for (var i = 0; i < size; i++) items.Add(Tuple.Create(TsOrder.Exposure, index));
+            }
+            var ditherRow = ReadRow(conn,
+                "SELECT p.ditherevery FROM target t JOIN project p ON p.Id = t.projectid WHERE t.Id = $id", targetId);
+            var ditherEvery = ditherRow == null || ditherRow[0] == null || ditherRow[0] == DBNull.Value
+                ? 0 : ToInt(ditherRow[0]);
+            if (ditherEvery <= 0) return items;
+            var filters = new Dictionary<int, string>();
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText =
+                    "SELECT e.Id, x.filtername FROM exposureplan e " +
+                    "LEFT JOIN exposuretemplate x ON x.Id = e.exposureTemplateId WHERE e.targetid = $t";
+                cmd.Parameters.AddWithValue("$t", targetId);
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) {
+                        filters[Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture)] =
+                            reader.IsDBNull(1) ? string.Empty : reader.GetValue(1).ToString();
+                    }
+                }
+            }
+            var filterOf = new List<string>();
+            foreach (var planId in after) {
+                string filterName;
+                filterOf.Add(filters.TryGetValue(planId, out filterName) ? filterName : string.Empty);
+            }
+            return TsOrder.InjectDithers(items, filterOf, ditherEvery);
+        }
+
+        private static bool SmartOrderOn(SqliteConnection conn, int targetId) {
+            var row = ReadRow(conn,
+                "SELECT p.smartexposureorder FROM target t JOIN project p ON p.Id = t.projectid WHERE t.Id = $id",
+                targetId);
+            return row != null && row[0] != null && row[0] != DBNull.Value && ToInt(row[0]) != 0;
+        }
+
+        private const string OrderLeave = "leave";
+        private const string OrderWrite = "write";
+        private const string OrderRefresh = "refresh";
+
+        /// Which case of docs/specs/goal-panel-and-ts-order.md section 5
+        /// applies, and whether writing replaces an order set in TS. A target
+        /// this push inserted has no rows of anyone's yet, so ACP's order goes
+        /// in as a new project's state does. Smart order on: leave. No base
+        /// order: leave. ACP's order changed since the base: write, ACP wins.
+        /// The same order and TS's rows still the base's: refresh the rows the
+        /// sync wrote. The same order and TS's rows changed: leave, the order
+        /// was set in TS. Matches _order_decision in nina_ts_sync/upsert.py.
+        private static string OrderDecision(
+            SqliteConnection conn, int targetId, TsTargetOrder order, List<string> acpRowIds,
+            List<Tuple<int, int>> tsRows, bool insertedTarget, out bool setInTs
+        ) {
+            setInTs = false;
+            if (SmartOrderOn(conn, targetId)) return OrderLeave;
+            if (insertedTarget) return OrderWrite;
+            if (order?.BaseOrder == null) return OrderLeave;
+            if (!TsOrder.SameOrder(acpRowIds, order.BaseOrder)) {
+                setInTs = !TsOrder.SameRows(tsRows, order.BaseRows ?? new List<Tuple<int, int>>());
+                return OrderWrite;
+            }
+            if (order.BaseRows != null && TsOrder.SameRows(tsRows, order.BaseRows)) return OrderRefresh;
+            return OrderLeave;
         }
 
         private static string TargetName(SqliteConnection conn, int targetId) {
@@ -1093,6 +1255,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Projects whose switch frequency or smart order this push wrote, so
         /// every target's cadence rows were deleted.
         public List<string> CadenceResetProjects { get; } = new List<string>();
+
+        /// Targets whose override rows this push replaced with ACP's order.
+        public List<string> OrderWritten { get; } = new List<string>();
+
+        /// Targets whose override rows are ACP's after this push, so the base
+        /// records them and the order TS now shoots. Every other target keeps
+        /// the order its old base recorded (docs/specs/goal-panel-and-ts-order.md
+        /// section 5). Read by TsState.BuildBaseSnapshot.
+        public HashSet<int> OrderSyncedTargetIds { get; } = new HashSet<int>();
 
         /// One line per project where this push's state decision met a value
         /// Target Scheduler already held that ACP did not expect, per

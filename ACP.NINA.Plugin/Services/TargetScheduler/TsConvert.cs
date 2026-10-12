@@ -299,6 +299,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         }
 
                         var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
+                        // The order this panel's base recorded (section 5).
+                        // Every panel of a mosaic gets the plan's one order.
+                        var seenTarget = BaseSnapshotFor(plan, profileId)?["targets_by_panel"]?[panelKey]
+                            as Newtonsoft.Json.Linq.JObject;
+                        var seenOrder = seenTarget?["exposure_order"] as Newtonsoft.Json.Linq.JArray;
+                        if (seenOrder != null) {
+                            payload.OrderByTargetGuid[targetGuid] = new TsTargetOrder {
+                                BaseOrder = seenOrder.Select(t => (string)t).ToList(),
+                                BaseRows = TsOrder.AsRows(seenTarget["override_rows"]),
+                            };
+                        }
                         foreach (var row in pushed) {
                             var planGuid = TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template);
                             var acquired = TsRows.AcquiredFrames(row);
@@ -314,7 +325,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             });
                             payload.TemplateGuidByPlanGuid[planGuid] = templateGuidByName[row.Template];
 
-                            var lookup = new TsPlanLookup { Label = $"{targetName} {TsRows.RowLabel(row)}" };
+                            var lookup = new TsPlanLookup { Label = $"{targetName} {TsRows.RowLabel(row)}", RowId = row.Id };
                             lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Template));
                             if (firstOfFilter.Contains(row.Id)) {
                                 lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Filter));
