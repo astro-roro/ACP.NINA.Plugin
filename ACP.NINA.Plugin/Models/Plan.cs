@@ -84,6 +84,19 @@ namespace ACP.NINA.Plugin.Models {
         /// for the same reason as ts_refs. TsConvert.RefsFor reads it first.
         [JsonProperty("ts_links")]
         public JToken TsLinks { get; set; }
+
+        /// What AAC last reported for the plan as a whole: filed_through_night
+        /// (the ingest watermark), min_total_frames (the floor) and
+        /// received_at. Written only by AAC, through ACP's POST
+        /// /api/plans/<id>/accepted. Raw JSON, read by TsRows.PlanAac.
+        /// docs/specs/goal-panel-and-ts-order.md section 6.
+        [JsonProperty("aac")]
+        public JToken Aac { get; set; }
+
+        /// survey, deep or pretty. Absent means survey. ACP serves it for AAC;
+        /// the plugin does not read it.
+        [JsonProperty("target_class")]
+        public string TargetClass { get; set; }
     }
 
     public class PlanTarget {
@@ -115,8 +128,9 @@ namespace ACP.NINA.Plugin.Models {
     }
 
     /// One filter row: a filter, a Target Scheduler template and a goal in
-    /// hours ("h") or frames ("fr"). `aac` is AAC's to write and is not
-    /// read here.
+    /// hours ("h") or frames ("fr"). `aac` is AAC's figures for the row,
+    /// written only by AAC; the push reads accepted_seconds, accepted_frames
+    /// and complete from it (docs/specs/goal-panel-and-ts-order.md section 6).
     public class FilterRow {
         [JsonProperty("id")]
         public string Id { get; set; }
@@ -143,6 +157,10 @@ namespace ACP.NINA.Plugin.Models {
 
         [JsonProperty("actual_hours")]
         public double? ActualHours { get; set; }
+
+        /// AAC's figures for this row, or null. Raw JSON, read by TsRows.
+        [JsonProperty("aac")]
+        public JToken Aac { get; set; }
     }
 
     public class FilterGoal {

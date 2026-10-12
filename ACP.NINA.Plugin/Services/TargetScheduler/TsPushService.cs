@@ -92,6 +92,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 line += $" Templates whose filter is on no camera, to delete in Target Scheduler: " +
                         $"{string.Join(", ", Outcome.StrayTemplates)}.";
             }
+            // docs/specs/goal-panel-and-ts-order.md section 6.
+            if (Outcome.AacWrittenProjects.Count > 0) {
+                line += $" AAC's accepted counts written, and the grader turned on, for: " +
+                        $"{string.Join(", ", Outcome.AacWrittenProjects)}.";
+            }
+            foreach (var note in Outcome.Notes.Where(n => n.Contains("AAC figures not written"))) {
+                line += " " + note;
+            }
             return line;
         }
     }

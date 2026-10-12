@@ -49,6 +49,72 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return Math.Max(1, (int)Math.Ceiling(hours * 3600.0 / SubS(row)));
         }
 
+        /// The row's aac block, AAC's figures, or null. Matches aac_block in
+        /// nina_ts_sync/rows.py.
+        public static Newtonsoft.Json.Linq.JObject AacBlock(FilterRow row) {
+            return row?.Aac as Newtonsoft.Json.Linq.JObject;
+        }
+
+        /// The plan's aac block when it carries a usable watermark and floor,
+        /// else null: filed_through_night has to be an ISO date and
+        /// min_total_frames a whole number of at least 0, so a malformed block
+        /// can never open a write. Matches plan_aac in rows.py.
+        public static Newtonsoft.Json.Linq.JObject PlanAac(Plan plan) {
+            var block = plan?.Aac as Newtonsoft.Json.Linq.JObject;
+            if (block == null) return null;
+            var night = block["filed_through_night"];
+            var floor = block["min_total_frames"];
+            if (night == null || night.Type != Newtonsoft.Json.Linq.JTokenType.String) return null;
+            var text = (string)night;
+            DateTime parsed;
+            if (text.Length != 10 || !DateTime.TryParseExact(
+                    text, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out parsed)) {
+                return null;
+            }
+            if (floor == null || floor.Type != Newtonsoft.Json.Linq.JTokenType.Integer || (long)floor < 0) return null;
+            return block;
+        }
+
+        /// Desired with AAC's floor: a row with an aac block on a plan with
+        /// one never sits below min_total_frames. A row with a goal of 0 still
+        /// pushes no plan. Matches desired_for in rows.py.
+        public static int DesiredFor(FilterRow row, Plan plan) {
+            var d = Desired(row);
+            if (d <= 0 || AacBlock(row) == null) return d;
+            var planBlock = PlanAac(plan);
+            if (planBlock == null) return d;
+            return Math.Max(d, (int)(long)planBlock["min_total_frames"]);
+        }
+
+        private static double? JsonNumber(Newtonsoft.Json.Linq.JToken token) {
+            if (token == null) return null;
+            if (token.Type != Newtonsoft.Json.Linq.JTokenType.Integer
+                && token.Type != Newtonsoft.Json.Linq.JTokenType.Float) return null;
+            var v = (double)token;
+            return double.IsNaN(v) || double.IsInfinity(v) ? (double?)null : v;
+        }
+
+        /// The accepted count to write for an AAC-linked row, or null when the
+        /// row has no usable figures. `wanted` is the row's desired after the
+        /// floor. Matches aac_accepted in rows.py.
+        public static int? AacAccepted(FilterRow row, Plan plan, int wanted) {
+            var block = AacBlock(row);
+            var planBlock = PlanAac(plan);
+            if (block == null || planBlock == null) return null;
+            var seconds = JsonNumber(block["accepted_seconds"]);
+            var frames = JsonNumber(block["accepted_frames"]);
+            if (!seconds.HasValue || seconds.Value < 0 || !frames.HasValue || frames.Value < 0) return null;
+            var count = (int)Math.Floor(seconds.Value / SubS(row) + 0.000001);
+            var complete = block["complete"];
+            if (complete != null && complete.Type == Newtonsoft.Json.Linq.JTokenType.Boolean && (bool)complete) {
+                return Math.Max(count, wanted);
+            }
+            var floor = (int)(long)planBlock["min_total_frames"];
+            var shortBy = Math.Max(1, floor - (int)Math.Truncate(frames.Value));
+            return Math.Max(0, Math.Min(count, wanted - shortBy));
+        }
+
         /// The row's actual_hours in frames, for an exposure plan's insert.
         /// Python's round() is round half to even.
         public static int AcquiredFrames(FilterRow row) {

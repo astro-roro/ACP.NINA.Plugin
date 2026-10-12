@@ -135,6 +135,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // them remapped, a plan that arrived gets its block on the end, and
             // its cadence rows go.
             var usedPlanIds = new HashSet<int>();
+            var planIdByGuid = new Dictionary<string, int>(StringComparer.Ordinal);
+            var passes = new List<TargetPass>();
             foreach (var group in payload.PlansByTargetGuid) {
                 int tid;
                 if (!targetIdByGuid.TryGetValue(group.Key, out tid)) {
@@ -177,6 +179,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         conn, plan, lookup, rowTemplate, outcome.ExposurePlan, userVersion, columnsByTable,
                         usedPlanIds, out wasInsert);
                     usedPlanIds.Add(planId);
+                    planIdByGuid[plan.Guid] = planId;
                     written.Add(planId);
                     writtenRows.Add(lookup.RowId ?? plan.Guid);
                     if (wasInsert) inserted.Add(planId);
@@ -202,13 +205,32 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         outcome.DisabledPlans++;
                     }
                 }
+                passes.Add(new TargetPass {
+                    TargetGuid = group.Key, TargetId = tid, Before = before, TsRows = tsRows,
+                    HadOverride = hadOverride, Inserted = inserted, Written = written, WrittenRows = writtenRows,
+                });
+            }
+
+            // 4b) AAC's accepted counts and the grader, for the projects that
+            // qualify (section 6). Before the order pass, because a block's
+            // size follows the project's grader (BlockSize).
+            WriteAac(conn, payload, projectIdByGuid, planIdByGuid, outcome);
+
+            foreach (var pass in passes) {
+                var tid = pass.TargetId;
+                var before = pass.Before;
+                var tsRows = pass.TsRows;
+                var hadOverride = pass.HadOverride;
+                var inserted = pass.Inserted;
+                var written = pass.Written;
+                var writtenRows = pass.WrittenRows;
                 var after = EnabledPlanIds(conn, tid);
                 // Plans this push inserted or enabled again, in the order written.
                 var arrived = written.Where(i => after.Contains(i) && !before.Contains(i)).ToList();
                 var plansMoved = !after.Where(i => !inserted.Contains(i)).SequenceEqual(before)
                     || (hadOverride && arrived.Count > 0);
                 TsTargetOrder targetOrder;
-                payload.OrderByTargetGuid.TryGetValue(group.Key, out targetOrder);
+                payload.OrderByTargetGuid.TryGetValue(pass.TargetGuid, out targetOrder);
                 bool setInTs;
                 var rowOfPlan = new Dictionary<int, string>();
                 for (var w = 0; w < written.Count; w++) rowOfPlan[written[w]] = writtenRows[w];
@@ -216,7 +238,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var tsOrder = TsOrder.EffectivePlanOrder(before, tsRows, out neverShot)
                     .Where(rowOfPlan.ContainsKey).Select(ep => rowOfPlan[ep]).ToList();
                 var decision = OrderDecision(
-                    conn, tid, targetOrder, writtenRows, tsRows, tsOrder, insertedTargets.Contains(group.Key), out setInTs);
+                    conn, tid, targetOrder, writtenRows, tsRows, tsOrder, insertedTargets.Contains(pass.TargetGuid), out setInTs);
                 if (decision == OrderLeave) {
                     if (plansMoved) {
                         if (hadOverride) {
@@ -252,6 +274,184 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             NoteStrayTemplates(conn, payload, outcome);
 
             return outcome;
+        }
+
+        private class TargetPass {
+            public string TargetGuid;
+            public int TargetId;
+            public List<int> Before;
+            public List<Tuple<int, int>> TsRows;
+            public bool HadOverride;
+            public HashSet<int> Inserted;
+            public List<int> Written;
+            public List<string> WrittenRows;
+        }
+
+        /// The profile grading settings AAC's write needs to be 0
+        /// (docs/specs/goal-panel-and-ts-order.md section 6). Rohan sets them
+        /// by hand in Target Scheduler; the sync only reads them. A column the
+        /// database lacks cannot be on. Matches _AAC_PROFILE_COLUMNS.
+        private static readonly string[] AacProfileColumns = {
+            "delayGrading", "enableGradeRMS", "enableGradeStars", "enableGradeHFR",
+            "enableGradeFWHM", "enableGradeEccentricity",
+        };
+
+        /// Why the profile's grading settings rule out AAC's write, or null.
+        /// Matches _aac_profile_problem in upsert.py.
+        private static string AacProfileProblem(SqliteConnection conn, string profileId) {
+            var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "PRAGMA table_info(profilepreference)";
+                using (var reader = cmd.ExecuteReader()) {
+                    while (reader.Read()) have.Add(reader.GetString(1));
+                }
+            }
+            var cols = AacProfileColumns.Where(c => have.Contains(c)).ToList();
+            if (cols.Count == 0) return "the profile has no grading settings to read";
+            object[] row;
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = $"SELECT {string.Join(", ", cols)} FROM profilepreference " +
+                    "WHERE profileId = $p ORDER BY Id LIMIT 1";
+                cmd.Parameters.AddWithValue("$p", profileId);
+                using (var reader = cmd.ExecuteReader()) {
+                    if (!reader.Read()) {
+                        return "the profile has no preference row, so Target Scheduler's defaults " +
+                               "(delay grading 80) apply";
+                    }
+                    row = new object[reader.FieldCount];
+                    reader.GetValues(row);
+                }
+            }
+            var bad = new List<string>();
+            for (var i = 0; i < cols.Count; i++) {
+                if (row[i] == null || row[i] == DBNull.Value) {
+                    bad.Add($"{cols[i]} is unset");
+                } else {
+                    var value = Convert.ToDouble(row[i], CultureInfo.InvariantCulture);
+                    if (value != 0) bad.Add($"{cols[i]} is {value.ToString("G", CultureInfo.InvariantCulture)}");
+                }
+            }
+            return bad.Count > 0
+                ? "set these to 0 in Target Scheduler's profile settings: " + string.Join(", ", bad)
+                : null;
+        }
+
+        private static TimeZoneInfo FindZone(string ianaName) {
+            foreach (var id in new[] { ianaName, "AUS Eastern Standard Time" }) {
+                try {
+                    return TimeZoneInfo.FindSystemTimeZoneById(id);
+                } catch (TimeZoneNotFoundException) {
+                } catch (InvalidTimeZoneException) {
+                }
+            }
+            return null;
+        }
+
+        private static void AacWarn(TsSyncOutcome outcome, string message) {
+            outcome.Notes.Add(message);
+        }
+
+        /// Write AAC's accepted counts and turn the project's grader on, in
+        /// this transaction, for each eligible project
+        /// (docs/specs/goal-panel-and-ts-order.md section 6, and AAC's
+        /// incremental-master-builds.md section 7). Matches _write_aac in
+        /// upsert.py.
+        ///
+        /// A project is eligible when ACP's data allows it (Blocked is null),
+        /// the profile's grading settings are all 0, the watermark is on or
+        /// after the night that ended this morning, every enabled exposure plan
+        /// in the project is one this push wrote with an AAC count, and TS
+        /// saved no frame for the project after noon on the day after the
+        /// watermark night. accepted and enablegrader stay out of the generic
+        /// UPDATE (insertOnlyColumns) and are written here, together or not at
+        /// all. acquired is never written.
+        private static void WriteAac(
+            SqliteConnection conn, TsSyncPayload payload, Dictionary<string, int> projectIdByGuid,
+            Dictionary<string, int> planIdByGuid, TsSyncOutcome outcome
+        ) {
+            var candidates = payload.AacByProjectGuid
+                .Where(kv => kv.Value.Blocked == null && projectIdByGuid.ContainsKey(kv.Key))
+                .ToList();
+            if (candidates.Count == 0) return;
+            var zone = FindZone(payload.AacTimeZone);
+            if (!payload.AacNow.HasValue || zone == null) {
+                AacWarn(outcome, $"AAC figures not written: no time zone data for {payload.AacTimeZone}.");
+                return;
+            }
+            var local = TimeZoneInfo.ConvertTime(payload.AacNow.Value, zone);
+            var newestNight = local.Date.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            string profileProblem = null;
+            var profileChecked = false;
+            var profileWarned = false;
+            foreach (var candidate in candidates) {
+                var pid = projectIdByGuid[candidate.Key];
+                var aac = candidate.Value;
+                var wm = aac.FiledThroughNight;
+                if (wm == null || string.CompareOrdinal(wm, newestNight) < 0) {
+                    AacWarn(outcome, $"{aac.Name}: AAC figures not written: they are filed through " +
+                        $"{wm ?? "None"}, older than the night that ended this morning ({newestNight}).");
+                    continue;
+                }
+                var enabled = new List<int>();
+                using (var cmd = conn.CreateCommand()) {
+                    cmd.CommandText =
+                        "SELECT e.Id FROM exposureplan e JOIN target t ON t.Id = e.targetid " +
+                        "WHERE t.projectid = $p AND COALESCE(e.enabled, 1) <> 0";
+                    cmd.Parameters.AddWithValue("$p", pid);
+                    using (var reader = cmd.ExecuteReader()) {
+                        while (reader.Read()) enabled.Add(reader.GetInt32(0));
+                    }
+                }
+                var counts = new Dictionary<int, int>();
+                foreach (var kv in aac.AcceptedByPlanGuid) {
+                    int planId;
+                    if (planIdByGuid.TryGetValue(kv.Key, out planId)) counts[planId] = kv.Value;
+                }
+                if (enabled.Count == 0 || !enabled.All(counts.ContainsKey)) continue;
+                if (!profileChecked) {
+                    profileProblem = AacProfileProblem(conn, payload.ProfileId);
+                    profileChecked = true;
+                }
+                if (profileProblem != null) {
+                    if (!profileWarned) {
+                        AacWarn(outcome, $"AAC figures not written for profile {payload.ProfileId}: {profileProblem}.");
+                        profileWarned = true;
+                    }
+                    continue;
+                }
+                var day = DateTime.ParseExact(wm, "yyyy-MM-dd", CultureInfo.InvariantCulture).AddDays(1);
+                var noon = new DateTime(day.Year, day.Month, day.Day, 12, 0, 0, DateTimeKind.Unspecified);
+                var cutoff = new DateTimeOffset(noon, zone.GetUtcOffset(noon)).ToUnixTimeSeconds();
+                bool imagedSince;
+                using (var cmd = conn.CreateCommand()) {
+                    cmd.CommandText =
+                        "SELECT 1 FROM acquiredimage WHERE projectId = $p AND acquireddate > $c LIMIT 1";
+                    cmd.Parameters.AddWithValue("$p", pid);
+                    cmd.Parameters.AddWithValue("$c", cutoff);
+                    imagedSince = cmd.ExecuteScalar() != null;
+                }
+                if (imagedSince) {
+                    outcome.Notes.Add(
+                        $"{aac.Name}: AAC figures not written: Target Scheduler has saved frames since the " +
+                        "night they cover, so its own counts stand until tomorrow's sync.");
+                    continue;
+                }
+                foreach (var planId in enabled) {
+                    using (var cmd = conn.CreateCommand()) {
+                        cmd.CommandText = "UPDATE exposureplan SET accepted = $a WHERE Id = $id";
+                        cmd.Parameters.AddWithValue("$a", counts[planId]);
+                        cmd.Parameters.AddWithValue("$id", planId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                using (var cmd = conn.CreateCommand()) {
+                    cmd.CommandText = "UPDATE project SET enablegrader = 1 WHERE Id = $id";
+                    cmd.Parameters.AddWithValue("$id", pid);
+                    cmd.ExecuteNonQuery();
+                }
+                outcome.AacWrittenProjects.Add(aac.Name);
+            }
         }
 
         /// Refuse a payload that cannot be written back to safely.
@@ -1278,6 +1478,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         /// Targets whose override rows this push replaced with ACP's order.
         public List<string> OrderWritten { get; } = new List<string>();
+
+        /// Projects where this push wrote AAC's accepted counts and turned the
+        /// grader on (docs/specs/goal-panel-and-ts-order.md section 6).
+        public List<string> AacWrittenProjects { get; } = new List<string>();
 
         /// Targets whose override rows are ACP's after this push, so the base
         /// records them and the order TS now shoots. Every other target keeps

@@ -72,14 +72,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// from the plan's own filter name, so a re-push updates the same rows
         /// and the Python extension still finds them. Null keeps the plan's
         /// names as they are, which is what the Python extension does.
+        ///
+        /// `now` is the moment the AAC freshness rule is judged at; it
+        /// defaults to createDateUnix.
         public static TsSyncPayload BuildPayload(
             IEnumerable<Plan> plans,
             GearResponse gear,
             string profileId,
             long createDateUnix,
-            IReadOnlyList<string> wheelFilters = null
+            IReadOnlyList<string> wheelFilters = null,
+            DateTimeOffset? now = null
         ) {
             var payload = new TsSyncPayload { ProfileId = profileId };
+            // The moment the AAC freshness rule is judged at
+            // (docs/specs/goal-panel-and-ts-order.md section 6).
+            payload.AacNow = now ?? DateTimeOffset.FromUnixTimeSeconds(createDateUnix);
             var planList = (plans ?? Enumerable.Empty<Plan>()).Where(p => p != null).ToList();
 
             var telescopesById = new Dictionary<string, Telescope>(StringComparer.Ordinal);
@@ -158,6 +165,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     .Select(kv => new TsRuleWeight { ProjectId = 0, Name = kv.Key, Weight = kv.Value })
                     .ToList();
                 payload.TargetsByProjectGuid[proj.Guid] = new List<TsTarget>();
+                var aac = new TsAacProject { Name = projectName };
+                payload.AacByProjectGuid[proj.Guid] = aac;
+                var watermarks = new List<string>();
 
                 foreach (var plan in group.Value) {
                     var refs = RefsFor(plan, profileId);
@@ -185,6 +195,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                     var planRows = TsRows.RowsOf(plan, camera);
                     var pushed = planRows.Where(r => TsRows.Desired(r) > 0).ToList();
+                    var planAac = TsRows.PlanAac(plan);
+                    if (planAac == null) {
+                        if (aac.Blocked == null) aac.Blocked = "a plan has no AAC figures";
+                    } else {
+                        watermarks.Add((string)planAac["filed_through_night"]);
+                    }
 
                     // One template per name per profile. The push looks each
                     // one up by name and inserts it only when TS has none
@@ -249,6 +265,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             "written.");
                     }
                     var multi = panels.Count > 1;
+                    if (multi && aac.Blocked == null) aac.Blocked = "mosaic";
 
                     foreach (var panel in panels) {
                         var suffix = string.Empty;
@@ -319,16 +336,23 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         foreach (var row in pushed) {
                             var planGuid = TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template);
                             var acquired = TsRows.AcquiredFrames(row);
+                            var wanted = TsRows.DesiredFor(row, plan);
                             targetPlans.Add(new TsExposurePlan {
                                 ProfileId = profileId,
                                 TargetId = 0,
                                 ExposureTemplateId = 0,
                                 Guid = planGuid,
                                 Exposure = -1.0,
-                                Desired = TsRows.Desired(row),
+                                Desired = wanted,
                                 Acquired = acquired,
                                 Accepted = acquired,
                             });
+                            var counted = TsRows.AacAccepted(row, plan, wanted);
+                            if (!counted.HasValue) {
+                                if (aac.Blocked == null) aac.Blocked = "a row has no AAC figures";
+                            } else {
+                                aac.AcceptedByPlanGuid[planGuid] = counted.Value;
+                            }
                             payload.TemplateGuidByPlanGuid[planGuid] = templateGuidByName[row.Template];
 
                             var lookup = new TsPlanLookup { Label = $"{targetName} {TsRows.RowLabel(row)}", RowId = row.Id };
@@ -378,6 +402,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         }
                     }
                 }
+                aac.FiledThroughNight = watermarks.Count > 0
+                    ? watermarks.OrderBy(w => w, StringComparer.Ordinal).First()
+                    : null;
+                if (aac.AcceptedByPlanGuid.Count == 0 && aac.Blocked == null) aac.Blocked = "no row has AAC figures";
             }
 
             return payload;

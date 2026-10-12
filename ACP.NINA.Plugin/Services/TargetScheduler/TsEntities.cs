@@ -278,6 +278,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public double Weight { get; set; }
     }
 
+    /// What TsConvert knows about one project's AAC figures, so the push can
+    /// decide whether to write accepted and turn the grader on
+    /// (docs/specs/goal-panel-and-ts-order.md section 6). Matches AacProject in
+    /// nina_ts_sync/schema.py.
+    ///
+    /// Blocked is a reason ACP's own data rules the project out (a mosaic
+    /// panel, or a pushed row with no AAC block); null means the push still has
+    /// to check TS. AcceptedByPlanGuid is the count to write for every plan
+    /// this push writes in the project. FiledThroughNight is the oldest
+    /// watermark among the project's plans.
+    public class TsAacProject {
+        public string Name { get; set; }
+        public string FiledThroughNight { get; set; }
+        public string Blocked { get; set; }
+        public Dictionary<string, int> AcceptedByPlanGuid { get; } =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+    }
+
     /// Everything one sync run wants to write.
     ///
     /// Insert order matters even though Target Scheduler does not enforce its
@@ -343,6 +361,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// order_by_target_guid in nina_ts_sync.
         public Dictionary<string, TsTargetOrder> OrderByTargetGuid { get; } =
             new Dictionary<string, TsTargetOrder>(StringComparer.Ordinal);
+
+        /// Per project guid, the AAC figures the push may write
+        /// (docs/specs/goal-panel-and-ts-order.md section 6). A project not
+        /// listed has none. Matches aac_by_project_guid in nina_ts_sync.
+        public Dictionary<string, TsAacProject> AacByProjectGuid { get; } =
+            new Dictionary<string, TsAacProject>(StringComparer.Ordinal);
+
+        /// The moment the AAC freshness rule is judged at. Null means no AAC
+        /// write is made. Set by TsConvert.BuildPayload.
+        public DateTimeOffset? AacNow { get; set; }
+
+        /// The IANA name of the site's time zone, for the same rule.
+        public string AacTimeZone { get; set; } = "Australia/Melbourne";
     }
 
     /// Where else a row's exposure plan may be, in the order
