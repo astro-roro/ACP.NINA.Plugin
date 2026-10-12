@@ -77,7 +77,7 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         /// The filter row scenarios (docs/specs/goal-panel-and-ts-order.md
-        /// tests S4, R4 and F3), replayed step for step from
+        /// tests S4, R4, F3 and the order writer's O tests), replayed step for step from
         /// tests/row_scenarios.py. Project and target counts are left out of
         /// the report check: a linked plan's project and target are updated
         /// in place through ts_refs here, which the Python extension counts as
@@ -97,6 +97,16 @@ namespace ACP.NINA.Plugin.Tests {
         [InlineData("f1_switch_frequency_written")]
         [InlineData("f2_switch_frequency_set_in_ts_kept")]
         [InlineData("smart_order_written")]
+        [InlineData("r2_ts_rows_kept_and_remapped")]
+        [InlineData("o1_acp_order_written")]
+        [InlineData("o3_acp_order_replaces_ts_order")]
+        [InlineData("o4_rotate_every_3")]
+        [InlineData("o4c_cadence_reset_every_push")]
+        [InlineData("o4d_goal_change_refreshes_rows")]
+        [InlineData("o7_dither_rows")]
+        [InlineData("o8_new_plan_appended_to_ts_order")]
+        [InlineData("o11_no_base_order_writes_nothing")]
+        [InlineData("f1_override_rows_rebuilt")]
         public void AFilterRowPushWritesTheSameRowsAsThePythonExtension(string scenario) {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File($"{scenario}.sqlite"));
@@ -119,7 +129,8 @@ namespace ACP.NINA.Plugin.Tests {
                     Assert.Equal(report["stray_templates"].ToObject<List<string>>(), outcome.StrayTemplates);
                     Assert.Equal(report["override_rebuilt"].ToObject<List<string>>(), outcome.OverrideRebuilt);
                     Assert.Equal(report["cadence_reset_projects"].ToObject<List<string>>(), outcome.CadenceResetProjects);
-                    Assert.Empty(outcome.Notes);
+                    Assert.Equal(report["order_written"].ToObject<List<string>>(), outcome.OrderWritten);
+                    Assert.Equal(report["notes"].ToObject<List<string>>(), outcome.Notes);
                 }
             }
         }

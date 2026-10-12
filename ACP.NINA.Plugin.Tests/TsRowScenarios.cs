@@ -11,8 +11,9 @@ namespace ACP.NINA.Plugin.Tests {
 
     /// The filter row scenarios, step for step as tests/row_scenarios.py in
     /// the Python extension runs them for golden-rows.json
-    /// (docs/specs/goal-panel-and-ts-order.md tests S1, S2, M2 to M4, R1, R3,
-    /// F1, F2, and the imported plan that keeps its own template). Each starts from an
+    /// (docs/specs/goal-panel-and-ts-order.md tests S1, S2, M2 to M4, R1 to
+    /// R3, F1, F2, the O tests of the order writer, and the imported plan that
+    /// keeps its own template). Each starts from an
     /// empty database at user_version 28 and returns the last push's outcome.
     /// Every step is a push, a link, or a plain SQL edit, so the two sides
     /// start each push from the same database.
@@ -36,6 +37,16 @@ namespace ACP.NINA.Plugin.Tests {
             "f1_switch_frequency_written",
             "f2_switch_frequency_set_in_ts_kept",
             "smart_order_written",
+            "r2_ts_rows_kept_and_remapped",
+            "o1_acp_order_written",
+            "o3_acp_order_replaces_ts_order",
+            "o4_rotate_every_3",
+            "o4c_cadence_reset_every_push",
+            "o4d_goal_change_refreshes_rows",
+            "o7_dither_rows",
+            "o8_new_plan_appended_to_ts_order",
+            "o11_no_base_order_writes_nothing",
+            "f1_override_rows_rebuilt",
         };
 
         public static TsSyncOutcome Run(string name, TargetSchedulerDb db) {
@@ -54,6 +65,16 @@ namespace ACP.NINA.Plugin.Tests {
                 case "f1_switch_frequency_written": return F1(db);
                 case "f2_switch_frequency_set_in_ts_kept": return F2(db);
                 case "smart_order_written": return SmartOrderOn(db);
+                case "r2_ts_rows_kept_and_remapped": return R2(db);
+                case "o1_acp_order_written": return O1(db);
+                case "o3_acp_order_replaces_ts_order": return O3(db);
+                case "o4_rotate_every_3": return O4Rotate(db);
+                case "o4c_cadence_reset_every_push": return O4c(db);
+                case "o4d_goal_change_refreshes_rows": return O4d(db);
+                case "o7_dither_rows": return O7(db);
+                case "o8_new_plan_appended_to_ts_order": return O8(db);
+                case "o11_no_base_order_writes_nothing": return O11(db);
+                case "f1_override_rows_rebuilt": return F1Override(db);
                 default: throw new ArgumentOutOfRangeException(nameof(name), name, null);
             }
         }
@@ -82,12 +103,21 @@ namespace ACP.NINA.Plugin.Tests {
 
         /// What a push leaves on each plan: its link for this profile, and each
         /// row's template_sub_s from the base, as ACP's links route sets it.
+        /// Every target records the order TS has; see the overload below.
         public static void Link(TargetSchedulerDb db, params Plan[] plans) {
+            Link(db, null, plans);
+        }
+
+        /// As above, given the push's outcome: a target whose override rows
+        /// the push left alone keeps the order its old base recorded, as a
+        /// real sync does. As link(conn, plans, report) in
+        /// tests/row_scenarios.py.
+        public static void Link(TargetSchedulerDb db, TsSyncOutcome outcome, params Plan[] plans) {
             var snap = db.ReadAll(Profile);
             var camera = Gear().Cameras[0];
             foreach (var plan in plans) {
                 var refs = TsState.BuildRefs(snap, plan, Profile, 28, TsState.OperationPush, camera: camera);
-                var baseSnapshot = TsState.BuildBaseSnapshot(snap, plan, Profile, camera: camera);
+                var baseSnapshot = TsState.BuildBaseSnapshot(snap, plan, Profile, outcome: outcome, camera: camera);
                 plan.TsLinks = new JObject {
                     { Profile, new JObject {
                         { "machine", JValue.CreateNull() },
@@ -240,22 +270,22 @@ namespace ACP.NINA.Plugin.Tests {
             return Push(db, plan);
         }
 
+        /// Ha, OIII and SII pushed in that order, the grader turned on, linked,
+        /// then reordered to SII, Ha, OIII and pushed, so the order writer
+        /// wrote SII x4, Ha x4, OIII x4, and linked again. Three cadence rows.
         private static Plan R1State(TargetSchedulerDb db) {
             var ha = TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4);
             var oiii = TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 4);
             var sii = TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4);
             var plan = M42Plan(ha, oiii, sii);
-            Push(db, plan);
-            Link(db, plan);
+            Link(db, Push(db, plan), plan);
+            GraderOn(db);
             var conn = db.Connection;
             var tid = M42TargetId(conn);
             Exec(conn, "UPDATE exposureplan SET acquired = 3, accepted = 2 WHERE Id = 1");
-            SetOverride(conn, tid,
-                Enumerable.Repeat(Tuple.Create(0, 2), 4)
-                    .Concat(Enumerable.Repeat(Tuple.Create(0, 0), 4))
-                    .Concat(Enumerable.Repeat(Tuple.Create(0, 1), 4)));
-            AddCadence(conn, tid, 3);
             plan.FilterRows = new List<FilterRow> { sii, ha, oiii };
+            Link(db, Push(db, plan), plan);
+            AddCadence(conn, tid, 3);
             return plan;
         }
 
@@ -265,11 +295,20 @@ namespace ACP.NINA.Plugin.Tests {
             return Push(db, plan);
         }
 
+        /// R2: as R1, but the override rows were set by hand to SII, Ha, OIII
+        /// (one each) before the removal. The push keeps them, remapped.
+        public static TsSyncOutcome R2(TargetSchedulerDb db) {
+            var plan = R1State(db);
+            SetOverride(db.Connection, M42TargetId(db.Connection),
+                new[] { Tuple.Create(0, 2), Tuple.Create(0, 0), Tuple.Create(0, 1) });
+            plan.FilterRows = plan.FilterRows.Where(r => r.Id != "row-ha").ToList();
+            return Push(db, plan);
+        }
+
         public static TsSyncOutcome R3(TargetSchedulerDb db) {
             var plan = R1State(db);
             plan.FilterRows = plan.FilterRows.Where(r => r.Id != "row-ha").ToList();
-            Push(db, plan);
-            Link(db, plan);
+            Link(db, Push(db, plan), plan);
             plan.FilterRows.Insert(1, TsTestPlans.Row("row-ha-again", "Ha", "Ha", 300, frames: 4));
             return Push(db, plan);
         }
@@ -464,8 +503,7 @@ namespace ACP.NINA.Plugin.Tests {
                 }),
             };
             foreach (var plan in plans) plan.FilterSwitchFrequency = freq;
-            Push(db, plans);
-            Link(db, plans);
+            Link(db, Push(db, plans), plans);
             foreach (var name in new[] { M42, M43 }) {
                 AddCadence(db.Connection, Scalar(db.Connection, $"SELECT Id FROM target WHERE name = '{name}'"), 3);
             }
@@ -492,6 +530,126 @@ namespace ACP.NINA.Plugin.Tests {
             var plans = FState(db, 0);
             foreach (var plan in plans) plan.SmartExposureOrder = true;
             return Push(db, plans);
+        }
+
+        // -- The order writer (section 5) ---------------------------------
+
+        /// Turn the project's grader on by hand, as the spec's fixture has it.
+        public static void GraderOn(TargetSchedulerDb db) {
+            Exec(db.Connection, $"UPDATE project SET enablegrader = 1 WHERE name = '{M42}'");
+        }
+
+        public static void Reorder(Plan plan, params string[] ids) {
+            var byId = plan.FilterRows.ToDictionary(r => r.Id, r => r, StringComparer.Ordinal);
+            plan.FilterRows = ids.Select(i => byId[i]).ToList();
+        }
+
+        /// The spec's fixture: M42 with rows Ha then OIII at 300 s and 4
+        /// frames, pushed in that order so the natural order is Ha, OIII, the
+        /// grader on, switch frequency `freq`, linked. As o_state.
+        public static Plan OState(TargetSchedulerDb db, int freq = 0) {
+            var plan = M42Plan(
+                TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4),
+                TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 4));
+            plan.FilterSwitchFrequency = freq;
+            var outcome = Push(db, plan);
+            GraderOn(db);
+            Link(db, outcome, plan);
+            return plan;
+        }
+
+        /// O1's order OIII, Ha pushed and linked. As o1_state.
+        public static Plan O1State(TargetSchedulerDb db) {
+            var plan = OState(db);
+            Reorder(plan, "row-oiii", "row-ha");
+            Link(db, Push(db, plan), plan);
+            return plan;
+        }
+
+        public static TsSyncOutcome O1(TargetSchedulerDb db) {
+            var plan = OState(db);
+            Reorder(plan, "row-oiii", "row-ha");
+            return Push(db, plan);
+        }
+
+        /// O2 then O3: rows edited in TS to Ha, OIII and a push with no ACP
+        /// change, then ACP reordered to Ha, OIII.
+        public static TsSyncOutcome O3(TargetSchedulerDb db) {
+            var plan = O1State(db);
+            SetOverride(db.Connection, M42TargetId(db.Connection), new[] { Tuple.Create(0, 0), Tuple.Create(0, 1) });
+            Link(db, Push(db, plan), plan);
+            Reorder(plan, "row-ha", "row-oiii");
+            return Push(db, plan);
+        }
+
+        public static TsSyncOutcome O4Rotate(TargetSchedulerDb db) {
+            var plan = OState(db, 3);
+            Reorder(plan, "row-oiii", "row-ha");
+            return Push(db, plan);
+        }
+
+        /// O4c: after O1, OIII x4 and one Ha shot (row 6 next), then OIII's
+        /// accepted lowered to 3. Push.
+        public static TsSyncOutcome O4c(TargetSchedulerDb db) {
+            var plan = O1State(db);
+            var conn = db.Connection;
+            var tid = M42TargetId(conn);
+            Exec(conn, "UPDATE exposureplan SET acquired = 4, accepted = 3 WHERE Id = 2");
+            Exec(conn, "UPDATE exposureplan SET acquired = 1, accepted = 1 WHERE Id = 1");
+            for (var n = 1; n <= 8; n++) {
+                Exec(conn,
+                    "INSERT INTO filtercadenceitem (targetid, \"order\", \"next\", \"action\", referenceIdx) " +
+                    $"VALUES ({tid}, {n}, {(n == 6 ? 1 : 0)}, 0, {(n <= 4 ? 1 : 0)})");
+            }
+            return Push(db, plan);
+        }
+
+        public static TsSyncOutcome O4d(TargetSchedulerDb db) {
+            var plan = O1State(db);
+            plan.FilterRows.First(r => r.Id == "row-oiii").TargetFrames = 6;
+            return Push(db, plan);
+        }
+
+        public static TsSyncOutcome O7(TargetSchedulerDb db) {
+            var plan = OState(db);
+            Exec(db.Connection, $"UPDATE project SET ditherevery = 2 WHERE name = '{M42}'");
+            Reorder(plan, "row-oiii", "row-ha");
+            return Push(db, plan);
+        }
+
+        public static TsSyncOutcome O8(TargetSchedulerDb db) {
+            var plan = OState(db);
+            var tid = M42TargetId(db.Connection);
+            SetOverride(db.Connection, tid, new[] { Tuple.Create(0, 0), Tuple.Create(0, 1) });
+            AddCadence(db.Connection, tid, 2);
+            plan.FilterRows.Add(TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4));
+            return Push(db, plan);
+        }
+
+        /// O11: a base from before the order was recorded, TS in natural
+        /// order OIII, Ha, ACP listing Ha, OIII.
+        public static TsSyncOutcome O11(TargetSchedulerDb db) {
+            var plan = M42Plan(
+                TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 4),
+                TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4));
+            Link(db, Push(db, plan), plan);
+            GraderOn(db);
+            var panels = ((JObject)plan.TsLinks)[Profile]["base_snapshot"]["targets_by_panel"] as JObject;
+            foreach (var pair in panels) {
+                var entry = (JObject)pair.Value;
+                entry.Remove("exposure_order");
+                entry.Remove("override_rows");
+            }
+            Reorder(plan, "row-ha", "row-oiii");
+            return Push(db, plan);
+        }
+
+        /// F1 on O1's database: base 0, ACP 3, TS 0. The override rows are
+        /// rebuilt in blocks of 3.
+        public static TsSyncOutcome F1Override(TargetSchedulerDb db) {
+            var plan = O1State(db);
+            plan.FilterSwitchFrequency = 3;
+            return Push(db, plan);
         }
 
         private static void Exec(SqliteConnection conn, string sql) {

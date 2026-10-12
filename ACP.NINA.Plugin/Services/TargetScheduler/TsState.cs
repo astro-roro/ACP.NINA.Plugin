@@ -3,6 +3,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
@@ -285,26 +286,62 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 snapshot["project"] = projectBlock;
             }
 
+            // Each panel's target records exposure_order and override_rows
+            // (docs/specs/goal-panel-and-ts-order.md section 5). The targets
+            // whose override rows are ACP's after the push record what TS now
+            // has; every other target keeps what the old base recorded, or
+            // nothing, because a push that left TS's rows alone keeps the old
+            // base order. With no outcome, every target records TS's state.
+            // Matches build_base_snapshot in state.py.
+            var planRows = TsRows.RowsOf(plan, camera);
+            var orderTargets = outcome?.OrderSyncedTargetIds;
+            var oldTargets = TsConvert.BaseSnapshotFor(plan, profileId)?["targets_by_panel"] as JObject;
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
+                    var targetGuid = TsGuid.Target(profileId, projectName, name);
                     int tid;
-                    if (!snap.TargetIdByGuid.TryGetValue(
-                            TsGuid.Target(profileId, projectName, name), out tid)) {
+                    if (!snap.TargetIdByGuid.TryGetValue(targetGuid, out tid)) {
                         continue;
                     }
                     var tgt = snap.TargetsById[tid];
-                    targetsByPanel[PanelKey(r, c)] = new JObject {
+                    var entry = new JObject {
                         { "name", tgt.Name },
                         // Hours, matching what Target Scheduler stores.
                         { "ra", tgt.Ra },
                         { "dec", tgt.Dec },
                         { "rotation", tgt.Rotation },
                     };
+                    if (orderTargets == null || orderTargets.Contains(tid)) {
+                        var rowIdByPlan = new Dictionary<int, string>();
+                        foreach (var row in planRows) {
+                            int planId;
+                            if (snap.PlanIdByGuid.TryGetValue(
+                                    TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template), out planId)
+                                && !rowIdByPlan.ContainsKey(planId)) {
+                                rowIdByPlan[planId] = row.Id;
+                            }
+                        }
+                        List<Tuple<int, int>> overrideRows;
+                        if (!snap.OverrideRowsByTarget.TryGetValue(tid, out overrideRows)) {
+                            overrideRows = new List<Tuple<int, int>>();
+                        }
+                        List<int> neverShot;
+                        var order = TsOrder.EffectivePlanOrder(snap.EnabledPlanIds(tid), overrideRows, out neverShot);
+                        entry["exposure_order"] = new JArray(
+                            order.Where(rowIdByPlan.ContainsKey).Select(p => rowIdByPlan[p]));
+                        entry["override_rows"] = TsOrder.ToJson(overrideRows);
+                    } else {
+                        var old = oldTargets?[PanelKey(r, c)] as JObject;
+                        foreach (var key in new[] { "exposure_order", "override_rows" }) {
+                            var value = old?[key];
+                            if (value != null) entry[key] = value.DeepClone();
+                        }
+                    }
+                    targetsByPanel[PanelKey(r, c)] = entry;
                 }
             }
 
-            var planRows = TsRows.RowsOf(plan, camera);
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);

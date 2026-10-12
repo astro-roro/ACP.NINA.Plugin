@@ -336,6 +336,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// template on the profile whose filter is none of these is listed in
         /// the outcome.
         public HashSet<string> CameraFilters { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+        /// What the base recorded about each target's shooting order, per
+        /// target guid (docs/specs/goal-panel-and-ts-order.md section 5). A
+        /// target without an entry has no base for it. Matches
+        /// order_by_target_guid in nina_ts_sync.
+        public Dictionary<string, TsTargetOrder> OrderByTargetGuid { get; } =
+            new Dictionary<string, TsTargetOrder>(StringComparer.Ordinal);
     }
 
     /// Where else a row's exposure plan may be, in the order
@@ -356,6 +363,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public int? PinnedId { get; set; }
         public List<string> OldGuids { get; } = new List<string>();
         public bool TemplateChanged { get; set; }
+        /// The ACP row this plan is written for, which the order writer needs
+        /// to compare ACP's order with the base's.
+        public string RowId { get; set; }
     }
 
     /// An exposure plan ts_links pins to a row ACP no longer has. Guids are
