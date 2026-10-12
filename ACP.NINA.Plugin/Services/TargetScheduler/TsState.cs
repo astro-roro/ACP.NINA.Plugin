@@ -90,13 +90,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             string profileId,
             int userVersion,
             string operation,
-            JObject priorRefs = null
+            JObject priorRefs = null,
+            Camera camera = null
         ) {
             var projectName = TsConvert.ProjectNameOf(plan);
             int rows, cols;
             string baseName;
             ResolvePanels(plan, out rows, out cols, out baseName);
-            var cameraId = (plan?.CameraId ?? string.Empty).Trim();
 
             // The pinned ids win over the guid, the same order TsUpsert writes
             // in. A row made in Target Scheduler keeps its own guid when a pin
@@ -133,37 +133,27 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
 
+            // Keyed by row id: "<target id>_<row id>" for exposure plans, and
+            // the row id for the template its plan points at, panel 1,1
+            // first. Every row's plan carries the row's guid after a push.
             var templateIdsByFilter = new JObject();
-            foreach (var filterName in FilterNames(plan)) {
-                int tplId;
-                if (pinned != null
-                    && pinned.TemplateIdsByFilter.TryGetValue(filterName, out tplId)
-                    && snap.TemplatesById.ContainsKey(tplId)) {
-                    templateIdsByFilter[filterName] = tplId;
-                } else if (snap.TemplateIdByGuid.TryGetValue(TsGuid.Template(profileId, filterName, cameraId), out tplId)) {
-                    templateIdsByFilter[filterName] = tplId;
-                }
-            }
-
             var exposurePlanIds = new JObject();
+            var planRows = TsRows.RowsOf(plan, camera);
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
                     var targetGuid = TsGuid.Target(profileId, projectName, name);
                     var panelTargetId = targetIdsByPanel[PanelKey(r, c)];
                     var tid = panelTargetId != null ? (int)panelTargetId : 0;
-                    foreach (var filterName in FilterNames(plan)) {
-                        var key = $"{tid}_{filterName}";
+                    foreach (var row in planRows) {
                         int planId;
-                        TsExposurePlan pinnedPlan;
-                        if (pinned != null
-                            && pinned.ExposurePlanIds.TryGetValue(key, out planId)
-                            && snap.PlansById.TryGetValue(planId, out pinnedPlan)
-                            && pinnedPlan.TargetId == tid) {
-                            exposurePlanIds[key] = planId;
-                        } else if (snap.PlanIdByGuid.TryGetValue(
-                                TsGuid.ExposurePlan(profileId, targetGuid, filterName), out planId)) {
-                            exposurePlanIds[key] = planId;
+                        if (!snap.PlanIdByGuid.TryGetValue(
+                                TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template), out planId)) {
+                            continue;
+                        }
+                        exposurePlanIds[$"{tid}_{row.Id}"] = planId;
+                        if (templateIdsByFilter[row.Id] == null) {
+                            templateIdsByFilter[row.Id] = snap.PlansById[planId].ExposureTemplateId;
                         }
                     }
                 }
@@ -206,13 +196,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// exists, gets the conservative behaviour for free.
         public static JObject BuildBaseSnapshot(
             TsSnapshot snap, Plan plan, string profileId,
-            TsProject pushedProject = null, TsSyncOutcome outcome = null
+            TsProject pushedProject = null, TsSyncOutcome outcome = null,
+            Camera camera = null
         ) {
             var projectName = TsConvert.ProjectNameOf(plan);
             int rows, cols;
             string baseName;
             ResolvePanels(plan, out rows, out cols, out baseName);
-            var cameraId = (plan?.CameraId ?? string.Empty).Trim();
 
             var targetsByPanel = new JObject();
             var templatesByFilter = new JObject();
@@ -291,39 +281,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
 
-            foreach (var filterName in FilterNames(plan)) {
-                int tplId;
-                if (!snap.TemplateIdByGuid.TryGetValue(
-                        TsGuid.Template(profileId, filterName, cameraId), out tplId)) {
-                    continue;
-                }
-                var tpl = snap.TemplatesById[tplId];
-                templatesByFilter[filterName] = new JObject {
-                    { "name", tpl.Name },
-                    { "defaultexposure", tpl.DefaultExposure },
-                    { "gain", tpl.Gain },
-                    { "offset", tpl.Offset },
-                    { "bin", tpl.Bin },
-                };
-            }
-
+            var planRows = TsRows.RowsOf(plan, camera);
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
                     var targetGuid = TsGuid.Target(profileId, projectName, name);
-                    foreach (var filterName in FilterNames(plan)) {
+                    foreach (var row in planRows) {
                         int planId;
                         if (!snap.PlanIdByGuid.TryGetValue(
-                                TsGuid.ExposurePlan(profileId, targetGuid, filterName), out planId)) {
+                                TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template), out planId)) {
                             continue;
                         }
-                        var row = snap.PlansById[planId];
-                        plansByPanelFilter[$"{PanelKey(r, c)}_{filterName}"] = new JObject {
-                            { "desired", row.Desired },
-                            { "acquired", row.Acquired },
-                            { "accepted", row.Accepted },
-                            { "exposure", row.Exposure },
-                        };
+                        var ep = snap.PlansById[planId];
+                        TsExposureTemplate tpl;
+                        snap.TemplatesById.TryGetValue(ep.ExposureTemplateId, out tpl);
+                        if (tpl != null && templatesByFilter[row.Id] == null) {
+                            templatesByFilter[row.Id] = TemplateEntry(tpl);
+                        }
+                        plansByPanelFilter[$"{PanelKey(r, c)}_{row.Id}"] = PlanEntry(ep, tpl, row.Filter, row.Template);
                     }
                 }
             }
@@ -331,9 +306,31 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return snapshot;
         }
 
-        private static IEnumerable<string> FilterNames(Plan plan) {
-            if (plan?.FilterGoals == null) return new List<string>();
-            return plan.FilterGoals.Keys;
+        private static JObject TemplateEntry(TsExposureTemplate tpl) {
+            return new JObject {
+                { "name", tpl.Name },
+                { "defaultexposure", tpl.DefaultExposure },
+                { "gain", tpl.Gain },
+                { "offset", tpl.Offset },
+                { "bin", tpl.Bin },
+            };
+        }
+
+        /// One exposure plan in the base. filter and template say which row
+        /// it was written for, so the next push can tell a template change,
+        /// the one update that writes exposure. template_sub_s is the sub TS
+        /// uses, which ACP copies onto the row when the links post arrives.
+        /// Matches _plan_entry in nina_ts_sync/state.py.
+        private static JObject PlanEntry(TsExposurePlan ep, TsExposureTemplate tpl, string filter, string template) {
+            return new JObject {
+                { "desired", ep.Desired },
+                { "acquired", ep.Acquired },
+                { "accepted", ep.Accepted },
+                { "exposure", ep.Exposure },
+                { "filter", filter },
+                { "template", template },
+                { "template_sub_s", TsRows.PlanSubS(ep.Exposure, tpl?.DefaultExposure ?? 0.0) },
+            };
         }
     }
 

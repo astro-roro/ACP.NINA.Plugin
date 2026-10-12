@@ -30,11 +30,12 @@ namespace ACP.NINA.Plugin.Models {
         public Dictionary<string, int> TargetIdsByPanel { get; set; }
             = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        /// Filter name to exposuretemplate.Id.
+        /// Row id (or goal key) to exposuretemplate.Id.
         public Dictionary<string, int> TemplateIdsByFilter { get; set; }
             = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        /// "<target id>_<filter name>" to exposureplan.Id, the same key shape
+        /// "<target id>_<row id>" to exposureplan.Id (the goal key on a plan
+        /// from an ACP before filter rows), the same key shape
         /// the Python extension uses.
         public Dictionary<string, int> ExposurePlanIds { get; set; }
             = new Dictionary<string, int>(StringComparer.Ordinal);

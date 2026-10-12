@@ -93,7 +93,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
 
-            var seenTemplateGuids = new HashSet<string>(StringComparer.Ordinal);
+            var seenTemplateNames = new HashSet<string>(StringComparer.Ordinal);
+            var templateGuidByName = new Dictionary<string, string>(StringComparer.Ordinal);
             // Target identity to the ACP plan that produced it, so a collision
             // can say which two plans need looking at rather than just that one
             // happened.
@@ -171,46 +172,54 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     var cols = Math.Max(1, mosaic?.Cols ?? 1);
                     var overlapPct = mosaic?.OverlapPct ?? 0.0;
 
-                    var goals = plan.FilterGoals ?? new Dictionary<string, FilterGoal>();
                     var cameraId = camera?.Id ?? string.Empty;
+                    if (camera?.Filters != null) {
+                        foreach (var name in camera.Filters.Keys) payload.CameraFilters.Add(TsFilterNames.Canonical(name));
+                    }
+                    var planRows = TsRows.RowsOf(plan, camera);
+                    var pushed = planRows.Where(r => TsRows.Desired(r) > 0).ToList();
 
-                    // Templates are built once per filter and camera per
-                    // profile. This is exactly the dedup Target Scheduler's own
-                    // Import Profile does not do.
-                    foreach (var goal in goals) {
-                        if ((goal.Value?.TargetHours ?? 0.0) <= 0.0) continue;
-                        var templateGuid = TsGuid.Template(profileId, goal.Key, cameraId);
-                        if (!seenTemplateGuids.Add(templateGuid)) continue;
-                        payload.LegacyTemplateGuidByGuid[templateGuid] =
-                            TsGuid.LegacyTemplate(profileId, goal.Key, cameraId);
+                    // One template per name per profile. The push looks each
+                    // one up by name and inserts it only when TS has none
+                    // (docs/specs/goal-panel-and-ts-order.md section 3,
+                    // "Templates").
+                    foreach (var row in pushed) {
+                        var templateGuid = TsGuid.RowTemplate(profileId, row.Filter, cameraId, row.Template);
+                        if (!seenTemplateNames.Add(row.Template)) continue;
+                        var filterCfg = FilterConfig(camera, row.Filter);
 
-                        var filterCfg = FilterConfig(camera, goal.Key);
-                        var templateName = !string.IsNullOrWhiteSpace(filterCfg?.TsTemplateName)
-                            ? filterCfg.TsTemplateName
-                            : (camera != null ? $"{goal.Key} ({camera.Name})" : goal.Key);
-
-                        var filterName = goal.Key;
+                        // Identity uses the row's own filter. Only the
+                        // written filter name follows the wheel's spelling.
+                        var filterName = row.Filter;
                         if (wheelFilters != null && wheelFilters.Count > 0) {
-                            var slot = TsFilterNames.ResolveToWheel(goal.Key, wheelFilters);
+                            var slot = TsFilterNames.ResolveToWheel(row.Filter, wheelFilters);
                             if (slot == null) {
-                                payload.FiltersNotOnWheel.Add(goal.Key);
-                            } else if (!string.Equals(slot, goal.Key, StringComparison.Ordinal)) {
-                                payload.FilterRenames[goal.Key] = slot;
+                                payload.FiltersNotOnWheel.Add(row.Filter);
+                            } else if (!string.Equals(slot, row.Filter, StringComparison.Ordinal)) {
+                                payload.FilterRenames[row.Filter] = slot;
                                 filterName = slot;
                             }
                         }
 
                         payload.Templates.Add(new TsExposureTemplate {
                             ProfileId = profileId,
-                            Name = templateName,
+                            Name = row.Template,
                             FilterName = filterName,
                             Guid = templateGuid,
-                            DefaultExposure = FirstTruthy(
-                                filterCfg?.DefaultSubS, goal.Value?.SubExposureS, 300.0),
+                            DefaultExposure = TsRows.SubS(row),
                             Gain = filterCfg?.Gain ?? -1,
                             Offset = filterCfg?.Offset ?? -1,
                             Bin = filterCfg?.Bin ?? 1,
                         });
+                        templateGuidByName[row.Template] = templateGuid;
+                    }
+
+                    var basePlans = BaseSnapshotFor(plan, profileId)?["exposure_plans_by_panel_filter"]
+                        as Newtonsoft.Json.Linq.JObject;
+                    var firstOfFilter = new HashSet<string>(StringComparer.Ordinal);
+                    var seenFilters = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var row in planRows) {
+                        if (seenFilters.Add(row.Filter)) firstOfFilter.Add(row.Id);
                     }
 
                     var panels = (rows > 1 || cols > 1) && fovW > 0 && fovH > 0
@@ -273,56 +282,76 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             PinnedId = targetPin,
                         });
 
-                        List<TsExposurePlan> planRows;
-                        if (!payload.PlansByTargetGuid.TryGetValue(targetGuid, out planRows)) {
-                            planRows = new List<TsExposurePlan>();
-                            payload.PlansByTargetGuid[targetGuid] = planRows;
+                        List<TsExposurePlan> planList;
+                        if (!payload.PlansByTargetGuid.TryGetValue(targetGuid, out planList)) {
+                            planList = new List<TsExposurePlan>();
+                            payload.PlansByTargetGuid[targetGuid] = planList;
                         }
 
-                        foreach (var goal in goals) {
-                            var targetHours = goal.Value?.TargetHours ?? 0.0;
-                            if (targetHours <= 0.0) continue;
-
-                            // The Python side reads this as `int(sub or 300)`,
-                            // so a missing or zero sub length falls back to 300
-                            // and a fractional one truncates towards zero
-                            // before the divisor is floored at 1.
-                            var rawSub = goal.Value?.SubExposureS ?? 0.0;
-                            var effectiveSub = rawSub != 0.0 ? rawSub : 300.0;
-                            var subSeconds = (int)Math.Truncate(effectiveSub);
-                            var divisor = Math.Max(1, subSeconds);
-
-                            var desired = Math.Max(1, (int)Math.Ceiling(targetHours * 3600.0 / divisor));
-                            var acquired = (int)Math.Round(
-                                (goal.Value?.ActualHours ?? 0.0) * 3600.0 / divisor,
-                                MidpointRounding.ToEven);
-
-                            // ts_refs key exposure plans as "<target id>_<filter>".
-                            int pinnedPlanId, pinnedTemplateId;
-                            int? planPin = targetPin.HasValue && refs.ExposurePlanIds.TryGetValue(
-                                $"{targetPin.Value}_{goal.Key}", out pinnedPlanId)
-                                ? pinnedPlanId
-                                : (int?)null;
-                            int? templatePin = refs != null && refs.TemplateIdsByFilter.TryGetValue(
-                                goal.Key, out pinnedTemplateId)
-                                ? pinnedTemplateId
-                                : (int?)null;
-
-                            var planGuid = TsGuid.ExposurePlan(profileId, targetGuid, goal.Key);
-                            planRows.Add(new TsExposurePlan {
+                        var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
+                        foreach (var row in pushed) {
+                            var planGuid = TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template);
+                            var acquired = TsRows.AcquiredFrames(row);
+                            planList.Add(new TsExposurePlan {
                                 ProfileId = profileId,
                                 TargetId = 0,
                                 ExposureTemplateId = 0,
                                 Guid = planGuid,
-                                Exposure = subSeconds,
-                                Desired = desired,
+                                Exposure = -1.0,
+                                Desired = TsRows.Desired(row),
                                 Acquired = acquired,
                                 Accepted = acquired,
-                                PinnedId = planPin,
-                                PinnedTemplateId = templatePin,
                             });
-                            payload.TemplateGuidByPlanGuid[planGuid] =
-                                TsGuid.Template(profileId, goal.Key, cameraId);
+                            payload.TemplateGuidByPlanGuid[planGuid] = templateGuidByName[row.Template];
+
+                            var lookup = new TsPlanLookup { Label = $"{targetName} {TsRows.RowLabel(row)}" };
+                            lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Template));
+                            if (firstOfFilter.Contains(row.Id)) {
+                                lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Filter));
+                            }
+                            // ts_refs key exposure plans as "<target id>_<row id>".
+                            int pinnedPlanId;
+                            if (targetPin.HasValue && refs.ExposurePlanIds.TryGetValue(
+                                    $"{targetPin.Value}_{row.Id}", out pinnedPlanId)) {
+                                lookup.PinnedId = pinnedPlanId;
+                            }
+                            int pinnedTemplateId;
+                            if (refs != null && refs.TemplateIdsByFilter.TryGetValue(row.Id, out pinnedTemplateId)) {
+                                lookup.PinnedTemplateId = pinnedTemplateId;
+                            }
+                            var seen = basePlans?[$"{panelKey}_{row.Id}"] as Newtonsoft.Json.Linq.JObject;
+                            var seenFilter = (string)seen?["filter"];
+                            var seenTemplate = (string)seen?["template"];
+                            lookup.WriteExposure = !string.IsNullOrEmpty(seenTemplate) &&
+                                (seenFilter != row.Filter || seenTemplate != row.Template);
+                            payload.PlanLookupByGuid[planGuid] = lookup;
+                        }
+
+                        // Rows removed in ACP: their exposure plans are
+                        // disabled, never deleted, and only when they carry
+                        // ACP's stamp.
+                        if (targetPin.HasValue) {
+                            var rowIds = new HashSet<string>(planRows.Select(r => r.Id), StringComparer.Ordinal);
+                            var prefix = $"{targetPin.Value}_";
+                            foreach (var pair in refs.ExposurePlanIds) {
+                                if (!pair.Key.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                                var rowId = pair.Key.Substring(prefix.Length);
+                                if (rowIds.Contains(rowId)) continue;
+                                var seen = basePlans?[$"{panelKey}_{rowId}"] as Newtonsoft.Json.Linq.JObject;
+                                var seenFilter = (string)seen?["filter"];
+                                var seenTemplate = (string)seen?["template"];
+                                if (string.IsNullOrEmpty(seenFilter) || string.IsNullOrEmpty(seenTemplate)) continue;
+                                var removed = new TsRemovedPlan { PlanId = pair.Value };
+                                removed.Guids.Add(TsGuid.RowPlan(profileId, targetGuid, seenFilter, seenTemplate));
+                                removed.Guids.Add(TsGuid.ExposurePlan(profileId, targetGuid, seenTemplate));
+                                removed.Guids.Add(TsGuid.ExposurePlan(profileId, targetGuid, seenFilter));
+                                List<TsRemovedPlan> list;
+                                if (!payload.RemovedByTargetGuid.TryGetValue(targetGuid, out list)) {
+                                    list = new List<TsRemovedPlan>();
+                                    payload.RemovedByTargetGuid[targetGuid] = list;
+                                }
+                                list.Add(removed);
+                            }
                         }
                     }
                 }
@@ -456,6 +485,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return null;
         }
 
+        /// The base snapshot this rig recorded for the plan, from
+        /// ts_links[profileId], or null.
+        public static Newtonsoft.Json.Linq.JObject BaseSnapshotFor(Plan plan, string profileId) {
+            var links = plan?.TsLinks as Newtonsoft.Json.Linq.JObject;
+            if (links == null || string.IsNullOrWhiteSpace(profileId)) return null;
+            foreach (var pair in links) {
+                if (!string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                return (pair.Value as Newtonsoft.Json.Linq.JObject)?["base_snapshot"]
+                    as Newtonsoft.Json.Linq.JObject;
+            }
+            return null;
+        }
+
         // -- Geometry --------------------------------------------------------
 
         /// On-sky field of view in arcminutes, mirroring ACP's _fov_arcmin.
@@ -557,15 +599,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (camera?.Filters == null) return null;
             CameraFilter cfg;
             return camera.Filters.TryGetValue(filterName, out cfg) ? cfg : null;
-        }
-
-        /// Python's `a or b or c`, where zero and null are both falsy. Used for
-        /// the template's default exposure, which falls back from the camera's
-        /// filter setting to the plan's own sub length to 300 seconds.
-        private static double FirstTruthy(double? a, double? b, double fallback) {
-            if (a.HasValue && a.Value != 0.0) return a.Value;
-            if (b.HasValue && b.Value != 0.0) return b.Value;
-            return fallback;
         }
 
         /// Python's `tg.get("name") or pl.get("id") or "Untitled"`. Only an
