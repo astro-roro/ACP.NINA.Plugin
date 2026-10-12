@@ -97,7 +97,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 line += $" grader's accepted counts written, and the grader turned on, for: " +
                         $"{string.Join(", ", Outcome.AacWrittenProjects)}.";
             }
-            foreach (var note in Outcome.Notes.Where(n => n.Contains("grader figures not written"))) {
+            foreach (var note in Outcome.Notes.Where(n => n.Contains("grader figures not written") || n.Contains("grader counts not written"))) {
                 line += " " + note;
             }
             return line;

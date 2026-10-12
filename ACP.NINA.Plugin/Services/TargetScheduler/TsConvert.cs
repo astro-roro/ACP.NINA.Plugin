@@ -197,9 +197,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     var pushed = planRows.Where(r => TsRows.Desired(r) > 0).ToList();
                     var planAac = TsRows.PlanAac(plan);
                     if (planAac == null) {
-                        if (grader.Blocked == null) grader.Blocked = "a plan has no grader figures";
+                        if (grader.Blocked == null) grader.Blocked = $"{PlanLabel(plan)} has no grader figures yet";
                     } else {
                         watermarks.Add((string)planAac["filed_through_night"]);
+                    }
+                    if (plan.grader is Newtonsoft.Json.Linq.JObject || planRows.Any(r => TsRows.AacBlock(r) != null)) {
+                        grader.Linked = true;
                     }
 
                     // One template per name per profile. The push looks each
@@ -265,7 +268,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             "written.");
                     }
                     var multi = panels.Count > 1;
-                    if (multi && grader.Blocked == null) grader.Blocked = "mosaic";
+                    if (multi && grader.Blocked == null) {
+                        grader.Blocked = $"{PlanLabel(plan)} is a mosaic, and grader's counts are per row";
+                    }
 
                     foreach (var panel in panels) {
                         var suffix = string.Empty;
@@ -349,7 +354,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             });
                             var counted = TsRows.AacAccepted(row, plan, wanted);
                             if (!counted.HasValue) {
-                                if (grader.Blocked == null) grader.Blocked = "a row has no grader figures";
+                                if (grader.Blocked == null) grader.Blocked = $"{TsRows.RowLabel(row)} has no grader figures yet";
                             } else {
                                 grader.AcceptedByPlanGuid[planGuid] = counted.Value;
                             }
@@ -378,7 +383,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         // disabled, never deleted, and only when they carry
                         // ACP's stamp.
                         if (targetPin.HasValue) {
-                            var rowIds = new HashSet<string>(planRows.Select(r => r.Id), StringComparer.Ordinal);
+                            // A row with a goal of 0 pushes no plan, so its plan
+                            // is disabled as if the row were gone.
+                            var rowIds = new HashSet<string>(pushed.Select(r => r.Id), StringComparer.Ordinal);
                             var prefix = $"{targetPin.Value}_";
                             foreach (var pair in refs.ExposurePlanIds) {
                                 if (!pair.Key.StartsWith(prefix, StringComparison.Ordinal)) continue;
@@ -405,7 +412,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 grader.FiledThroughNight = watermarks.Count > 0
                     ? watermarks.OrderBy(w => w, StringComparer.Ordinal).First()
                     : null;
-                if (grader.AcceptedByPlanGuid.Count == 0 && grader.Blocked == null) grader.Blocked = "no row has grader figures";
+                if (grader.AcceptedByPlanGuid.Count == 0 && grader.Blocked == null) grader.Blocked = "no row has grader figures yet";
             }
 
             return payload;
