@@ -1,6 +1,7 @@
 using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services.TargetScheduler;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -23,7 +24,12 @@ namespace ACP.NINA.Plugin.Tests {
         private const string Profile = TsTestPlans.ProfileId;
 
         private static JObject Doc() {
-            return JObject.Parse(TsFixtures.ReadFixture("aac_accepted_cases.json"));
+            // Timestamps stay strings: the default would turn "...Z" into a local
+            // DateTime, and (string) of that drops the zone, so the instants
+            // moved by the test machine's offset.
+            return JsonConvert.DeserializeObject<JObject>(
+                TsFixtures.ReadFixture("aac_accepted_cases.json"),
+                new JsonSerializerSettings { DateParseHandling = DateParseHandling.None });
         }
 
         public static IEnumerable<object[]> CaseNames() {
