@@ -5,6 +5,7 @@
   "scenarios": {
     "acp_migration_keeps_plans": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -278,6 +279,7 @@
     },
     "acp_pause_reaches_ts": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -446,6 +448,7 @@
     },
     "counts_survive_a_second_push": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -923,6 +926,7 @@
     },
     "derived_row_keeps_existing_template": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -1114,6 +1118,7 @@
     },
     "f1_override_rows_rebuilt": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [
           "M42"
         ],
@@ -1364,6 +1369,7 @@
     },
     "f1_switch_frequency_written": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [
           "M42"
         ],
@@ -1607,6 +1613,7 @@
     },
     "f2_switch_frequency_set_in_ts_kept": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -1897,6 +1904,7 @@
     },
     "imported_plan_keeps_its_template": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -2065,6 +2073,7 @@
     },
     "m2_old_writer_rows_restamped": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -2361,6 +2370,7 @@
     },
     "m3_explicit_exposure_kept": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [
@@ -2531,6 +2541,7 @@
     },
     "m4_template_change_writes_default": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -2722,6 +2733,7 @@
     },
     "migrated_from_the_old_recipe": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -3199,6 +3211,7 @@
     },
     "o11_no_base_order_writes_nothing": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -3402,6 +3415,7 @@
     },
     "o1_acp_order_written": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -3664,6 +3678,7 @@
     },
     "o3_acp_order_replaces_ts_order": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -3871,6 +3886,7 @@
     },
     "o4_rotate_every_3": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -4119,6 +4135,7 @@
     },
     "o4c_cadence_reset_every_push": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -4379,6 +4396,7 @@
     },
     "o4d_goal_change_refreshes_rows": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -4655,6 +4673,7 @@
     },
     "o7_dither_rows": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -4931,6 +4950,7 @@
     },
     "o8_new_plan_appended_to_ts_order": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -5214,6 +5234,7 @@
     },
     "older_acp_goals": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -5522,6 +5543,7 @@
     },
     "r1_removed_row_disabled": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 1,
         "exposure_mismatches": [],
@@ -5819,6 +5841,7 @@
     },
     "r2_ts_rows_kept_and_remapped": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 1,
         "exposure_mismatches": [],
@@ -6074,6 +6097,7 @@
     },
     "r3_readded_row_enabled": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -6399,6 +6423,7 @@
     },
     "s1_new_star_row": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -6567,6 +6592,7 @@
     },
     "s2_existing_template": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -6735,6 +6761,7 @@
     },
     "smart_order_written": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [
           "M42"
         ],
@@ -6978,6 +7005,7 @@
     },
     "ts_owned_columns_survive_a_second_push": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -7455,6 +7483,7 @@
     },
     "ts_pause_survives_a_push": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -7623,6 +7652,7 @@
     },
     "x1_mosaic_hand_order_on_panel_two_kept": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -7933,6 +7963,7 @@
     },
     "x2_mosaic_acp_reorder_writes_both_panels": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -8395,6 +8426,7 @@
     },
     "x3_added_row_dragged_to_top_is_a_reorder": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -8722,6 +8754,7 @@
     },
     "x3b_added_row_at_end_keeps_hand_order": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -9005,6 +9038,7 @@
     },
     "x4_goal_raised_from_zero_keeps_hand_order": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -9288,6 +9322,7 @@
     },
     "x5_stale_sync_rows_refreshed_hand_rows_kept": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -9684,6 +9719,7 @@
     },
     "x6_readded_row_with_no_rows_writes_acps_order": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -9962,6 +9998,7 @@
   "versions": {
     "23": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
@@ -10433,6 +10470,7 @@
     },
     "28": {
       "report": {
+        "aac_written_projects": [],
         "cadence_reset_projects": [],
         "disabled_plans": 0,
         "exposure_mismatches": [],
