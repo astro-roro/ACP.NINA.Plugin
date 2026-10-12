@@ -40,6 +40,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Scheduler one.
         public List<TsPlanState> PlanStates { get; } = new List<TsPlanState>();
 
+        /// Every exposure template the profile holds after the push, read back
+        /// with the snapshot. Sent to ACP so it has a template list when it
+        /// cannot read this machine's database.
+        public List<TsExposureTemplate> Templates { get; } = new List<TsExposureTemplate>();
+
         /// How many attempts it took, which is 1 unless the database was locked.
         public int Attempts { get; set; } = 1;
 
@@ -74,6 +79,26 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             }
             if (Outcome.ConflictLines.Count > 0) {
                 line += " " + string.Join(" ", Outcome.ConflictLines.Select(l => l + "."));
+            }
+            // docs/specs/goal-panel-and-ts-order.md section 3.
+            if (Outcome.DisabledPlans > 0) {
+                line += $" {Outcome.DisabledPlans} exposure " +
+                        $"{(Outcome.DisabledPlans == 1 ? "plan" : "plans")} of rows removed in ACP disabled, frames kept.";
+            }
+            if (Outcome.ExposureMismatches.Count > 0) {
+                line += " " + string.Join(" ", Outcome.ExposureMismatches.Select(l => l + "."));
+            }
+            if (Outcome.StrayTemplates.Count > 0) {
+                line += $" Templates whose filter is on no camera, to delete in Target Scheduler: " +
+                        $"{string.Join(", ", Outcome.StrayTemplates)}.";
+            }
+            // docs/specs/goal-panel-and-ts-order.md section 6.
+            if (Outcome.AacWrittenProjects.Count > 0) {
+                line += $" AAC's accepted counts written, and the grader turned on, for: " +
+                        $"{string.Join(", ", Outcome.AacWrittenProjects)}.";
+            }
+            foreach (var note in Outcome.Notes.Where(n => n.Contains("AAC figures not written") || n.Contains("AAC counts not written"))) {
+                line += " " + note;
             }
             return line;
         }
@@ -276,17 +301,22 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 // next sync has a base to diff against.
                 try {
                     var snapshot = db.ReadAll(profileId);
+                    result.Templates.AddRange(snapshot.TemplatesById.Values);
                     var projectByGuid = payload.Projects.ToDictionary(p => p.Guid, p => p);
                     foreach (var plan in plans) {
                         TsProject pushedProject;
                         projectByGuid.TryGetValue(
                             TsGuid.Project(profileId, TsConvert.ProjectNameOf(plan)), out pushedProject);
+                        // The camera names the templates of rows derived from
+                        // an older ACP's filter_goals, as TsConvert named them.
+                        var camera = gear?.Cameras?.FirstOrDefault(c => c?.Id != null && c.Id == plan.CameraId);
                         result.PlanStates.Add(new TsPlanState {
                             PlanId = plan.Id,
                             Refs = TsState.BuildRefs(
-                                snapshot, plan, profileId, db.UserVersion, TsState.OperationPush),
+                                snapshot, plan, profileId, db.UserVersion, TsState.OperationPush,
+                                camera: camera),
                             BaseSnapshot = TsState.BuildBaseSnapshot(
-                                snapshot, plan, profileId, pushedProject, result.Outcome),
+                                snapshot, plan, profileId, pushedProject, result.Outcome, camera),
                         });
                     }
                 } catch (Exception ex) {
@@ -346,13 +376,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var name = PlanName(plan);
                 var projectName = TsConvert.ProjectNameOf(plan);
 
-                var goals = plan.FilterGoals ?? new Dictionary<string, FilterGoal>();
-                if (goals.Count == 0) {
-                    result.LeftOut.Add($"{name} (no filter goals)");
+                var rows = TsRows.RowsOf(plan, null);
+                if (rows.Count == 0) {
+                    result.LeftOut.Add($"{name} (no filter rows)");
                     continue;
                 }
-                if (goals.Values.All(g => (g?.TargetHours ?? 0) <= 0)) {
-                    result.LeftOut.Add($"{name} (no filter goal has any hours on it)");
+                if (rows.All(r => TsRows.Desired(r) <= 0)) {
+                    result.LeftOut.Add($"{name} (no filter row has a goal)");
                     continue;
                 }
 

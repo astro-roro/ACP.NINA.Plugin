@@ -910,6 +910,8 @@ namespace ACP.NINA.Plugin.Dockables {
                 if (result.Success) {
                     linksWarning = await TsLinksReporter.PostAsync(client, result, profileId)
                         .ConfigureAwait(false);
+                    await TsTemplatesReporter.PostAsync(client, result, profileId)
+                        .ConfigureAwait(false);
                 }
                 var line = (result.Success ? "✓ " : "✗ ") + result.Summary() +
                            (linksWarning == null ? string.Empty : " " + linksWarning);

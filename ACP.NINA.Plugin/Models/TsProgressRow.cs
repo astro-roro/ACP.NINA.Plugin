@@ -21,6 +21,14 @@ namespace ACP.NINA.Plugin.Models {
         /// without the plugin having to carry the alias table.
         public string FilterName { get; set; }
 
+        /// exposuretemplate.name. With the filter it names the ACP filter row
+        /// the frames belong to, so "R" and "R Stars" land on their own rows.
+        public string TemplateName { get; set; }
+
+        /// exposureplan.enabled. A disabled plan is a row removed in ACP, so
+        /// its frames are not reported.
+        public bool Enabled { get; set; } = true;
+
         /// exposureplan.acquired, every sub captured.
         public int Acquired { get; set; }
 

@@ -60,6 +60,15 @@ namespace ACP.NINA.Plugin.Services {
             Timeout = TimeSpan.FromMinutes(10),
         };
 
+        /// How every ACP reply is read. Dates stay strings: the default turns
+        /// anything shaped like an ISO timestamp inside a raw JToken (the
+        /// plan's aac block, the base snapshot) into a DateTime, which then
+        /// serialises back in another form and breaks the string checks in
+        /// TsRows. Dates are strings in ACP's data files.
+        internal static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings {
+            DateParseHandling = DateParseHandling.None,
+        };
+
         private readonly string baseUrl;
         private readonly Func<string> tokenSource;
         private readonly HttpClient client;
@@ -122,7 +131,7 @@ namespace ACP.NINA.Plugin.Services {
         /// GET /api/version. Cheap enough to poll every 60 seconds.
         public async Task<VersionInfo> GetVersionAsync(CancellationToken ct = default) {
             var json = await SendAsync(HttpMethod.Get, "/api/version", null, ct).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<VersionInfo>(json) ?? new VersionInfo();
+            return JsonConvert.DeserializeObject<VersionInfo>(json, JsonSettings) ?? new VersionInfo();
         }
 
         /// Probe ACP for liveness. /api/version is the right endpoint since
@@ -136,19 +145,19 @@ namespace ACP.NINA.Plugin.Services {
                 throw;
             } catch (HttpRequestException) {
                 var json = await SendAsync(HttpMethod.Get, "/api/plans", null, ct).ConfigureAwait(false);
-                var doc = JsonConvert.DeserializeObject<PlansResponse>(json);
+                var doc = JsonConvert.DeserializeObject<PlansResponse>(json, JsonSettings);
                 return $"ACP responding (plans schema v{doc?.Version ?? 0})";
             }
         }
 
         public async Task<PlansResponse> GetPlansAsync(CancellationToken ct = default) {
             var json = await SendAsync(HttpMethod.Get, "/api/plans", null, ct).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<PlansResponse>(json) ?? new PlansResponse();
+            return JsonConvert.DeserializeObject<PlansResponse>(json, JsonSettings) ?? new PlansResponse();
         }
 
         public async Task<GearResponse> GetGearAsync(CancellationToken ct = default) {
             var json = await SendAsync(HttpMethod.Get, "/api/gear", null, ct).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<GearResponse>(json) ?? new GearResponse();
+            return JsonConvert.DeserializeObject<GearResponse>(json, JsonSettings) ?? new GearResponse();
         }
 
         /// POST /api/plans/match. Body is the fingerprint plus "mode". Returns
@@ -163,7 +172,7 @@ namespace ACP.NINA.Plugin.Services {
             fingerprint.Mode = mode.ToWire();
             var body = JsonConvert.SerializeObject(fingerprint);
             var json = await SendAsync(HttpMethod.Post, "/api/plans/match", body, ct).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<MatchResponse>(json) ?? new MatchResponse();
+            return JsonConvert.DeserializeObject<MatchResponse>(json, JsonSettings) ?? new MatchResponse();
         }
 
         /// POST to the private nina_ts_sync extension. Body is
@@ -175,7 +184,7 @@ namespace ACP.NINA.Plugin.Services {
             var json = await SendAsync(
                 HttpMethod.Post, "/api/ext/nina-ts-sync/sync", body, ct
             ).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<TsSyncResponse>(json) ?? new TsSyncResponse();
+            return JsonConvert.DeserializeObject<TsSyncResponse>(json, JsonSettings) ?? new TsSyncResponse();
         }
 
         /// POST /api/plans/{id}/progress. Reports what a session has actually
@@ -197,13 +206,14 @@ namespace ACP.NINA.Plugin.Services {
             var json = JsonConvert.SerializeObject(body);
             var path = $"/api/plans/{Uri.EscapeDataString(planId)}/progress";
             var text = await SendAsync(HttpMethod.Post, path, json, ct).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<ProgressResponse>(text) ?? new ProgressResponse();
+            return JsonConvert.DeserializeObject<ProgressResponse>(text, JsonSettings) ?? new ProgressResponse();
         }
 
         // -- TS upload (spec: ts-upload-import.md, Part A) -------------------
 
         public const string TsUploadPath = "/api/ext/nina-ts-sync/import/uploads";
         public const string TsLinksPath = "/api/ext/nina-ts-sync/links";
+        public const string TsTemplatesPath = "/api/ts-templates";
 
         /// POST the consistent copy of TS's database as multipart/form-data,
         /// with a `file` part and a `meta` JSON part. ACP answers 202 with the
@@ -229,7 +239,7 @@ namespace ACP.NINA.Plugin.Services {
 
                 var json = await SendAsync(uploadClient, HttpMethod.Post, baseUrl + TsUploadPath, form, ct)
                     .ConfigureAwait(false);
-                return JsonConvert.DeserializeObject<TsUploadAccepted>(json) ?? new TsUploadAccepted();
+                return JsonConvert.DeserializeObject<TsUploadAccepted>(json, JsonSettings) ?? new TsUploadAccepted();
             }
         }
 
@@ -248,6 +258,14 @@ namespace ACP.NINA.Plugin.Services {
             if (body == null) throw new ArgumentNullException(nameof(body));
             var content = new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json");
             await SendAsync(client, HttpMethod.Post, baseUrl + TsLinksPath, content, ct).ConfigureAwait(false);
+        }
+
+        /// POST the profile's Target Scheduler exposure templates, replacing
+        /// the list ACP holds for that profile.
+        public async Task PostTsTemplatesAsync(TsTemplatesRequest body, CancellationToken ct = default) {
+            if (body == null) throw new ArgumentNullException(nameof(body));
+            var json = JsonConvert.SerializeObject(body);
+            await SendAsync(HttpMethod.Post, TsTemplatesPath, json, ct).ConfigureAwait(false);
         }
 
         // -- Transport ------------------------------------------------------
@@ -292,7 +310,7 @@ namespace ACP.NINA.Plugin.Services {
 
         private static string ExtractErrorMessage(string json) {
             try {
-                var err = JsonConvert.DeserializeAnonymousType(json, new { error = "" });
+                var err = JsonConvert.DeserializeAnonymousType(json, new { error = "" }, JsonSettings);
                 return string.IsNullOrEmpty(err?.error) ? null : err.error;
             } catch {
                 return null;

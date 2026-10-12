@@ -34,6 +34,17 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("minimum_time_min")]
         public int? MinimumTimeMin { get; set; }
 
+        /// The TS project's filter switch frequency: 0 shoots each filter
+        /// until it is done, N rotates every N frames. Null means unknown, and
+        /// the push never writes it on update.
+        /// docs/specs/goal-panel-and-ts-order.md section 4.
+        [JsonProperty("filter_switch_frequency")]
+        public int? FilterSwitchFrequency { get; set; }
+
+        /// The TS project's smart exposure order. Null means unknown, as above.
+        [JsonProperty("smart_exposure_order")]
+        public bool? SmartExposureOrder { get; set; }
+
         [JsonProperty("telescope_id")]
         public string TelescopeId { get; set; }
 
@@ -43,6 +54,16 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("target")]
         public PlanTarget Target { get; set; }
 
+        /// The plan's goals as an ordered list of filter rows, in shooting
+        /// order (docs/specs/goal-panel-and-ts-order.md section 3). Null from
+        /// an ACP that predates rows; TsRows.RowsOf then derives them from
+        /// FilterGoals.
+        [JsonProperty("filter_rows")]
+        public List<FilterRow> FilterRows { get; set; }
+
+        /// The old per-filter goals. A current ACP still serves a derived
+        /// copy for older plugins; this plugin reads it only when the plan
+        /// has no FilterRows.
         [JsonProperty("filter_goals")]
         public Dictionary<string, FilterGoal> FilterGoals { get; set; }
 
@@ -63,6 +84,19 @@ namespace ACP.NINA.Plugin.Models {
         /// for the same reason as ts_refs. TsConvert.RefsFor reads it first.
         [JsonProperty("ts_links")]
         public JToken TsLinks { get; set; }
+
+        /// What AAC last reported for the plan as a whole: filed_through_night
+        /// (the ingest watermark), min_total_frames (the floor) and
+        /// received_at. Written only by AAC, through ACP's POST
+        /// /api/plans/<id>/accepted. Raw JSON, read by TsRows.PlanAac.
+        /// docs/specs/goal-panel-and-ts-order.md section 6.
+        [JsonProperty("aac")]
+        public JToken Aac { get; set; }
+
+        /// survey, deep or pretty. Absent means survey. ACP serves it for AAC;
+        /// the plugin does not read it.
+        [JsonProperty("target_class")]
+        public string TargetClass { get; set; }
     }
 
     public class PlanTarget {
@@ -91,6 +125,42 @@ namespace ACP.NINA.Plugin.Models {
 
         [JsonProperty("overlap_pct")]
         public double OverlapPct { get; set; }
+    }
+
+    /// One filter row: a filter, a Target Scheduler template and a goal in
+    /// hours ("h") or frames ("fr"). `aac` is AAC's figures for the row,
+    /// written only by AAC; the push reads accepted_seconds, accepted_frames
+    /// and complete from it (docs/specs/goal-panel-and-ts-order.md section 6).
+    public class FilterRow {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("filter")]
+        public string Filter { get; set; }
+
+        [JsonProperty("template")]
+        public string Template { get; set; }
+
+        /// The sub TS uses for this row, in seconds. What the writers divide
+        /// an hour goal by.
+        [JsonProperty("template_sub_s")]
+        public double? TemplateSubS { get; set; }
+
+        [JsonProperty("unit")]
+        public string Unit { get; set; }
+
+        [JsonProperty("target_hours")]
+        public double? TargetHours { get; set; }
+
+        [JsonProperty("target_frames")]
+        public double? TargetFrames { get; set; }
+
+        [JsonProperty("actual_hours")]
+        public double? ActualHours { get; set; }
+
+        /// AAC's figures for this row, or null. Raw JSON, read by TsRows.
+        [JsonProperty("aac")]
+        public JToken Aac { get; set; }
     }
 
     public class FilterGoal {

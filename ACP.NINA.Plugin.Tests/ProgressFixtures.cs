@@ -16,12 +16,16 @@ namespace ACP.NINA.Plugin.Tests {
             bool graderEnabled = false,
             double templateDefaultSeconds = 0,
             int targetId = 1,
-            int exposurePlanId = 1
+            int exposurePlanId = 1,
+            string template = null,
+            bool enabled = true
         ) {
             return new TsProgressRow {
                 ExposurePlanId = exposurePlanId,
                 TargetId = targetId,
                 FilterName = filter,
+                TemplateName = template ?? filter,
+                Enabled = enabled,
                 Acquired = acquired,
                 Accepted = accepted < 0 ? acquired : accepted,
                 ExposureSeconds = exposureSeconds,

@@ -72,14 +72,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// from the plan's own filter name, so a re-push updates the same rows
         /// and the Python extension still finds them. Null keeps the plan's
         /// names as they are, which is what the Python extension does.
+        ///
+        /// `now` is the moment the AAC freshness rule is judged at; it
+        /// defaults to createDateUnix.
         public static TsSyncPayload BuildPayload(
             IEnumerable<Plan> plans,
             GearResponse gear,
             string profileId,
             long createDateUnix,
-            IReadOnlyList<string> wheelFilters = null
+            IReadOnlyList<string> wheelFilters = null,
+            DateTimeOffset? now = null
         ) {
             var payload = new TsSyncPayload { ProfileId = profileId };
+            // The moment the AAC freshness rule is judged at
+            // (docs/specs/goal-panel-and-ts-order.md section 6).
+            payload.AacNow = now ?? DateTimeOffset.FromUnixTimeSeconds(createDateUnix);
             var planList = (plans ?? Enumerable.Empty<Plan>()).Where(p => p != null).ToList();
 
             var telescopesById = new Dictionary<string, Telescope>(StringComparer.Ordinal);
@@ -93,7 +100,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
 
-            var seenTemplateGuids = new HashSet<string>(StringComparer.Ordinal);
+            var seenTemplateNames = new HashSet<string>(StringComparer.Ordinal);
+            var templateGuidByName = new Dictionary<string, string>(StringComparer.Ordinal);
             // Target identity to the ACP plan that produced it, so a collision
             // can say which two plans need looking at rather than just that one
             // happened.
@@ -112,6 +120,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                 var tsState = StateToTsInt[stateName];
                 var tsPriority = RankOf(priorityName);
+                int? switchFrequency;
+                int? smartOrder;
+                GroupOrderSettings(projectName, group.Value, out switchFrequency, out smartOrder, payload.Notes);
 
                 var proj = new TsProject {
                     ProfileId = profileId,
@@ -123,6 +134,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     MinimumAltitude = minAltitude,
                     MeridianWindow = meridianWindow,
                     MinimumTime = minimumTime,
+                    // On insert, ACP's value, or 0 and off when the plan has
+                    // none (docs/specs/goal-panel-and-ts-order.md section 4).
+                    FilterSwitchFrequency = switchFrequency ?? 0,
+                    SmartExposureOrder = smartOrder ?? 0,
                     // Set for insert correctness whenever the resolved state
                     // is active or inactive/closed. Whether the update
                     // actually writes either column follows
@@ -144,12 +159,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     .FirstOrDefault(b => b != null);
                 proj.HasBase = baseProject != null;
                 proj.ConditionalColumnsToWrite = ConditionalColumnsFor(
-                    baseProject, tsState, tsPriority, minimumTime);
+                    baseProject, tsState, tsPriority, minimumTime, switchFrequency, smartOrder);
                 payload.Projects.Add(proj);
                 payload.RuleWeightsByProjectGuid[proj.Guid] = DefaultRuleWeights
                     .Select(kv => new TsRuleWeight { ProjectId = 0, Name = kv.Key, Weight = kv.Value })
                     .ToList();
                 payload.TargetsByProjectGuid[proj.Guid] = new List<TsTarget>();
+                var aac = new TsAacProject { Name = projectName };
+                payload.AacByProjectGuid[proj.Guid] = aac;
+                var watermarks = new List<string>();
 
                 foreach (var plan in group.Value) {
                     var refs = RefsFor(plan, profileId);
@@ -171,46 +189,66 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     var cols = Math.Max(1, mosaic?.Cols ?? 1);
                     var overlapPct = mosaic?.OverlapPct ?? 0.0;
 
-                    var goals = plan.FilterGoals ?? new Dictionary<string, FilterGoal>();
                     var cameraId = camera?.Id ?? string.Empty;
+                    if (camera?.Filters != null) {
+                        foreach (var name in camera.Filters.Keys) payload.CameraFilters.Add(TsFilterNames.Canonical(name));
+                    }
+                    var planRows = TsRows.RowsOf(plan, camera);
+                    var pushed = planRows.Where(r => TsRows.Desired(r) > 0).ToList();
+                    var planAac = TsRows.PlanAac(plan);
+                    if (planAac == null) {
+                        if (aac.Blocked == null) aac.Blocked = $"{PlanLabel(plan)} has no AAC figures yet";
+                    } else {
+                        watermarks.Add((string)planAac["filed_through_night"]);
+                    }
+                    if (plan.Aac is Newtonsoft.Json.Linq.JObject || planRows.Any(r => TsRows.AacBlock(r) != null)) {
+                        aac.Linked = true;
+                    }
 
-                    // Templates are built once per filter and camera per
-                    // profile. This is exactly the dedup Target Scheduler's own
-                    // Import Profile does not do.
-                    foreach (var goal in goals) {
-                        if ((goal.Value?.TargetHours ?? 0.0) <= 0.0) continue;
-                        var templateGuid = TsGuid.Template(profileId, goal.Key, cameraId);
-                        if (!seenTemplateGuids.Add(templateGuid)) continue;
-                        payload.LegacyTemplateGuidByGuid[templateGuid] =
-                            TsGuid.LegacyTemplate(profileId, goal.Key, cameraId);
+                    // One template per name per profile. The push looks each
+                    // one up by name and inserts it only when TS has none
+                    // (docs/specs/goal-panel-and-ts-order.md section 3,
+                    // "Templates").
+                    foreach (var row in pushed) {
+                        var templateGuid = TsGuid.RowTemplate(profileId, row.Filter, cameraId, row.Template);
+                        if (!seenTemplateNames.Add(row.Template)) continue;
+                        var filterCfg = FilterConfig(camera, row.Filter);
 
-                        var filterCfg = FilterConfig(camera, goal.Key);
-                        var templateName = !string.IsNullOrWhiteSpace(filterCfg?.TsTemplateName)
-                            ? filterCfg.TsTemplateName
-                            : (camera != null ? $"{goal.Key} ({camera.Name})" : goal.Key);
-
-                        var filterName = goal.Key;
+                        // Identity uses the row's own filter. Only the
+                        // written filter name follows the wheel's spelling.
+                        var filterName = row.Filter;
                         if (wheelFilters != null && wheelFilters.Count > 0) {
-                            var slot = TsFilterNames.ResolveToWheel(goal.Key, wheelFilters);
+                            var slot = TsFilterNames.ResolveToWheel(row.Filter, wheelFilters);
                             if (slot == null) {
-                                payload.FiltersNotOnWheel.Add(goal.Key);
-                            } else if (!string.Equals(slot, goal.Key, StringComparison.Ordinal)) {
-                                payload.FilterRenames[goal.Key] = slot;
+                                payload.FiltersNotOnWheel.Add(row.Filter);
+                            } else if (!string.Equals(slot, row.Filter, StringComparison.Ordinal)) {
+                                payload.FilterRenames[row.Filter] = slot;
                                 filterName = slot;
                             }
                         }
 
                         payload.Templates.Add(new TsExposureTemplate {
                             ProfileId = profileId,
-                            Name = templateName,
+                            Name = row.Template,
                             FilterName = filterName,
                             Guid = templateGuid,
-                            DefaultExposure = FirstTruthy(
-                                filterCfg?.DefaultSubS, goal.Value?.SubExposureS, 300.0),
+                            DefaultExposure = TsRows.SubS(row),
                             Gain = filterCfg?.Gain ?? -1,
                             Offset = filterCfg?.Offset ?? -1,
                             Bin = filterCfg?.Bin ?? 1,
                         });
+                        templateGuidByName[row.Template] = templateGuid;
+                    }
+
+                    var basePlans = BaseSnapshotFor(plan, profileId)?["exposure_plans_by_panel_filter"]
+                        as Newtonsoft.Json.Linq.JObject;
+                    // Rows derived from filter_goals (an ACP before filter
+                    // rows) never move an existing plan to another template.
+                    var derived = plan.FilterRows == null;
+                    var firstOfFilter = new HashSet<string>(StringComparer.Ordinal);
+                    var seenFilters = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var row in planRows) {
+                        if (seenFilters.Add(row.Filter)) firstOfFilter.Add(row.Id);
                     }
 
                     var panels = (rows > 1 || cols > 1) && fovW > 0 && fovH > 0
@@ -230,6 +268,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             "written.");
                     }
                     var multi = panels.Count > 1;
+                    if (multi && aac.Blocked == null) {
+                        aac.Blocked = $"{PlanLabel(plan)} is a mosaic, and AAC's counts are per row";
+                    }
 
                     foreach (var panel in panels) {
                         var suffix = string.Empty;
@@ -273,59 +314,105 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             PinnedId = targetPin,
                         });
 
-                        List<TsExposurePlan> planRows;
-                        if (!payload.PlansByTargetGuid.TryGetValue(targetGuid, out planRows)) {
-                            planRows = new List<TsExposurePlan>();
-                            payload.PlansByTargetGuid[targetGuid] = planRows;
+                        List<TsExposurePlan> targetPlans;
+                        if (!payload.PlansByTargetGuid.TryGetValue(targetGuid, out targetPlans)) {
+                            targetPlans = new List<TsExposurePlan>();
+                            payload.PlansByTargetGuid[targetGuid] = targetPlans;
                         }
 
-                        foreach (var goal in goals) {
-                            var targetHours = goal.Value?.TargetHours ?? 0.0;
-                            if (targetHours <= 0.0) continue;
-
-                            // The Python side reads this as `int(sub or 300)`,
-                            // so a missing or zero sub length falls back to 300
-                            // and a fractional one truncates towards zero
-                            // before the divisor is floored at 1.
-                            var rawSub = goal.Value?.SubExposureS ?? 0.0;
-                            var effectiveSub = rawSub != 0.0 ? rawSub : 300.0;
-                            var subSeconds = (int)Math.Truncate(effectiveSub);
-                            var divisor = Math.Max(1, subSeconds);
-
-                            var desired = Math.Max(1, (int)Math.Ceiling(targetHours * 3600.0 / divisor));
-                            var acquired = (int)Math.Round(
-                                (goal.Value?.ActualHours ?? 0.0) * 3600.0 / divisor,
-                                MidpointRounding.ToEven);
-
-                            // ts_refs key exposure plans as "<target id>_<filter>".
-                            int pinnedPlanId, pinnedTemplateId;
-                            int? planPin = targetPin.HasValue && refs.ExposurePlanIds.TryGetValue(
-                                $"{targetPin.Value}_{goal.Key}", out pinnedPlanId)
-                                ? pinnedPlanId
-                                : (int?)null;
-                            int? templatePin = refs != null && refs.TemplateIdsByFilter.TryGetValue(
-                                goal.Key, out pinnedTemplateId)
-                                ? pinnedTemplateId
-                                : (int?)null;
-
-                            var planGuid = TsGuid.ExposurePlan(profileId, targetGuid, goal.Key);
-                            planRows.Add(new TsExposurePlan {
+                        var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
+                        // The base order is the target's, which is the anchor
+                        // panel's (1,1): ACP's order has changed when it differs
+                        // from that, for every panel. Each panel's base rows are
+                        // its own (section 5).
+                        var baseTargets = BaseSnapshotFor(plan, profileId)?["targets_by_panel"] as Newtonsoft.Json.Linq.JObject;
+                        var anchorTarget = baseTargets?["1,1"] as Newtonsoft.Json.Linq.JObject;
+                        var seenTarget = baseTargets?[panelKey] as Newtonsoft.Json.Linq.JObject;
+                        var anchorOrder = anchorTarget?["exposure_order"] as Newtonsoft.Json.Linq.JArray;
+                        if (anchorOrder != null) {
+                            payload.OrderByTargetGuid[targetGuid] = new TsTargetOrder {
+                                BaseOrder = anchorOrder.Select(t => (string)t).ToList(),
+                                BaseRows = seenTarget == null ? null : TsOrder.AsRows(seenTarget["override_rows"]),
+                                KnownRows = TsOrder.KnownRowsOfBase(
+                                    anchorTarget,
+                                    BaseSnapshotFor(plan, profileId)?["exposure_plans_by_panel_filter"] as Newtonsoft.Json.Linq.JObject),
+                            };
+                        }
+                        foreach (var row in pushed) {
+                            var planGuid = TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template);
+                            var acquired = TsRows.AcquiredFrames(row);
+                            var wanted = TsRows.DesiredFor(row, plan);
+                            targetPlans.Add(new TsExposurePlan {
                                 ProfileId = profileId,
                                 TargetId = 0,
                                 ExposureTemplateId = 0,
                                 Guid = planGuid,
-                                Exposure = subSeconds,
-                                Desired = desired,
+                                Exposure = -1.0,
+                                Desired = wanted,
                                 Acquired = acquired,
                                 Accepted = acquired,
-                                PinnedId = planPin,
-                                PinnedTemplateId = templatePin,
                             });
-                            payload.TemplateGuidByPlanGuid[planGuid] =
-                                TsGuid.Template(profileId, goal.Key, cameraId);
+                            var counted = TsRows.AacAccepted(row, plan, wanted);
+                            if (!counted.HasValue) {
+                                if (aac.Blocked == null) aac.Blocked = $"{TsRows.RowLabel(row)} has no AAC figures yet";
+                            } else {
+                                aac.AcceptedByPlanGuid[planGuid] = counted.Value;
+                            }
+                            payload.TemplateGuidByPlanGuid[planGuid] = templateGuidByName[row.Template];
+
+                            var lookup = new TsPlanLookup { Label = $"{targetName} {TsRows.RowLabel(row)}", RowId = row.Id };
+                            lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Template));
+                            if (firstOfFilter.Contains(row.Id)) {
+                                lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Filter));
+                            }
+                            // ts_refs key exposure plans as "<target id>_<row id>".
+                            int pinnedPlanId;
+                            if (targetPin.HasValue && refs.ExposurePlanIds.TryGetValue(
+                                    $"{targetPin.Value}_{row.Id}", out pinnedPlanId)) {
+                                lookup.PinnedId = pinnedPlanId;
+                            }
+                            var seen = basePlans?[$"{panelKey}_{row.Id}"] as Newtonsoft.Json.Linq.JObject;
+                            var seenFilter = (string)seen?["filter"];
+                            var seenTemplate = (string)seen?["template"];
+                            lookup.TemplateChanged = !derived && !string.IsNullOrEmpty(seenTemplate) &&
+                                (!TsRows.SameFilter(seenFilter, row.Filter) || seenTemplate != row.Template);
+                            payload.PlanLookupByGuid[planGuid] = lookup;
+                        }
+
+                        // Rows removed in ACP: their exposure plans are
+                        // disabled, never deleted, and only when they carry
+                        // ACP's stamp.
+                        if (targetPin.HasValue) {
+                            // A row with a goal of 0 pushes no plan, so its plan
+                            // is disabled as if the row were gone.
+                            var rowIds = new HashSet<string>(pushed.Select(r => r.Id), StringComparer.Ordinal);
+                            var prefix = $"{targetPin.Value}_";
+                            foreach (var pair in refs.ExposurePlanIds) {
+                                if (!pair.Key.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                                var rowId = pair.Key.Substring(prefix.Length);
+                                if (rowIds.Contains(rowId)) continue;
+                                var seen = basePlans?[$"{panelKey}_{rowId}"] as Newtonsoft.Json.Linq.JObject;
+                                var seenFilter = (string)seen?["filter"];
+                                var seenTemplate = (string)seen?["template"];
+                                if (string.IsNullOrEmpty(seenFilter) || string.IsNullOrEmpty(seenTemplate)) continue;
+                                var removed = new TsRemovedPlan { PlanId = pair.Value };
+                                removed.Guids.Add(TsGuid.RowPlan(profileId, targetGuid, seenFilter, seenTemplate));
+                                removed.Guids.Add(TsGuid.ExposurePlan(profileId, targetGuid, seenTemplate));
+                                removed.Guids.Add(TsGuid.ExposurePlan(profileId, targetGuid, seenFilter));
+                                List<TsRemovedPlan> list;
+                                if (!payload.RemovedByTargetGuid.TryGetValue(targetGuid, out list)) {
+                                    list = new List<TsRemovedPlan>();
+                                    payload.RemovedByTargetGuid[targetGuid] = list;
+                                }
+                                list.Add(removed);
+                            }
                         }
                     }
                 }
+                aac.FiledThroughNight = watermarks.Count > 0
+                    ? watermarks.OrderBy(w => w, StringComparer.Ordinal).First()
+                    : null;
+                if (aac.AcceptedByPlanGuid.Count == 0 && aac.Blocked == null) aac.Blocked = "no row has AAC figures yet";
             }
 
             return payload;
@@ -420,8 +507,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// insert, since an insert writes every column regardless of this
         /// set). A base missing a field it predates reads the default from
         /// section 3: state absent is active, minimumtime absent is 0.
+        ///
+        /// The filter switch frequency and smart exposure order follow the
+        /// same rule (docs/specs/goal-panel-and-ts-order.md section 4), except
+        /// that a group with no value for one (null) never writes it. A base
+        /// from before they were recorded reads as 0 and off.
         private static HashSet<string> ConditionalColumnsFor(
-            Newtonsoft.Json.Linq.JObject baseProject, int tsState, int tsPriority, int minimumTime
+            Newtonsoft.Json.Linq.JObject baseProject, int tsState, int tsPriority, int minimumTime,
+            int? switchFrequency = null, int? smartOrder = null
         ) {
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (baseProject == null) return result;
@@ -437,7 +530,47 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             }
             if (basePriority != tsPriority) result.Add("priority");
             if (baseMinimumTime != minimumTime) result.Add("minimumtime");
+            if (switchFrequency.HasValue &&
+                ((int?)baseProject["filterswitchfrequency"] ?? 0) != switchFrequency.Value) {
+                result.Add("filterswitchfrequency");
+            }
+            if (smartOrder.HasValue &&
+                ((int?)baseProject["smartexposureorder"] ?? 0) != smartOrder.Value) {
+                result.Add("smartexposureorder");
+            }
             return result;
+        }
+
+        /// The switch frequency and smart order for a project group, as Target
+        /// Scheduler integers. Both belong to the TS project; when plans in
+        /// one project disagree, the first plan in the list that has a value
+        /// wins and a line goes into the push result
+        /// (docs/specs/goal-panel-and-ts-order.md section 4). Null means no
+        /// plan has one. Mirrors _group_order_settings in convert.py.
+        public static void GroupOrderSettings(
+            string projectName, List<Plan> group, out int? switchFrequency, out int? smartOrder,
+            List<string> notes
+        ) {
+            var freqs = group
+                .Where(p => p.FilterSwitchFrequency.HasValue
+                    && p.FilterSwitchFrequency.Value >= 0 && p.FilterSwitchFrequency.Value <= 99)
+                .Select(p => Tuple.Create(p.Id, p.FilterSwitchFrequency.Value))
+                .ToList();
+            var smarts = group
+                .Where(p => p.SmartExposureOrder.HasValue)
+                .Select(p => Tuple.Create(p.Id, p.SmartExposureOrder.Value ? 1 : 0))
+                .ToList();
+            switchFrequency = freqs.Count > 0 ? freqs[0].Item2 : (int?)null;
+            smartOrder = smarts.Count > 0 ? smarts[0].Item2 : (int?)null;
+            if (notes == null) return;
+            if (freqs.Select(f => f.Item2).Distinct().Count() > 1) {
+                notes.Add($"{projectName}: plans disagree on the filter switch frequency, so the push used " +
+                    $"{freqs[0].Item2} from plan {freqs[0].Item1}, the first in the list.");
+            }
+            if (smarts.Select(f => f.Item2).Distinct().Count() > 1) {
+                notes.Add($"{projectName}: plans disagree on the smart order, so the push used " +
+                    $"{(smarts[0].Item2 == 1 ? "on" : "off")} from plan {smarts[0].Item1}, the first in the list.");
+            }
         }
 
         /// The base snapshot's project block for this plan and rig, or null
@@ -452,6 +585,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var baseSnapshot = (pair.Value as Newtonsoft.Json.Linq.JObject)?["base_snapshot"]
                     as Newtonsoft.Json.Linq.JObject;
                 return baseSnapshot?["project"] as Newtonsoft.Json.Linq.JObject;
+            }
+            return null;
+        }
+
+        /// The base snapshot this rig recorded for the plan, from
+        /// ts_links[profileId], or null.
+        public static Newtonsoft.Json.Linq.JObject BaseSnapshotFor(Plan plan, string profileId) {
+            var links = plan?.TsLinks as Newtonsoft.Json.Linq.JObject;
+            if (links == null || string.IsNullOrWhiteSpace(profileId)) return null;
+            foreach (var pair in links) {
+                if (!string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)) continue;
+                return (pair.Value as Newtonsoft.Json.Linq.JObject)?["base_snapshot"]
+                    as Newtonsoft.Json.Linq.JObject;
             }
             return null;
         }
@@ -557,15 +703,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (camera?.Filters == null) return null;
             CameraFilter cfg;
             return camera.Filters.TryGetValue(filterName, out cfg) ? cfg : null;
-        }
-
-        /// Python's `a or b or c`, where zero and null are both falsy. Used for
-        /// the template's default exposure, which falls back from the camera's
-        /// filter setting to the plan's own sub length to 300 seconds.
-        private static double FirstTruthy(double? a, double? b, double fallback) {
-            if (a.HasValue && a.Value != 0.0) return a.Value;
-            if (b.HasValue && b.Value != 0.0) return b.Value;
-            return fallback;
         }
 
         /// Python's `tg.get("name") or pl.get("id") or "Untitled"`. Only an

@@ -129,9 +129,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// actually write on update: ACP changed that setting since the last
         /// sync on this rig (docs/specs/ts-project-settings.md section 5).
         /// TsConvert fills this in per project group. Empty means the update
-        /// touches none of state, priority, minimumtime, activedate or
-        /// inactivedate, leaving whatever Target Scheduler already has. Not a
-        /// column itself.
+        /// touches none of state, priority, minimumtime, activedate,
+        /// inactivedate, filterswitchfrequency or smartexposureorder, leaving
+        /// whatever Target Scheduler already has. Not a column itself.
         public HashSet<string> ConditionalColumnsToWrite { get; set; } =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -245,12 +245,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public int Accepted { get; set; }
         public int Enabled { get; set; } = 1;
 
-        /// The template Id the plan's ts_refs give for this filter, if any.
-        /// When set and still valid, the plan points at that template and the
-        /// template ACP would have built for the filter is not needed. Not a
-        /// column.
-        public int? PinnedTemplateId { get; set; }
-
         private static readonly string[] cols = {
             "profileId", "targetid", "exposureTemplateId", "guid", "exposure",
             "desired", "acquired", "accepted", "enabled",
@@ -284,6 +278,27 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public double Weight { get; set; }
     }
 
+    /// What TsConvert knows about one project's AAC figures, so the push can
+    /// decide whether to write accepted and turn the grader on
+    /// (docs/specs/goal-panel-and-ts-order.md section 6). Matches AacProject in
+    /// nina_ts_sync/schema.py.
+    ///
+    /// Blocked is a reason ACP's own data rules the project out (a mosaic
+    /// panel, or a pushed row with no AAC block); null means the push still has
+    /// to check TS. AcceptedByPlanGuid is the count to write for every plan
+    /// this push writes in the project. FiledThroughNight is the oldest
+    /// watermark among the project's plans.
+    public class TsAacProject {
+        public string Name { get; set; }
+        public string FiledThroughNight { get; set; }
+        /// Whether any plan or row in the project carries an aac block. A
+        /// project AAC has never reported on is skipped without a push note.
+        public bool Linked { get; set; }
+        public string Blocked { get; set; }
+        public Dictionary<string, int> AcceptedByPlanGuid { get; } =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+    }
+
     /// Everything one sync run wants to write.
     ///
     /// Insert order matters even though Target Scheduler does not enforce its
@@ -294,6 +309,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public string ProfileId { get; set; }
 
         public List<TsExposureTemplate> Templates { get; } = new List<TsExposureTemplate>();
+
+        /// Lines for the push result that TsConvert works out, such as plans
+        /// in one project disagreeing on the filter switch frequency.
+        public List<string> Notes { get; } = new List<string>();
 
         /// Plan filter names that were written under the wheel's own spelling,
         /// for example "OIII" written as "O". Empty when no wheel names were
@@ -323,13 +342,72 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public Dictionary<string, string> TemplateGuidByPlanGuid { get; } =
             new Dictionary<string, string>();
 
-        /// Each exposure template's guid to the guid the same template carried
-        /// under the pre-length-prefix recipe. A template's natural key
-        /// includes the camera id, which is not a column on the row, so this is
-        /// the one table whose old identity cannot be recomputed from the
-        /// database alone. TsMigration reads it; the other three tables it
-        /// derives from their own rows.
-        public Dictionary<string, string> LegacyTemplateGuidByGuid { get; } =
-            new Dictionary<string, string>();
+        /// How to find each exposure plan when its own guid misses, and
+        /// whether this push may write its exposure. Keyed by the plan's row
+        /// guid. Matches plan_lookup_by_guid in nina_ts_sync.
+        public Dictionary<string, TsPlanLookup> PlanLookupByGuid { get; } =
+            new Dictionary<string, TsPlanLookup>(StringComparer.Ordinal);
+
+        /// Exposure plans of rows removed in ACP, per target guid. The push
+        /// sets enabled to 0 on each, never deleting it.
+        public Dictionary<string, List<TsRemovedPlan>> RemovedByTargetGuid { get; } =
+            new Dictionary<string, List<TsRemovedPlan>>(StringComparer.Ordinal);
+
+        /// Canonical filter names on the cameras this push's plans use. A
+        /// template on the profile whose filter is none of these is listed in
+        /// the outcome.
+        public HashSet<string> CameraFilters { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+        /// What the base recorded about each target's shooting order, per
+        /// target guid (docs/specs/goal-panel-and-ts-order.md section 5). A
+        /// target without an entry has no base for it. Matches
+        /// order_by_target_guid in nina_ts_sync.
+        public Dictionary<string, TsTargetOrder> OrderByTargetGuid { get; } =
+            new Dictionary<string, TsTargetOrder>(StringComparer.Ordinal);
+
+        /// Per project guid, the AAC figures the push may write
+        /// (docs/specs/goal-panel-and-ts-order.md section 6). A project not
+        /// listed has none. Matches aac_by_project_guid in nina_ts_sync.
+        public Dictionary<string, TsAacProject> AacByProjectGuid { get; } =
+            new Dictionary<string, TsAacProject>(StringComparer.Ordinal);
+
+        /// The moment the AAC freshness rule is judged at. Null means no AAC
+        /// write is made. Set by TsConvert.BuildPayload.
+        public DateTimeOffset? AacNow { get; set; }
+
+        /// The IANA name of the site's time zone, for the same rule.
+        public string AacTimeZone { get; set; } = "Australia/Melbourne";
+    }
+
+    /// Where else a row's exposure plan may be, in the order
+    /// docs/specs/goal-panel-and-ts-order.md section 3 gives, after its own
+    /// guid: the id ts_links pins for this row and panel, then the goal-key
+    /// recipes (the template's name, then the filter's for the first row of
+    /// that filter only).
+    ///
+    /// TemplateChanged is true when the base records a template for this row
+    /// and the row's filter or template differs from it: the user changed it
+    /// in ACP. Only then does an existing plan move to the row's template,
+    /// with exposure written as -1. Otherwise an existing plan keeps the
+    /// template it has, because TS owns that choice and ACP's name for it may
+    /// be one an older writer made up. A row derived from filter_goals is
+    /// never changed this way. Matches PlanLookup in nina_ts_sync/schema.py.
+    public class TsPlanLookup {
+        public string Label { get; set; }
+        public int? PinnedId { get; set; }
+        public List<string> OldGuids { get; } = new List<string>();
+        public bool TemplateChanged { get; set; }
+        /// The ACP row this plan is written for, which the order writer needs
+        /// to compare ACP's order with the base's.
+        public string RowId { get; set; }
+    }
+
+    /// An exposure plan ts_links pins to a row ACP no longer has. Guids are
+    /// the identities ACP could have stamped on it, from the filter and
+    /// template the base recorded for that row; a plan carrying none of them
+    /// was not ACP's and is left alone.
+    public class TsRemovedPlan {
+        public int PlanId { get; set; }
+        public HashSet<string> Guids { get; } = new HashSet<string>(StringComparer.Ordinal);
     }
 }

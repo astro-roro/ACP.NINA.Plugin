@@ -3,6 +3,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
@@ -90,13 +91,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             string profileId,
             int userVersion,
             string operation,
-            JObject priorRefs = null
+            JObject priorRefs = null,
+            Camera camera = null
         ) {
             var projectName = TsConvert.ProjectNameOf(plan);
             int rows, cols;
             string baseName;
             ResolvePanels(plan, out rows, out cols, out baseName);
-            var cameraId = (plan?.CameraId ?? string.Empty).Trim();
 
             // The pinned ids win over the guid, the same order TsUpsert writes
             // in. A row made in Target Scheduler keeps its own guid when a pin
@@ -133,37 +134,27 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
 
+            // Keyed by row id: "<target id>_<row id>" for exposure plans, and
+            // the row id for the template its plan points at, panel 1,1
+            // first. Every row's plan carries the row's guid after a push.
             var templateIdsByFilter = new JObject();
-            foreach (var filterName in FilterNames(plan)) {
-                int tplId;
-                if (pinned != null
-                    && pinned.TemplateIdsByFilter.TryGetValue(filterName, out tplId)
-                    && snap.TemplatesById.ContainsKey(tplId)) {
-                    templateIdsByFilter[filterName] = tplId;
-                } else if (snap.TemplateIdByGuid.TryGetValue(TsGuid.Template(profileId, filterName, cameraId), out tplId)) {
-                    templateIdsByFilter[filterName] = tplId;
-                }
-            }
-
             var exposurePlanIds = new JObject();
+            var planRows = TsRows.RowsOf(plan, camera);
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
                     var targetGuid = TsGuid.Target(profileId, projectName, name);
                     var panelTargetId = targetIdsByPanel[PanelKey(r, c)];
                     var tid = panelTargetId != null ? (int)panelTargetId : 0;
-                    foreach (var filterName in FilterNames(plan)) {
-                        var key = $"{tid}_{filterName}";
+                    foreach (var row in planRows) {
                         int planId;
-                        TsExposurePlan pinnedPlan;
-                        if (pinned != null
-                            && pinned.ExposurePlanIds.TryGetValue(key, out planId)
-                            && snap.PlansById.TryGetValue(planId, out pinnedPlan)
-                            && pinnedPlan.TargetId == tid) {
-                            exposurePlanIds[key] = planId;
-                        } else if (snap.PlanIdByGuid.TryGetValue(
-                                TsGuid.ExposurePlan(profileId, targetGuid, filterName), out planId)) {
-                            exposurePlanIds[key] = planId;
+                        if (!snap.PlanIdByGuid.TryGetValue(
+                                TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template), out planId)) {
+                            continue;
+                        }
+                        exposurePlanIds[$"{tid}_{row.Id}"] = planId;
+                        if (templateIdsByFilter[row.Id] == null) {
+                            templateIdsByFilter[row.Id] = snap.PlansById[planId].ExposureTemplateId;
                         }
                     }
                 }
@@ -204,15 +195,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// which is always safe, just conservative. TsPushService passes both
         /// after a push; a caller building a base outside a push, if one ever
         /// exists, gets the conservative behaviour for free.
+        /// Base project fields a push writes only when ACP changed them, and
+        /// which otherwise keep the old base's value. See BuildBaseSnapshot.
+        private static readonly string[] CarriedProjectFields = { "filterswitchfrequency", "smartexposureorder" };
+
         public static JObject BuildBaseSnapshot(
             TsSnapshot snap, Plan plan, string profileId,
-            TsProject pushedProject = null, TsSyncOutcome outcome = null
+            TsProject pushedProject = null, TsSyncOutcome outcome = null,
+            Camera camera = null
         ) {
             var projectName = TsConvert.ProjectNameOf(plan);
             int rows, cols;
             string baseName;
             ResolvePanels(plan, out rows, out cols, out baseName);
-            var cameraId = (plan?.CameraId ?? string.Empty).Trim();
 
             var targetsByPanel = new JObject();
             var templatesByFilter = new JObject();
@@ -269,61 +264,108 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     projectBlock["minimumtime"] = pushedProject.MinimumTime;
                 }
 
+                // The shooting-order settings
+                // (docs/specs/goal-panel-and-ts-order.md section 4). The base
+                // takes what Target Scheduler holds, except that a setting this
+                // push did not write keeps the old base's value, for the same
+                // reason as state above. ditherevery is TS's own, kept for the
+                // order writer. Matches _project_snapshot and
+                // carry_unwritten_project_fields in state.py.
+                projectBlock["filterswitchfrequency"] = proj.FilterSwitchFrequency;
+                projectBlock["smartexposureorder"] = proj.SmartExposureOrder;
+                projectBlock["ditherevery"] = proj.DitherEvery;
+                if (pushedProject != null) {
+                    var oldProject = TsConvert.BaseProjectFor(plan, profileId);
+                    foreach (var column in CarriedProjectFields) {
+                        if (oldProject == null || pushedProject.ConditionalColumnsToWrite.Contains(column)) continue;
+                        var old = oldProject[column];
+                        if (old != null && old.Type != JTokenType.Null) projectBlock[column] = old.DeepClone();
+                    }
+                }
+
                 snapshot["project"] = projectBlock;
             }
 
+            // Each panel's target records exposure_order and override_rows
+            // (docs/specs/goal-panel-and-ts-order.md section 5). The targets
+            // whose override rows are ACP's after the push record what TS now
+            // has; every other target keeps what the old base recorded, or
+            // nothing, because a push that left TS's rows alone keeps the old
+            // base order. With no outcome, each target records the order TS
+            // shoots, and its override rows only when TS has none, as an import
+            // does, so rows set in TS are never taken for rows the sync wrote.
+            // The base order is the anchor panel's (1,1) for every panel.
+            // Matches build_base_snapshot in state.py.
+            var planRows = TsRows.RowsOf(plan, camera);
+            var orderTargets = outcome?.OrderSyncedTargetIds;
+            var oldTargets = TsConvert.BaseSnapshotFor(plan, profileId)?["targets_by_panel"] as JObject;
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
+                    var targetGuid = TsGuid.Target(profileId, projectName, name);
                     int tid;
-                    if (!snap.TargetIdByGuid.TryGetValue(
-                            TsGuid.Target(profileId, projectName, name), out tid)) {
+                    if (!snap.TargetIdByGuid.TryGetValue(targetGuid, out tid)) {
                         continue;
                     }
                     var tgt = snap.TargetsById[tid];
-                    targetsByPanel[PanelKey(r, c)] = new JObject {
+                    var entry = new JObject {
                         { "name", tgt.Name },
                         // Hours, matching what Target Scheduler stores.
                         { "ra", tgt.Ra },
                         { "dec", tgt.Dec },
                         { "rotation", tgt.Rotation },
                     };
+                    if (orderTargets == null || orderTargets.Contains(tid)) {
+                        var rowIdByPlan = new Dictionary<int, string>();
+                        foreach (var row in planRows) {
+                            int planId;
+                            if (snap.PlanIdByGuid.TryGetValue(
+                                    TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template), out planId)
+                                && !rowIdByPlan.ContainsKey(planId)) {
+                                rowIdByPlan[planId] = row.Id;
+                            }
+                        }
+                        List<Tuple<int, int>> overrideRows;
+                        if (!snap.OverrideRowsByTarget.TryGetValue(tid, out overrideRows)) {
+                            overrideRows = new List<Tuple<int, int>>();
+                        }
+                        List<int> neverShot;
+                        var order = TsOrder.EffectivePlanOrder(snap.EnabledPlanIds(tid), overrideRows, out neverShot);
+                        entry["exposure_order"] = new JArray(
+                            order.Where(rowIdByPlan.ContainsKey).Select(p => rowIdByPlan[p]));
+                        entry["known_rows"] = new JArray(planRows.Select(row => row.Id).Distinct(StringComparer.Ordinal));
+                        if (orderTargets != null || overrideRows.Count == 0) {
+                            entry["override_rows"] = TsOrder.ToJson(overrideRows);
+                        }
+                    } else {
+                        var old = oldTargets?[PanelKey(r, c)] as JObject;
+                        foreach (var key in new[] { "exposure_order", "override_rows", "known_rows" }) {
+                            var value = old?[key];
+                            if (value != null) entry[key] = value.DeepClone();
+                        }
+                    }
+                    targetsByPanel[PanelKey(r, c)] = entry;
                 }
             }
-
-            foreach (var filterName in FilterNames(plan)) {
-                int tplId;
-                if (!snap.TemplateIdByGuid.TryGetValue(
-                        TsGuid.Template(profileId, filterName, cameraId), out tplId)) {
-                    continue;
-                }
-                var tpl = snap.TemplatesById[tplId];
-                templatesByFilter[filterName] = new JObject {
-                    { "name", tpl.Name },
-                    { "defaultexposure", tpl.DefaultExposure },
-                    { "gain", tpl.Gain },
-                    { "offset", tpl.Offset },
-                    { "bin", tpl.Bin },
-                };
-            }
+            ShareAnchorOrder(targetsByPanel);
 
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
                     var name = ExpectedTargetName(baseName, rows, cols, r, c);
                     var targetGuid = TsGuid.Target(profileId, projectName, name);
-                    foreach (var filterName in FilterNames(plan)) {
+                    foreach (var row in planRows) {
                         int planId;
                         if (!snap.PlanIdByGuid.TryGetValue(
-                                TsGuid.ExposurePlan(profileId, targetGuid, filterName), out planId)) {
+                                TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template), out planId)) {
                             continue;
                         }
-                        var row = snap.PlansById[planId];
-                        plansByPanelFilter[$"{PanelKey(r, c)}_{filterName}"] = new JObject {
-                            { "desired", row.Desired },
-                            { "acquired", row.Acquired },
-                            { "accepted", row.Accepted },
-                            { "exposure", row.Exposure },
-                        };
+                        var ep = snap.PlansById[planId];
+                        TsExposureTemplate tpl;
+                        snap.TemplatesById.TryGetValue(ep.ExposureTemplateId, out tpl);
+                        if (tpl != null && templatesByFilter[row.Id] == null) {
+                            templatesByFilter[row.Id] = TemplateEntry(tpl);
+                        }
+                        plansByPanelFilter[$"{PanelKey(r, c)}_{row.Id}"] = PlanEntry(ep, tpl, row.Filter, row.Template, row, plan);
                     }
                 }
             }
@@ -331,9 +373,68 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return snapshot;
         }
 
-        private static IEnumerable<string> FilterNames(Plan plan) {
-            if (plan?.FilterGoals == null) return new List<string>();
-            return plan.FilterGoals.Keys;
+        /// The base order is one per target: the anchor panel's (1,1). Every
+        /// other panel records the anchor's order as its exposure_order, never
+        /// its own, so a hand-made order on one panel is not mistaken for ACP's
+        /// order at the next push (docs/specs/goal-panel-and-ts-order.md
+        /// section 5). known_rows travels with it. Without an anchor order, no
+        /// panel records either. Matches
+        /// _share_anchor_order in state.py.
+        private static void ShareAnchorOrder(JObject targetsByPanel) {
+            var anchor = targetsByPanel["1,1"] as JObject;
+            var order = anchor?["exposure_order"] as JArray;
+            var known = anchor?["known_rows"] as JArray;
+            foreach (var pair in targetsByPanel.Properties().ToList()) {
+                if (pair.Name == "1,1") continue;
+                var entry = pair.Value as JObject;
+                if (entry == null) continue;
+                if (order != null) {
+                    entry["exposure_order"] = order.DeepClone();
+                } else {
+                    entry.Remove("exposure_order");
+                }
+                if (order != null && known != null) {
+                    entry["known_rows"] = known.DeepClone();
+                } else {
+                    entry.Remove("known_rows");
+                }
+            }
+        }
+
+        private static JObject TemplateEntry(TsExposureTemplate tpl) {
+            return new JObject {
+                { "name", tpl.Name },
+                { "defaultexposure", tpl.DefaultExposure },
+                { "gain", tpl.Gain },
+                { "offset", tpl.Offset },
+                { "bin", tpl.Bin },
+            };
+        }
+
+        /// One exposure plan in the base. filter and template say which row
+        /// it was written for, so the next push can tell a template change,
+        /// the one update that writes exposure. template_sub_s is the sub TS
+        /// uses, which ACP copies onto the row when the links post arrives.
+        ///
+        /// desired is the row's goal: when the row is AAC-linked and TS holds
+        /// exactly the floored value, the base records the unfloored goal, so
+        /// AAC's floor never reads as an edit
+        /// (docs/specs/goal-panel-and-ts-order.md section 6).
+        /// Matches _plan_entry in nina_ts_sync/state.py.
+        private static JObject PlanEntry(
+            TsExposurePlan ep, TsExposureTemplate tpl, string filter, string template, FilterRow row, Plan plan
+        ) {
+            var desired = ep.Desired;
+            if (row != null) desired = TsRows.UnflooredGoal(row, plan, desired);
+            return new JObject {
+                { "desired", desired },
+                { "acquired", ep.Acquired },
+                { "accepted", ep.Accepted },
+                { "exposure", ep.Exposure },
+                { "filter", filter },
+                { "template", template },
+                { "template_sub_s", TsRows.PlanSubS(ep.Exposure, tpl?.DefaultExposure ?? 0.0) },
+            };
         }
     }
 
