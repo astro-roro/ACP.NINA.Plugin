@@ -311,6 +311,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             payload.OrderByTargetGuid[targetGuid] = new TsTargetOrder {
                                 BaseOrder = anchorOrder.Select(t => (string)t).ToList(),
                                 BaseRows = seenTarget == null ? null : TsOrder.AsRows(seenTarget["override_rows"]),
+                                KnownRows = TsOrder.KnownRowsOfBase(
+                                    anchorTarget,
+                                    BaseSnapshotFor(plan, profileId)?["exposure_plans_by_panel_filter"] as Newtonsoft.Json.Linq.JObject),
                             };
                         }
                         foreach (var row in pushed) {

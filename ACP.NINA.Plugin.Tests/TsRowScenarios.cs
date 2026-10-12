@@ -51,6 +51,8 @@ namespace ACP.NINA.Plugin.Tests {
             "x2_mosaic_acp_reorder_writes_both_panels",
             "x3_added_row_dragged_to_top_is_a_reorder",
             "x3b_added_row_at_end_keeps_hand_order",
+            "x4_goal_raised_from_zero_keeps_hand_order",
+            "x5_stale_sync_rows_refreshed_hand_rows_kept",
         };
 
         public static TsSyncOutcome Run(string name, TargetSchedulerDb db) {
@@ -83,6 +85,8 @@ namespace ACP.NINA.Plugin.Tests {
                 case "x2_mosaic_acp_reorder_writes_both_panels": return X2(db);
                 case "x3_added_row_dragged_to_top_is_a_reorder": return X3(db);
                 case "x3b_added_row_at_end_keeps_hand_order": return X3b(db);
+                case "x4_goal_raised_from_zero_keeps_hand_order": return X4(db);
+                case "x5_stale_sync_rows_refreshed_hand_rows_kept": return X5(db);
                 default: throw new ArgumentOutOfRangeException(nameof(name), name, null);
             }
         }
@@ -726,6 +730,44 @@ namespace ACP.NINA.Plugin.Tests {
         public static TsSyncOutcome X3b(TargetSchedulerDb db) {
             var plan = AddedRowState(db);
             plan.FilterRows.Add(TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4));
+            return Push(db, plan);
+        }
+
+        /// A goal-0 row in the middle (OIII), pushed and linked, then a hand
+        /// order SII, Ha in TS, then OIII's goal raised to 4 frames and pushed.
+        /// OIII was known to the base, so this is no reorder: the hand order
+        /// stays and OIII's block is appended. As x4.
+        public static TsSyncOutcome X4(TargetSchedulerDb db) {
+            var plan = M42Plan(
+                TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4),
+                TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 0),
+                TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4));
+            Link(db, Push(db, plan), plan);
+            GraderOn(db);
+            SetOverride(db.Connection, M42TargetId(db.Connection), new[] { Tuple.Create(0, 1), Tuple.Create(0, 0) });
+            Link(db, Push(db, plan), plan);
+            plan.FilterRows.First(r => r.Id == "row-oiii").TargetFrames = 4;
+            return Push(db, plan);
+        }
+
+        /// A mosaic whose panels hold the sync's rows for OIII, Ha, SII. Panel
+        /// 1 is then set by hand to SII, Ha, OIII, and the import takes that
+        /// order into ACP (the base records it as the order, and leaves panel
+        /// 1's rows out). The push refreshes panel 2's stale sync rows to
+        /// ACP's order and leaves panel 1's hand rows. As x5.
+        public static TsSyncOutcome X5(TargetSchedulerDb db) {
+            int target1;
+            int target2;
+            var plan = MosaicState(db, out target1, out target2);
+            Reorder(plan, "row-oiii", "row-ha", "row-sii");
+            Link(db, Push(db, plan), plan);
+            SetOverride(db.Connection, target1, HandOrder);
+            Reorder(plan, "row-sii", "row-ha", "row-oiii");
+            var panels = ((JObject)plan.TsLinks)[Profile]["base_snapshot"]["targets_by_panel"] as JObject;
+            foreach (var pair in panels) {
+                ((JObject)pair.Value)["exposure_order"] = new JArray("row-sii", "row-ha", "row-oiii");
+            }
+            ((JObject)panels["1,1"]).Remove("override_rows");
             return Push(db, plan);
         }
 

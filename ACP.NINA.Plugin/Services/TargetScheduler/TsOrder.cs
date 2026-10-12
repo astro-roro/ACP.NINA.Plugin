@@ -127,9 +127,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// no row new since the base sits before one the base has. A row
         /// removed since the base is not a change of order, and neither is a
         /// row added at the end; a row added anywhere else is the user
-        /// placing it, so it is a reorder. Matches same_order in order.py.
-        public static bool SameOrder(IList<string> acp, IList<string> baseOrder) {
+        /// placing it, so it is a reorder. "Added" means a row id the base did
+        /// not know at all: known lists every id the base knew, including rows
+        /// with no plan, so a goal raised from 0 keeps its place without
+        /// counting. Without known, only the base order's own ids are known.
+        /// Matches same_order in order.py.
+        public static bool SameOrder(IList<string> acp, IList<string> baseOrder, IList<string> known = null) {
             var baseSet = new HashSet<string>(baseOrder, StringComparer.Ordinal);
+            var knownSet = new HashSet<string>(baseOrder, StringComparer.Ordinal);
+            if (known != null) knownSet.UnionWith(known);
             var common = new HashSet<string>(acp, StringComparer.Ordinal);
             common.IntersectWith(baseSet);
             if (!acp.Where(common.Contains).SequenceEqual(baseOrder.Where(common.Contains), StringComparer.Ordinal)) {
@@ -140,9 +146,32 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 if (common.Contains(acp[i])) last = i;
             }
             for (var i = 0; i < last; i++) {
-                if (!baseSet.Contains(acp[i])) return false;
+                if (!knownSet.Contains(acp[i])) return false;
             }
             return true;
+        }
+
+        /// The ACP row ids a base knew at the last link or push: known_rows,
+        /// which includes rows with no plan (goal 0) and disabled ones. A base
+        /// from before known_rows falls back to the ids in exposure_order and
+        /// in exposure_plans_by_panel_filter ("<panel>_<row id>" keys), which
+        /// is every row that had a plan. Matches known_rows_of_base in
+        /// order.py.
+        public static List<string> KnownRowsOfBase(
+            Newtonsoft.Json.Linq.JObject entry, Newtonsoft.Json.Linq.JObject plansByPanelFilter
+        ) {
+            var raw = entry?["known_rows"] as Newtonsoft.Json.Linq.JArray;
+            if (raw != null) return raw.Select(t => (string)t).ToList();
+            var output = new List<string>();
+            var order = entry?["exposure_order"] as Newtonsoft.Json.Linq.JArray;
+            if (order != null) output.AddRange(order.Select(t => (string)t));
+            if (plansByPanelFilter != null) {
+                foreach (var pair in plansByPanelFilter.Properties()) {
+                    var at = pair.Name.IndexOf('_');
+                    if (at >= 0 && at + 1 < pair.Name.Length) output.Add(pair.Name.Substring(at + 1));
+                }
+            }
+            return output.Distinct(StringComparer.Ordinal).ToList();
         }
 
         public static bool SameRows(IList<Tuple<int, int>> a, IList<Tuple<int, int>> b) {
@@ -160,5 +189,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     public class TsTargetOrder {
         public List<string> BaseOrder { get; set; }
         public List<Tuple<int, int>> BaseRows { get; set; }
+        /// known_rows: every ACP row id the base knew, including rows with no
+        /// plan; null means an older base, where the ids of BaseOrder and of
+        /// the base's exposure plans stand for it.
+        public List<string> KnownRows { get; set; }
     }
 }

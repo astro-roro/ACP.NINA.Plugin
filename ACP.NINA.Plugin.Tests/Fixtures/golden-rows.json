@@ -9002,6 +9002,685 @@
           }
         ]
       }
+    },
+    "x4_goal_raised_from_zero_keeps_hand_order": {
+      "report": {
+        "cadence_reset_projects": [],
+        "disabled_plans": 0,
+        "exposure_mismatches": [],
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 1,
+          "updated": 2
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 1,
+          "updated": 0
+        },
+        "migrated_guids": 0,
+        "notes": [],
+        "order_written": [],
+        "override_rebuilt": [
+          "M42"
+        ],
+        "project": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 1
+        },
+        "ruleweight_seeded_projects": 0,
+        "stray_templates": [],
+        "target": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 1
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "3adabca6-c8b2-57bb-bdd3-4fe27aa55de7",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "5d2b2e6b-9337-5489-88c3-554758726722",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 3,
+            "guid": "6c7fb756-0dbd-551d-a1ac-690d8c2a9fbe",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "efea7b0c-34cb-59fc-91a9-5d647b578883",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "SII",
+            "gain": 100,
+            "guid": "bca5f167-1b2e-5e4c-970f-4d6305e98091",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "SII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 3,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "e88a114f-b4f3-5e67-96bf-34f36300ee20",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "filtercadenceitem": [],
+        "overrideexposureorderitem": [
+          {
+            "Id": 1,
+            "action": 0,
+            "order": 1,
+            "referenceIdx": 1,
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "action": 0,
+            "order": 2,
+            "referenceIdx": 0,
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "action": 0,
+            "order": 3,
+            "referenceIdx": 2,
+            "targetid": 1
+          },
+          {
+            "Id": 4,
+            "action": 0,
+            "order": 4,
+            "referenceIdx": 2,
+            "targetid": 1
+          },
+          {
+            "Id": 5,
+            "action": 0,
+            "order": 5,
+            "referenceIdx": 2,
+            "targetid": 1
+          },
+          {
+            "Id": 6,
+            "action": 0,
+            "order": 6,
+            "referenceIdx": 2,
+            "targetid": 1
+          }
+        ],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": 1700000000,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 1,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 1,
+            "guid": "41184a2d-2dab-5f16-a329-e3de316fd859",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "M42",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "Percent Complete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "Project Priority",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "Setting Soonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "Meridian Window Priority",
+            "projectid": 1,
+            "weight": 75.0
+          },
+          {
+            "Id": 5,
+            "name": "Target Switch Penalty",
+            "projectid": 1,
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "d99ba103-7ba4-56ab-b791-3aa8dc4c1264",
+            "name": "M42",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.666666666666667,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
+    },
+    "x5_stale_sync_rows_refreshed_hand_rows_kept": {
+      "report": {
+        "cadence_reset_projects": [],
+        "disabled_plans": 0,
+        "exposure_mismatches": [],
+        "exposureplan": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 6
+        },
+        "exposuretemplate": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 0
+        },
+        "migrated_guids": 0,
+        "notes": [],
+        "order_written": [
+          "Mos Panel 2 (R1C2)"
+        ],
+        "override_rebuilt": [],
+        "project": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 1
+        },
+        "ruleweight_seeded_projects": 0,
+        "stray_templates": [],
+        "target": {
+          "claimed": 0,
+          "inserted": 0,
+          "updated": 2
+        }
+      },
+      "tables": {
+        "exposureplan": [
+          {
+            "Id": 1,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "e058d200-f732-5a1a-b3ef-f7bec669fcb7",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 2,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "4f4e5d2d-0e4c-566e-b933-0f9cf71ce943",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 3,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 3,
+            "guid": "d4fdd8b9-5d40-5ab9-ae23-dc57d98b861d",
+            "profileId": "profile-under-test",
+            "targetid": 1
+          },
+          {
+            "Id": 4,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 1,
+            "guid": "337ce24e-23dd-5a3c-af11-08476e647808",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 5,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 2,
+            "guid": "3927972a-58ef-5ba4-8650-1bf145644ef7",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          },
+          {
+            "Id": 6,
+            "accepted": 0,
+            "acquired": 0,
+            "desired": 4,
+            "enabled": 1,
+            "exposure": -1.0,
+            "exposureTemplateId": 3,
+            "guid": "7a5d7498-6863-5242-8f8d-978e99e29978",
+            "profileId": "profile-under-test",
+            "targetid": 2
+          }
+        ],
+        "exposuretemplate": [
+          {
+            "Id": 1,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "Ha",
+            "gain": 100,
+            "guid": "efea7b0c-34cb-59fc-91a9-5d647b578883",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "Ha",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 2,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "OIII",
+            "gain": 100,
+            "guid": "e88a114f-b4f3-5e67-96bf-34f36300ee20",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "OIII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          },
+          {
+            "Id": 3,
+            "bin": 1,
+            "defaultexposure": 300.0,
+            "ditherevery": -1,
+            "filtername": "SII",
+            "gain": 100,
+            "guid": "bca5f167-1b2e-5e4c-970f-4d6305e98091",
+            "maximumhumidity": 100.0,
+            "minutesOffset": 0,
+            "moonavoidanceenabled": 0,
+            "moonavoidanceseparation": 0.0,
+            "moonavoidancewidth": 0,
+            "moondownenabled": 0,
+            "moonrelaxmaxaltitude": 5.0,
+            "moonrelaxminaltitude": -15.0,
+            "moonrelaxscale": 0.0,
+            "name": "SII",
+            "offset": 50,
+            "profileId": "profile-under-test",
+            "readoutmode": -1,
+            "twilightlevel": 1
+          }
+        ],
+        "filtercadenceitem": [],
+        "overrideexposureorderitem": [
+          {
+            "Id": 25,
+            "action": 0,
+            "order": 1,
+            "referenceIdx": 2,
+            "targetid": 1
+          },
+          {
+            "Id": 26,
+            "action": 0,
+            "order": 2,
+            "referenceIdx": 0,
+            "targetid": 1
+          },
+          {
+            "Id": 27,
+            "action": 0,
+            "order": 3,
+            "referenceIdx": 1,
+            "targetid": 1
+          },
+          {
+            "Id": 28,
+            "action": 0,
+            "order": 1,
+            "referenceIdx": 2,
+            "targetid": 2
+          },
+          {
+            "Id": 29,
+            "action": 0,
+            "order": 2,
+            "referenceIdx": 2,
+            "targetid": 2
+          },
+          {
+            "Id": 30,
+            "action": 0,
+            "order": 3,
+            "referenceIdx": 2,
+            "targetid": 2
+          },
+          {
+            "Id": 31,
+            "action": 0,
+            "order": 4,
+            "referenceIdx": 2,
+            "targetid": 2
+          },
+          {
+            "Id": 32,
+            "action": 0,
+            "order": 5,
+            "referenceIdx": 0,
+            "targetid": 2
+          },
+          {
+            "Id": 33,
+            "action": 0,
+            "order": 6,
+            "referenceIdx": 0,
+            "targetid": 2
+          },
+          {
+            "Id": 34,
+            "action": 0,
+            "order": 7,
+            "referenceIdx": 0,
+            "targetid": 2
+          },
+          {
+            "Id": 35,
+            "action": 0,
+            "order": 8,
+            "referenceIdx": 0,
+            "targetid": 2
+          },
+          {
+            "Id": 36,
+            "action": 0,
+            "order": 9,
+            "referenceIdx": 1,
+            "targetid": 2
+          },
+          {
+            "Id": 37,
+            "action": 0,
+            "order": 10,
+            "referenceIdx": 1,
+            "targetid": 2
+          },
+          {
+            "Id": 38,
+            "action": 0,
+            "order": 11,
+            "referenceIdx": 1,
+            "targetid": 2
+          },
+          {
+            "Id": 39,
+            "action": 0,
+            "order": 12,
+            "referenceIdx": 1,
+            "targetid": 2
+          }
+        ],
+        "project": [
+          {
+            "Id": 1,
+            "activedate": 1700000000,
+            "createdate": 1700000000,
+            "description": "",
+            "ditherevery": 0,
+            "enablegrader": 1,
+            "filterswitchfrequency": 0,
+            "flatsHandling": 1,
+            "guid": "67c7e2b2-0773-5138-8fcb-b30a8c4c9b85",
+            "horizonoffset": 0.0,
+            "inactivedate": null,
+            "isMosaic": 0,
+            "maximumAltitude": 0.0,
+            "meridianwindow": 0,
+            "minimumaltitude": 30.0,
+            "minimumtime": 0,
+            "name": "Mos",
+            "priority": 1,
+            "profileId": "profile-under-test",
+            "smartexposureorder": 0,
+            "state": 1,
+            "usecustomhorizon": 0
+          }
+        ],
+        "ruleweight": [
+          {
+            "Id": 1,
+            "name": "Percent Complete",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 2,
+            "name": "Project Priority",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 3,
+            "name": "Setting Soonest",
+            "projectid": 1,
+            "weight": 50.0
+          },
+          {
+            "Id": 4,
+            "name": "Meridian Window Priority",
+            "projectid": 1,
+            "weight": 75.0
+          },
+          {
+            "Id": 5,
+            "name": "Target Switch Penalty",
+            "projectid": 1,
+            "weight": 67.0
+          },
+          {
+            "Id": 6,
+            "name": "Mosaic Completion",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 7,
+            "name": "Smart Exposure Order",
+            "projectid": 1,
+            "weight": 0.0
+          },
+          {
+            "Id": 8,
+            "name": "Meridian Flip Penalty",
+            "projectid": 1,
+            "weight": 0.0
+          }
+        ],
+        "target": [
+          {
+            "Id": 1,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "e0652f89-b9a8-5f73-ac57-e92b13021bd6",
+            "name": "Mos Panel 1 (R1C1)",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.593272617446684,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          },
+          {
+            "Id": 2,
+            "active": 1,
+            "dec": -30.0,
+            "epochcode": 2,
+            "guid": "35057859-3734-5c2e-9195-65fb9b95503f",
+            "name": "Mos Panel 2 (R1C2)",
+            "priority": -1,
+            "projectid": 1,
+            "ra": 6.74006071588665,
+            "roi": 100.0,
+            "rotation": 0.0,
+            "unusedOEO": null
+          }
+        ]
+      }
     }
   },
   "versions": {
