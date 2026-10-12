@@ -40,6 +40,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Scheduler one.
         public List<TsPlanState> PlanStates { get; } = new List<TsPlanState>();
 
+        /// Every exposure template the profile holds after the push, read back
+        /// with the snapshot. Sent to ACP so it has a template list when it
+        /// cannot read this machine's database.
+        public List<TsExposureTemplate> Templates { get; } = new List<TsExposureTemplate>();
+
         /// How many attempts it took, which is 1 unless the database was locked.
         public int Attempts { get; set; } = 1;
 
@@ -276,6 +281,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 // next sync has a base to diff against.
                 try {
                     var snapshot = db.ReadAll(profileId);
+                    result.Templates.AddRange(snapshot.TemplatesById.Values);
                     var projectByGuid = payload.Projects.ToDictionary(p => p.Guid, p => p);
                     foreach (var plan in plans) {
                         TsProject pushedProject;
