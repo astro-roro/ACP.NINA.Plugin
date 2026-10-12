@@ -91,7 +91,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
                 // exposure is written as -1 on insert, and on update only when
                 // the row's filter or template changed (TsPlanLookup.
-                // WriteExposure). Every plan an older push made carries an
+                // TemplateChanged). Every plan an older push made carries an
                 // explicit sub, and rewriting it would change what TS shoots
                 // (docs/specs/goal-panel-and-ts-order.md section 3).
                 { "exposureplan", new HashSet<string>(

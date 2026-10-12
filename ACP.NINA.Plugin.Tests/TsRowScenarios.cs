@@ -30,6 +30,9 @@ namespace ACP.NINA.Plugin.Tests {
             "r1_removed_row_disabled",
             "r3_readded_row_enabled",
             "imported_plan_keeps_its_template",
+            "derived_row_keeps_existing_template",
+            "acp_migration_keeps_plans",
+            "older_acp_goals",
         };
 
         public static TsSyncOutcome Run(string name, TargetSchedulerDb db) {
@@ -42,6 +45,9 @@ namespace ACP.NINA.Plugin.Tests {
                 case "r1_removed_row_disabled": return R1(db);
                 case "r3_readded_row_enabled": return R3(db);
                 case "imported_plan_keeps_its_template": return ImportedPlan(db);
+                case "derived_row_keeps_existing_template": return DerivedRowKeepsExistingTemplate(db);
+                case "acp_migration_keeps_plans": return AcpMigrationKeepsPlans(db);
+                case "older_acp_goals": return OlderAcpGoals(db);
                 default: throw new ArgumentOutOfRangeException(nameof(name), name, null);
             }
         }
@@ -289,6 +295,148 @@ namespace ACP.NINA.Plugin.Tests {
                 } },
             };
             return Push(db, plan);
+        }
+
+        /// A plan as an ACP from before filter rows hands it over: goals only.
+        public static Plan OldAcp(Dictionary<string, FilterGoal> goals) {
+            var plan = M42Plan();
+            plan.FilterRows = null;
+            plan.FilterGoals = goals;
+            return plan;
+        }
+
+        /// An existing plan on the user's template "G", a link pinning "G
+        /// Stars" for its goal, and rows derived from filter_goals naming the
+        /// template "G (Test IMX571)". The plan stays on "G".
+        public static TsSyncOutcome DerivedRowKeepsExistingTemplate(TargetSchedulerDb db) {
+            Push(db, M42Plan());
+            var conn = db.Connection;
+            var tid = M42TargetId(conn);
+            var mine = AddTemplate(conn, "G", "G", 60, "nina-guid-g");
+            var stars = AddTemplate(conn, "G Stars", "G", 10, "nina-guid-g-stars");
+            var ep = InsertPlan(conn, tid, mine, 60, 120, 7, 7, "nina-guid-plan-g");
+            var plan = OldAcp(new Dictionary<string, FilterGoal> {
+                { "G", new FilterGoal { TargetHours = 2.0, SubExposureS = 60 } },
+            });
+            plan.TsLinks = new JObject {
+                { Profile, new JObject {
+                    { "machine", JValue.CreateNull() },
+                    { "refs", new JObject {
+                        { "profile_id", Profile },
+                        { "project_id", 1 },
+                        { "target_ids_by_panel", new JObject { { "1,1", tid } } },
+                        { "template_ids_by_filter", new JObject { { "G", stars } } },
+                        { "exposure_plan_ids", new JObject { { $"{tid}_G", ep } } },
+                    } },
+                    { "base_snapshot", new JObject {
+                        { "exposure_plans_by_panel_filter", new JObject {
+                            { "1,1_G", new JObject { { "desired", 120 } } },
+                        } },
+                    } },
+                } },
+            };
+            return Push(db, plan);
+        }
+
+        public static Dictionary<string, FilterGoal> SeqGoals() {
+            return new Dictionary<string, FilterGoal> {
+                { "L", new FilterGoal { TargetHours = 2.0, SubExposureS = 120, ActualHours = 0.5 } },
+                { "R Stars", new FilterGoal { TargetHours = 0.0833, SubExposureS = 15 } },
+                { "Ha", new FilterGoal { TargetHours = 4.0, SubExposureS = 300, ActualHours = 2.0 } },
+                { "Antlia Ha", new FilterGoal { TargetHours = 1.0, SubExposureS = 120 } },
+            };
+        }
+
+        /// What the writer before filter rows left for SeqGoals.
+        public static void SeqOldWriterState(TargetSchedulerDb db) {
+            Push(db, M42Plan());
+            var conn = db.Connection;
+            var tid = M42TargetId(conn);
+            foreach (var t in new[] {
+                Tuple.Create("L", "L (Test IMX571)", "L", 120, 60),
+                Tuple.Create("R Stars", "R Stars (Test IMX571)", "R Stars", 15, 20),
+                Tuple.Create("Ha", "Ha 3nm", "Ha", 300, 48),
+                Tuple.Create("Antlia Ha", "Antlia Ha (Test IMX571)", "Antlia Ha", 120, 30),
+            }) {
+                var tpl = AddTemplate(conn, t.Item2, t.Item3, t.Item4, $"old-tpl-{t.Item1}");
+                AddOldPlan(conn, tid, tpl, t.Item1, t.Item4, t.Item5, 3, 3);
+            }
+        }
+
+        /// ACP's one-shot migration as it treats a plan the writers derived
+        /// rows for, as migrate_like_acp in tests/row_scenarios.py does it.
+        public static void MigrateLikeAcp(Plan plan) {
+            var rows = TsRows.RowsOf(plan, Gear().Cameras[0]);
+            var newId = rows.ToDictionary(r => r.Id, r => "m-" + r.Id, StringComparer.Ordinal);
+            foreach (var r in rows) r.Id = newId[r.Id];
+            var byId = rows.ToDictionary(r => r.Id, r => r, StringComparer.Ordinal);
+            plan.FilterRows = rows;
+            plan.FilterGoals = null;
+            Func<string, string> rekey = key => newId.TryGetValue(key, out var id) ? id : key;
+            var links = plan.TsLinks as JObject;
+            if (links == null) return;
+            foreach (var pair in links) {
+                var link = pair.Value as JObject;
+                var refs = link?["refs"] as JObject;
+                if (refs?["exposure_plan_ids"] is JObject epi) {
+                    var moved = new JObject();
+                    foreach (var kv in epi) {
+                        var cut = kv.Key.IndexOf('_');
+                        moved[kv.Key.Substring(0, cut) + "_" + rekey(kv.Key.Substring(cut + 1))] = kv.Value;
+                    }
+                    refs["exposure_plan_ids"] = moved;
+                }
+                if (refs?["template_ids_by_filter"] is JObject tif) {
+                    var moved = new JObject();
+                    foreach (var kv in tif) moved[rekey(kv.Key)] = kv.Value;
+                    refs["template_ids_by_filter"] = moved;
+                }
+                var baseSnapshot = link?["base_snapshot"] as JObject;
+                if (baseSnapshot?["exposure_plans_by_panel_filter"] is JObject plans) {
+                    var moved = new JObject();
+                    foreach (var kv in plans) {
+                        var cut = kv.Key.IndexOf('_');
+                        var rowId = rekey(kv.Key.Substring(cut + 1));
+                        var entry = (JObject)kv.Value.DeepClone();
+                        FilterRow row;
+                        if (byId.TryGetValue(rowId, out row)) {
+                            entry["filter"] = row.Filter;
+                            entry["template"] = row.Template;
+                        }
+                        moved[kv.Key.Substring(0, cut) + "_" + rowId] = entry;
+                    }
+                    baseSnapshot["exposure_plans_by_panel_filter"] = moved;
+                }
+                if (baseSnapshot?["templates_by_filter"] is JObject tbf) {
+                    var moved = new JObject();
+                    foreach (var kv in tbf) moved[rekey(kv.Key)] = kv.Value;
+                    baseSnapshot["templates_by_filter"] = moved;
+                }
+            }
+        }
+
+        /// The probe seq.py: older-writer plans pushed by the new plugin
+        /// against an older ACP, linked, then ACP migrates and the push runs
+        /// again. Every plan keeps its template and exposure.
+        public static TsSyncOutcome AcpMigrationKeepsPlans(TargetSchedulerDb db) {
+            SeqOldWriterState(db);
+            var plan = OldAcp(SeqGoals());
+            Push(db, plan);
+            Link(db, plan);
+            MigrateLikeAcp(plan);
+            return Push(db, plan);
+        }
+
+        /// A plan from an ACP before filter rows, with alias, star, brand and
+        /// long-name keys, into an empty database.
+        public static TsSyncOutcome OlderAcpGoals(TargetSchedulerDb db) {
+            return Push(db, OldAcp(new Dictionary<string, FilterGoal> {
+                { "Ha", new FilterGoal { TargetHours = 2.0, SubExposureS = 300 } },
+                { "O", new FilterGoal { TargetHours = 1.0, SubExposureS = 300 } },
+                { "R Stars", new FilterGoal { TargetHours = 0.05, SubExposureS = 10 } },
+                { "Antlia Ha", new FilterGoal { TargetHours = 1.0, SubExposureS = 120 } },
+                { "Lum", new FilterGoal { TargetHours = 1.0, SubExposureS = 60 } },
+            }));
         }
 
         private static void Exec(SqliteConnection conn, string sql) {

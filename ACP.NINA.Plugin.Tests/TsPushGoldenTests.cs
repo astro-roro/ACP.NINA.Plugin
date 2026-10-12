@@ -91,6 +91,9 @@ namespace ACP.NINA.Plugin.Tests {
         [InlineData("r1_removed_row_disabled")]
         [InlineData("r3_readded_row_enabled")]
         [InlineData("imported_plan_keeps_its_template")]
+        [InlineData("derived_row_keeps_existing_template")]
+        [InlineData("acp_migration_keeps_plans")]
+        [InlineData("older_acp_goals")]
         public void AFilterRowPushWritesTheSameRowsAsThePythonExtension(string scenario) {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File($"{scenario}.sqlite"));

@@ -66,8 +66,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // has; a miss is inserted with the row's filter and sub
             // (docs/specs/goal-panel-and-ts-order.md section 3, "Templates").
             // A template TS lacks is inserted when the first plan that needs
-            // it is written, because a plan whose row pins a template may use
-            // that instead.
+            // it is written. An existing plan keeps its own template unless
+            // the row's template changed in ACP, so it may never need one.
             var templateIdByGuid = new Dictionary<string, int>();
             var templateByGuid = new Dictionary<string, TsExposureTemplate>();
             foreach (var tpl in payload.Templates) {
@@ -133,7 +133,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     continue;
                 }
                 var before = EnabledPlanIds(conn, tid);
+                var hadOverride = HasOverrideRows(conn, tid);
                 var inserted = new HashSet<int>();
+                var written = new List<int>();
                 foreach (var plan in group.Value) {
                     string tplGuid;
                     if (!payload.TemplateGuidByPlanGuid.TryGetValue(plan.Guid, out tplGuid)
@@ -146,26 +148,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     if (!payload.PlanLookupByGuid.TryGetValue(plan.Guid, out lookup)) {
                         lookup = new TsPlanLookup { Label = plan.Guid };
                     }
-                    int tplId;
-                    if (!templateIdByGuid.TryGetValue(tplGuid, out tplId)) {
-                        var pinned = PinnedTemplate(conn, lookup, payload.ProfileId);
-                        if (pinned.HasValue) {
-                            tplId = pinned.Value;
-                        } else {
-                            var tpl = templateByGuid[tplGuid];
-                            tplId = Insert(conn, "exposuretemplate", tpl,
-                                WritableColumns("exposuretemplate", tpl.Columns, userVersion, columnsByTable),
-                                outcome.ExposureTemplate);
-                            templateIdByGuid[tplGuid] = tplId;
-                        }
-                    }
+                    var rowTemplateGuid = tplGuid;
+                    Func<int> rowTemplate = () => {
+                        int id;
+                        if (templateIdByGuid.TryGetValue(rowTemplateGuid, out id)) return id;
+                        var tpl = templateByGuid[rowTemplateGuid];
+                        id = Insert(conn, "exposuretemplate", tpl,
+                            WritableColumns("exposuretemplate", tpl.Columns, userVersion, columnsByTable),
+                            outcome.ExposureTemplate);
+                        templateIdByGuid[rowTemplateGuid] = id;
+                        return id;
+                    };
                     plan.TargetId = tid;
-                    plan.ExposureTemplateId = tplId;
                     bool wasInsert;
                     var planId = UpsertExposurePlan(
-                        conn, plan, lookup, outcome.ExposurePlan, userVersion, columnsByTable,
+                        conn, plan, lookup, rowTemplate, outcome.ExposurePlan, userVersion, columnsByTable,
                         usedPlanIds, out wasInsert);
                     usedPlanIds.Add(planId);
+                    written.Add(planId);
                     if (wasInsert) inserted.Add(planId);
                     NoteExposureMismatch(conn, planId, lookup.Label, outcome);
                 }
@@ -190,8 +190,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                 }
                 var after = EnabledPlanIds(conn, tid);
-                if (!after.Where(i => !inserted.Contains(i)).SequenceEqual(before)) {
-                    if (RemapOverrideRows(conn, tid, before, after)) {
+                // Plans this push inserted or enabled again, in the order written.
+                var arrived = written.Where(i => after.Contains(i) && !before.Contains(i)).ToList();
+                if (!after.Where(i => !inserted.Contains(i)).SequenceEqual(before)
+                    || (hadOverride && arrived.Count > 0)) {
+                    if (hadOverride) {
+                        RemapOverrideRows(conn, tid, before, after);
+                        AppendOverrideBlocks(conn, tid, after, arrived);
                         outcome.OverrideRebuilt.Add(TargetName(conn, tid));
                     }
                     using (var cmd = conn.CreateCommand()) {
@@ -547,30 +552,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 new Dictionary<string, object> { { "$p", tpl.ProfileId }, { "$n", tpl.Name } });
         }
 
-        /// The template ts_links pins for a row whose template TS has no row
-        /// of that name for, when the row's template has not changed since
-        /// the base and the pinned template is still in this profile. A plan
-        /// imported from TS points at the user's own template, and ACP's name
-        /// for it can be the one an older writer would have made ("Ha
-        /// (camera)"); inserting that and moving the plan onto it would change
-        /// what TS shoots. Matches _pinned_template in nina_ts_sync/upsert.py.
-        private static int? PinnedTemplate(SqliteConnection conn, TsPlanLookup lookup, string profileId) {
-            if (!lookup.PinnedTemplateId.HasValue || lookup.WriteExposure) return null;
-            var row = ReadRow(conn, "SELECT profileId FROM exposuretemplate WHERE Id = $id",
-                lookup.PinnedTemplateId.Value);
-            if (row == null || !SameProfileExact(row[0], profileId)) return null;
-            return lookup.PinnedTemplateId.Value;
-        }
-
-        /// The Python side compares profile ids exactly.
-        private static bool SameProfileExact(object value, string profileId) {
-            var s = value == null || value == DBNull.Value ? null : value.ToString();
-            return string.Equals(s, profileId, StringComparison.Ordinal);
-        }
-
-        /// The exposure plan columns an update writes, exposure aside.
+        /// The exposure plan columns an update always writes.
+        /// exposureTemplateId and exposure are written only when the row's
+        /// template changed.
         private static readonly string[] planUpdateColumns =
-            { "profileId", "targetid", "exposureTemplateId", "guid", "desired", "enabled" };
+            { "profileId", "targetid", "guid", "desired", "enabled" };
 
         /// The existing plan for a row: its own guid, the pinned id when that
         /// plan is on this target, then the goal-key recipes. A plan another
@@ -611,24 +597,32 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         }
 
         /// Write one row's exposure plan and return its Id. A plan found by
-        /// any step of the chain is restamped with the row's guid, pointed at
-        /// the row's template and enabled. Its acquired and accepted stay, and
-        /// so does exposure unless the row's filter or template changed since
-        /// the base. Then the old claim of an unstamped plan on the same
-        /// target and template, then an insert with exposure -1. Matches
+        /// any step of the chain is restamped with the row's guid and
+        /// enabled, and its desired written. It keeps the template it has and
+        /// its exposure, unless the row's template changed since the base:
+        /// then it moves to the row's template with exposure -1. acquired and
+        /// accepted always stay. Then the old claim of an unstamped plan on
+        /// the same target and template, then an insert with exposure -1.
+        ///
+        /// rowTemplate gives the row's template Id, by name with an insert on
+        /// a miss. It is called only when a plan needs the row's template, so
+        /// a plan that keeps its own never makes a template. Matches
         /// _upsert_exposure_plan in nina_ts_sync/upsert.py.
         private static int UpsertExposurePlan(
-            SqliteConnection conn, TsExposurePlan plan, TsPlanLookup lookup, TsTableCounts counts,
-            int userVersion, IReadOnlyDictionary<string, HashSet<string>> columnsByTable,
+            SqliteConnection conn, TsExposurePlan plan, TsPlanLookup lookup, Func<int> rowTemplate,
+            TsTableCounts counts, int userVersion, IReadOnlyDictionary<string, HashSet<string>> columnsByTable,
             HashSet<int> used, out bool inserted
         ) {
             inserted = false;
-            var cols = WritableColumns("exposureplan", planUpdateColumns.Concat(new[] { "exposure" }),
-                userVersion, columnsByTable);
-            var updateCols = cols.Where(c => c != "exposure" || lookup.WriteExposure).ToList();
+            var found = FindExposurePlan(conn, plan, lookup, used);
+            var move = !found.HasValue || lookup.TemplateChanged;
+            if (move) plan.ExposureTemplateId = rowTemplate();
+            var wanted = move
+                ? planUpdateColumns.Concat(new[] { "exposureTemplateId", "exposure" })
+                : planUpdateColumns;
+            var updateCols = WritableColumns("exposureplan", wanted, userVersion, columnsByTable);
             var setClause = string.Join(", ", updateCols.Select(c => $"{Quote(c)} = ${c}"));
 
-            var found = FindExposurePlan(conn, plan, lookup, used);
             if (found.HasValue) {
                 ExecuteWithValues(conn, $"UPDATE exposureplan SET {setClause} WHERE Id = $__id",
                     updateCols, plan, found.Value);
@@ -741,6 +735,74 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return true;
         }
 
+        private static bool HasOverrideRows(SqliteConnection conn, int targetId) {
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "SELECT 1 FROM overrideexposureorderitem WHERE targetid = $t LIMIT 1";
+                cmd.Parameters.AddWithValue("$t", targetId);
+                return cmd.ExecuteScalar() != null;
+            }
+        }
+
+        /// Target Scheduler's default exposure throttle, a percentage
+        /// (ProfilePreference.cs:67).
+        public const double DefaultThrottle = 125.0;
+
+        /// How many override rows one plan's block holds: N at a switch
+        /// frequency of N; at 0, the frames TS needs to call the plan done,
+        /// desired with the grader on, else ceil(throttle / 100 x desired).
+        /// Matches _block_size in nina_ts_sync/upsert.py.
+        private static int BlockSize(SqliteConnection conn, int targetId, int planId) {
+            var row = ReadRow(conn,
+                "SELECT p.filterswitchfrequency, p.enablegrader, p.profileId, e.desired " +
+                "FROM exposureplan e JOIN target t ON t.Id = e.targetid " +
+                $"JOIN project p ON p.Id = t.projectid WHERE e.Id = $id AND t.Id = {targetId}", planId);
+            if (row == null) return 1;
+            var freq = row[0] == null || row[0] == DBNull.Value ? 0 : ToInt(row[0]);
+            if (freq > 0) return freq;
+            var desired = Math.Max(1, row[3] == null || row[3] == DBNull.Value ? 0 : ToInt(row[3]));
+            var grader = row[1] == null || row[1] == DBNull.Value ? 0 : ToInt(row[1]);
+            if (grader != 0) return desired;
+            var throttle = DefaultThrottle;
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "SELECT exposurethrottle FROM profilepreference WHERE profileId = $p ORDER BY Id LIMIT 1";
+                cmd.Parameters.AddWithValue("$p", row[2] ?? DBNull.Value);
+                var value = cmd.ExecuteScalar();
+                if (value != null && value != DBNull.Value) throttle = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            return Math.Max(1, (int)Math.Ceiling(Math.Round(throttle / 100.0 * desired, 9)));
+        }
+
+        /// Append a block for each plan this push inserted or enabled again,
+        /// in the order written. A target with override rows shoots only the
+        /// plans those rows name (PlanningTarget.cs:80-97), so without this TS
+        /// would never shoot it. The spec's phase 5 "new plan rule", brought
+        /// forward; dither rows are left to the order writer. Matches
+        /// _append_override_blocks in nina_ts_sync/upsert.py.
+        private static void AppendOverrideBlocks(SqliteConnection conn, int targetId, List<int> after, List<int> arrived) {
+            if (arrived.Count == 0) return;
+            int last;
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText = "SELECT COALESCE(MAX(\"order\"), 0) FROM overrideexposureorderitem WHERE targetid = $t";
+                cmd.Parameters.AddWithValue("$t", targetId);
+                last = Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+            }
+            foreach (var planId in arrived) {
+                var index = after.IndexOf(planId);
+                var size = BlockSize(conn, targetId, planId);
+                for (var i = 0; i < size; i++) {
+                    using (var cmd = conn.CreateCommand()) {
+                        cmd.CommandText =
+                            "INSERT INTO overrideexposureorderitem (targetid, \"order\", \"action\", referenceIdx) " +
+                            "VALUES ($t, $o, 0, $r)";
+                        cmd.Parameters.AddWithValue("$t", targetId);
+                        cmd.Parameters.AddWithValue("$o", ++last);
+                        cmd.Parameters.AddWithValue("$r", index);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+        }
+
         private static string TargetName(SqliteConnection conn, int targetId) {
             var row = ReadRow(conn, "SELECT name FROM target WHERE Id = $id", targetId);
             return row != null && row[0] != null && row[0] != DBNull.Value
@@ -764,12 +826,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         }
 
         /// The profile's templates whose filter is on none of the cameras this
-        /// push used. An older writer made some by using a goal key such as
+        /// push used and that no enabled exposure plan uses. An older writer made some by using a goal key such as
         /// "R Stars" as a filter name; the sync never deletes them.
         private static void NoteStrayTemplates(SqliteConnection conn, TsSyncPayload payload, TsSyncOutcome outcome) {
             if (payload.CameraFilters.Count == 0) return;
             using (var cmd = conn.CreateCommand()) {
-                cmd.CommandText = "SELECT name, filtername FROM exposuretemplate WHERE profileId = $p ORDER BY Id";
+                cmd.CommandText =
+                    "SELECT name, filtername FROM exposuretemplate WHERE profileId = $p " +
+                    "AND Id NOT IN (SELECT exposureTemplateId FROM exposureplan " +
+                    "WHERE COALESCE(enabled, 1) <> 0 AND exposureTemplateId IS NOT NULL) ORDER BY Id";
                 cmd.Parameters.AddWithValue("$p", payload.ProfileId);
                 using (var reader = cmd.ExecuteReader()) {
                     while (reader.Read()) {

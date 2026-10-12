@@ -317,15 +317,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public Dictionary<string, string> TemplateGuidByPlanGuid { get; } =
             new Dictionary<string, string>();
 
-        /// Each exposure template's guid to the guid the same template carried
-        /// under the pre-length-prefix recipe. A template's natural key
-        /// includes the camera id, which is not a column on the row, so this is
-        /// the one table whose old identity cannot be recomputed from the
-        /// database alone. TsMigration reads it; the other three tables it
-        /// derives from their own rows.
-        public Dictionary<string, string> LegacyTemplateGuidByGuid { get; } =
-            new Dictionary<string, string>();
-
         /// How to find each exposure plan when its own guid misses, and
         /// whether this push may write its exposure. Keyed by the plan's row
         /// guid. Matches plan_lookup_by_guid in nina_ts_sync.
@@ -347,20 +338,20 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     /// docs/specs/goal-panel-and-ts-order.md section 3 gives, after its own
     /// guid: the id ts_links pins for this row and panel, then the goal-key
     /// recipes (the template's name, then the filter's for the first row of
-    /// that filter only). WriteExposure is true when the row's filter or
-    /// template differs from the base, the one update that writes exposure.
+    /// that filter only).
+    ///
+    /// TemplateChanged is true when the base records a template for this row
+    /// and the row's filter or template differs from it: the user changed it
+    /// in ACP. Only then does an existing plan move to the row's template,
+    /// with exposure written as -1. Otherwise an existing plan keeps the
+    /// template it has, because TS owns that choice and ACP's name for it may
+    /// be one an older writer made up. A row derived from filter_goals is
+    /// never changed this way. Matches PlanLookup in nina_ts_sync/schema.py.
     public class TsPlanLookup {
         public string Label { get; set; }
         public int? PinnedId { get; set; }
         public List<string> OldGuids { get; } = new List<string>();
-        public bool WriteExposure { get; set; }
-
-        /// The template ts_links pins for this row. Used instead of inserting
-        /// the row's template when TS has none of that name and the row's
-        /// template has not changed since the base: a plan imported from TS
-        /// still points at the user's own template, whose name ACP may not
-        /// know yet. Matches pinned_template_id in nina_ts_sync.
-        public int? PinnedTemplateId { get; set; }
+        public bool TemplateChanged { get; set; }
     }
 
     /// An exposure plan ts_links pins to a row ACP no longer has. Guids are

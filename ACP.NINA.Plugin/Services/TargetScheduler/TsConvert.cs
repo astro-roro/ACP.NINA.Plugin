@@ -216,6 +216,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                     var basePlans = BaseSnapshotFor(plan, profileId)?["exposure_plans_by_panel_filter"]
                         as Newtonsoft.Json.Linq.JObject;
+                    // Rows derived from filter_goals (an ACP before filter
+                    // rows) never move an existing plan to another template.
+                    var derived = plan.FilterRows == null;
                     var firstOfFilter = new HashSet<string>(StringComparer.Ordinal);
                     var seenFilters = new HashSet<string>(StringComparer.Ordinal);
                     foreach (var row in planRows) {
@@ -315,15 +318,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                                     $"{targetPin.Value}_{row.Id}", out pinnedPlanId)) {
                                 lookup.PinnedId = pinnedPlanId;
                             }
-                            int pinnedTemplateId;
-                            if (refs != null && refs.TemplateIdsByFilter.TryGetValue(row.Id, out pinnedTemplateId)) {
-                                lookup.PinnedTemplateId = pinnedTemplateId;
-                            }
                             var seen = basePlans?[$"{panelKey}_{row.Id}"] as Newtonsoft.Json.Linq.JObject;
                             var seenFilter = (string)seen?["filter"];
                             var seenTemplate = (string)seen?["template"];
-                            lookup.WriteExposure = !string.IsNullOrEmpty(seenTemplate) &&
-                                (seenFilter != row.Filter || seenTemplate != row.Template);
+                            lookup.TemplateChanged = !derived && !string.IsNullOrEmpty(seenTemplate) &&
+                                (!TsRows.SameFilter(seenFilter, row.Filter) || seenTemplate != row.Template);
                             payload.PlanLookupByGuid[planGuid] = lookup;
                         }
 
