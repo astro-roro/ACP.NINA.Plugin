@@ -111,6 +111,8 @@ namespace ACP.NINA.Plugin.Tests {
         [InlineData("x2_mosaic_acp_reorder_writes_both_panels")]
         [InlineData("x3_added_row_dragged_to_top_is_a_reorder")]
         [InlineData("x3b_added_row_at_end_keeps_hand_order")]
+        [InlineData("x4_goal_raised_from_zero_keeps_hand_order")]
+        [InlineData("x5_stale_sync_rows_refreshed_hand_rows_kept")]
         public void AFilterRowPushWritesTheSameRowsAsThePythonExtension(string scenario) {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File($"{scenario}.sqlite"));

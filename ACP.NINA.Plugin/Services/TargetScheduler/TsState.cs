@@ -333,12 +333,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         var order = TsOrder.EffectivePlanOrder(snap.EnabledPlanIds(tid), overrideRows, out neverShot);
                         entry["exposure_order"] = new JArray(
                             order.Where(rowIdByPlan.ContainsKey).Select(p => rowIdByPlan[p]));
+                        entry["known_rows"] = new JArray(planRows.Select(row => row.Id).Distinct(StringComparer.Ordinal));
                         if (orderTargets != null || overrideRows.Count == 0) {
                             entry["override_rows"] = TsOrder.ToJson(overrideRows);
                         }
                     } else {
                         var old = oldTargets?[PanelKey(r, c)] as JObject;
-                        foreach (var key in new[] { "exposure_order", "override_rows" }) {
+                        foreach (var key in new[] { "exposure_order", "override_rows", "known_rows" }) {
                             var value = old?[key];
                             if (value != null) entry[key] = value.DeepClone();
                         }
@@ -376,11 +377,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// other panel records the anchor's order as its exposure_order, never
         /// its own, so a hand-made order on one panel is not mistaken for ACP's
         /// order at the next push (docs/specs/goal-panel-and-ts-order.md
-        /// section 5). Without an anchor order, no panel records one. Matches
+        /// section 5). known_rows travels with it. Without an anchor order, no
+        /// panel records either. Matches
         /// _share_anchor_order in state.py.
         private static void ShareAnchorOrder(JObject targetsByPanel) {
             var anchor = targetsByPanel["1,1"] as JObject;
             var order = anchor?["exposure_order"] as JArray;
+            var known = anchor?["known_rows"] as JArray;
             foreach (var pair in targetsByPanel.Properties().ToList()) {
                 if (pair.Name == "1,1") continue;
                 var entry = pair.Value as JObject;
@@ -389,6 +392,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     entry["exposure_order"] = order.DeepClone();
                 } else {
                     entry.Remove("exposure_order");
+                }
+                if (order != null && known != null) {
+                    entry["known_rows"] = known.DeepClone();
+                } else {
+                    entry.Remove("known_rows");
                 }
             }
         }

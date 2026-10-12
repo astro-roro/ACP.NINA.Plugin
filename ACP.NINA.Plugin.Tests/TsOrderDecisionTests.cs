@@ -18,6 +18,9 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.False(TsOrder.SameOrder(new[] { "a", "c", "b" }, new[] { "a", "b" }));
             Assert.True(TsOrder.SameOrder(new[] { "a", "c" }, new[] { "a", "b", "c" }));
             Assert.True(TsOrder.SameOrder(new[] { "a", "b" }, new string[0]));
+            Assert.True(TsOrder.SameOrder(new[] { "a", "c", "b" }, new[] { "a", "b" }, new[] { "a", "b", "c" }));
+            Assert.False(TsOrder.SameOrder(new[] { "c", "a", "b" }, new[] { "a", "b" }, new[] { "a", "b", "d" }));
+            Assert.False(TsOrder.SameOrder(new[] { "b", "a", "c" }, new[] { "a", "b" }, new[] { "a", "b", "c" }));
         }
 
         [Theory]

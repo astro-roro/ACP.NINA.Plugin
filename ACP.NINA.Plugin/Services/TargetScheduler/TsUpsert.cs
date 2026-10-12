@@ -210,15 +210,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 TsTargetOrder targetOrder;
                 payload.OrderByTargetGuid.TryGetValue(group.Key, out targetOrder);
                 bool setInTs;
-                // The row ids in the order tsRows shoot them, over the plans
-                // enabled before this push. As ts_order in upsert.py.
-                var rowOfPlan = new Dictionary<int, string>();
-                for (var idx = 0; idx < written.Count; idx++) rowOfPlan[written[idx]] = writtenRows[idx];
-                List<int> tsNeverShot;
-                var tsOrder = TsOrder.EffectivePlanOrder(before, tsRows, out tsNeverShot)
-                    .Where(rowOfPlan.ContainsKey).Select(orderedPlan => rowOfPlan[orderedPlan]).ToList();
                 var decision = OrderDecision(
-                    conn, tid, targetOrder, writtenRows, tsRows, tsOrder, insertedTargets.Contains(group.Key), out setInTs);
+                    conn, tid, targetOrder, writtenRows, tsRows, insertedTargets.Contains(group.Key), out setInTs);
                 if (decision == OrderLeave) {
                     if (plansMoved) {
                         if (hadOverride) {
@@ -977,30 +970,30 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         private const string OrderRefresh = "refresh";
 
         /// Which case of docs/specs/goal-panel-and-ts-order.md section 5
-        /// applies, and whether writing replaces an order set in TS. tsOrder is
-        /// the row ids in the order tsRows shoot them, over the plans enabled
-        /// before this push. A target this push inserted has no rows of anyone's
+        /// applies, and whether writing replaces an order set in TS. A target
+        /// this push inserted has no rows of anyone's
         /// yet, so ACP's order goes in as a new project's state does. Smart
         /// order on: leave. No base order: leave. ACP's order changed since the
         /// target's base order (the anchor panel's): write, ACP wins. The same
-        /// order and TS's rows still the base's, and those rows already shoot
-        /// ACP's order: refresh the rows the sync wrote. Otherwise leave: the
-        /// rows were set in TS, or they are another panel's order that ACP does
-        /// not hold. Matches _order_decision in nina_ts_sync/upsert.py.
+        /// order and TS's rows still the base's: refresh them. A panel's base
+        /// rows are only ever rows the sync wrote (an import leaves out rows set
+        /// in TS), so rows equal to them are the sync's own, even if stale. A
+        /// base with no rows has none of the sync's to refresh: a panel with
+        /// none is left alone, so another panel's order that ACP holds is not
+        /// copied to it. Otherwise leave: the rows were set in TS. Matches _order_decision in nina_ts_sync/upsert.py.
         private static string OrderDecision(
             SqliteConnection conn, int targetId, TsTargetOrder order, List<string> acpRowIds,
-            List<Tuple<int, int>> tsRows, List<string> tsOrder, bool insertedTarget, out bool setInTs
+            List<Tuple<int, int>> tsRows, bool insertedTarget, out bool setInTs
         ) {
             setInTs = false;
             if (SmartOrderOn(conn, targetId)) return OrderLeave;
             if (insertedTarget) return OrderWrite;
             if (order?.BaseOrder == null) return OrderLeave;
-            if (!TsOrder.SameOrder(acpRowIds, order.BaseOrder)) {
+            if (!TsOrder.SameOrder(acpRowIds, order.BaseOrder, order.KnownRows)) {
                 setInTs = !TsOrder.SameRows(tsRows, order.BaseRows ?? new List<Tuple<int, int>>());
                 return OrderWrite;
             }
-            if (order.BaseRows != null && TsOrder.SameRows(tsRows, order.BaseRows)
-                && TsOrder.SameOrder(acpRowIds, tsOrder)) {
+            if (order.BaseRows != null && order.BaseRows.Count > 0 && TsOrder.SameRows(tsRows, order.BaseRows)) {
                 return OrderRefresh;
             }
             return OrderLeave;
