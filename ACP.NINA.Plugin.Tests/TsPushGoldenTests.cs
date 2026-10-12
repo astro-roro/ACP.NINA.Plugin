@@ -77,7 +77,7 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         /// The filter row scenarios (docs/specs/goal-panel-and-ts-order.md
-        /// tests S4 and R4), replayed step for step from
+        /// tests S4, R4 and F3), replayed step for step from
         /// tests/row_scenarios.py. Project and target counts are left out of
         /// the report check: a linked plan's project and target are updated
         /// in place through ts_refs here, which the Python extension counts as
@@ -94,6 +94,9 @@ namespace ACP.NINA.Plugin.Tests {
         [InlineData("derived_row_keeps_existing_template")]
         [InlineData("acp_migration_keeps_plans")]
         [InlineData("older_acp_goals")]
+        [InlineData("f1_switch_frequency_written")]
+        [InlineData("f2_switch_frequency_set_in_ts_kept")]
+        [InlineData("smart_order_written")]
         public void AFilterRowPushWritesTheSameRowsAsThePythonExtension(string scenario) {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File($"{scenario}.sqlite"));
@@ -115,6 +118,7 @@ namespace ACP.NINA.Plugin.Tests {
                     Assert.Equal(report["exposure_mismatches"].ToObject<List<string>>(), outcome.ExposureMismatches);
                     Assert.Equal(report["stray_templates"].ToObject<List<string>>(), outcome.StrayTemplates);
                     Assert.Equal(report["override_rebuilt"].ToObject<List<string>>(), outcome.OverrideRebuilt);
+                    Assert.Equal(report["cadence_reset_projects"].ToObject<List<string>>(), outcome.CadenceResetProjects);
                     Assert.Empty(outcome.Notes);
                 }
             }

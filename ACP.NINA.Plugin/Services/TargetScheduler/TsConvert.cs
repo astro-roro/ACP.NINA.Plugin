@@ -113,6 +113,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                 var tsState = StateToTsInt[stateName];
                 var tsPriority = RankOf(priorityName);
+                int? switchFrequency;
+                int? smartOrder;
+                GroupOrderSettings(projectName, group.Value, out switchFrequency, out smartOrder, payload.Notes);
 
                 var proj = new TsProject {
                     ProfileId = profileId,
@@ -124,6 +127,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     MinimumAltitude = minAltitude,
                     MeridianWindow = meridianWindow,
                     MinimumTime = minimumTime,
+                    // On insert, ACP's value, or 0 and off when the plan has
+                    // none (docs/specs/goal-panel-and-ts-order.md section 4).
+                    FilterSwitchFrequency = switchFrequency ?? 0,
+                    SmartExposureOrder = smartOrder ?? 0,
                     // Set for insert correctness whenever the resolved state
                     // is active or inactive/closed. Whether the update
                     // actually writes either column follows
@@ -145,7 +152,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     .FirstOrDefault(b => b != null);
                 proj.HasBase = baseProject != null;
                 proj.ConditionalColumnsToWrite = ConditionalColumnsFor(
-                    baseProject, tsState, tsPriority, minimumTime);
+                    baseProject, tsState, tsPriority, minimumTime, switchFrequency, smartOrder);
                 payload.Projects.Add(proj);
                 payload.RuleWeightsByProjectGuid[proj.Guid] = DefaultRuleWeights
                     .Select(kv => new TsRuleWeight { ProjectId = 0, Name = kv.Key, Weight = kv.Value })
@@ -448,8 +455,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// insert, since an insert writes every column regardless of this
         /// set). A base missing a field it predates reads the default from
         /// section 3: state absent is active, minimumtime absent is 0.
+        ///
+        /// The filter switch frequency and smart exposure order follow the
+        /// same rule (docs/specs/goal-panel-and-ts-order.md section 4), except
+        /// that a group with no value for one (null) never writes it. A base
+        /// from before they were recorded reads as 0 and off.
         private static HashSet<string> ConditionalColumnsFor(
-            Newtonsoft.Json.Linq.JObject baseProject, int tsState, int tsPriority, int minimumTime
+            Newtonsoft.Json.Linq.JObject baseProject, int tsState, int tsPriority, int minimumTime,
+            int? switchFrequency = null, int? smartOrder = null
         ) {
             var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (baseProject == null) return result;
@@ -465,7 +478,47 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             }
             if (basePriority != tsPriority) result.Add("priority");
             if (baseMinimumTime != minimumTime) result.Add("minimumtime");
+            if (switchFrequency.HasValue &&
+                ((int?)baseProject["filterswitchfrequency"] ?? 0) != switchFrequency.Value) {
+                result.Add("filterswitchfrequency");
+            }
+            if (smartOrder.HasValue &&
+                ((int?)baseProject["smartexposureorder"] ?? 0) != smartOrder.Value) {
+                result.Add("smartexposureorder");
+            }
             return result;
+        }
+
+        /// The switch frequency and smart order for a project group, as Target
+        /// Scheduler integers. Both belong to the TS project; when plans in
+        /// one project disagree, the first plan in the list that has a value
+        /// wins and a line goes into the push result
+        /// (docs/specs/goal-panel-and-ts-order.md section 4). Null means no
+        /// plan has one. Mirrors _group_order_settings in convert.py.
+        public static void GroupOrderSettings(
+            string projectName, List<Plan> group, out int? switchFrequency, out int? smartOrder,
+            List<string> notes
+        ) {
+            var freqs = group
+                .Where(p => p.FilterSwitchFrequency.HasValue
+                    && p.FilterSwitchFrequency.Value >= 0 && p.FilterSwitchFrequency.Value <= 99)
+                .Select(p => Tuple.Create(p.Id, p.FilterSwitchFrequency.Value))
+                .ToList();
+            var smarts = group
+                .Where(p => p.SmartExposureOrder.HasValue)
+                .Select(p => Tuple.Create(p.Id, p.SmartExposureOrder.Value ? 1 : 0))
+                .ToList();
+            switchFrequency = freqs.Count > 0 ? freqs[0].Item2 : (int?)null;
+            smartOrder = smarts.Count > 0 ? smarts[0].Item2 : (int?)null;
+            if (notes == null) return;
+            if (freqs.Select(f => f.Item2).Distinct().Count() > 1) {
+                notes.Add($"{projectName}: plans disagree on the filter switch frequency, so the push used " +
+                    $"{freqs[0].Item2} from plan {freqs[0].Item1}, the first in the list.");
+            }
+            if (smarts.Select(f => f.Item2).Distinct().Count() > 1) {
+                notes.Add($"{projectName}: plans disagree on the smart order, so the push used " +
+                    $"{(smarts[0].Item2 == 1 ? "on" : "off")} from plan {smarts[0].Item1}, the first in the list.");
+            }
         }
 
         /// The base snapshot's project block for this plan and rig, or null

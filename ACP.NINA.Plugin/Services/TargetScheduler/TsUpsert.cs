@@ -43,6 +43,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var outcome = new TsSyncOutcome();
 
             Validate(payload);
+            outcome.Notes.AddRange(payload.Notes);
 
             // 0) Bring any rows still carrying the pre-length-prefix identity
             // onto the current recipe, so the writes below find them instead of
@@ -88,6 +89,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     claimKeys: new[] { "profileId", "name" },
                     outcome: outcome);
                 projectIdByGuid[proj.Guid] = pid;
+                if (outcome.Project.Inserted == insertedBefore) {
+                    ResetCadenceIfOrderWritten(conn, proj, pid, outcome);
+                }
 
                 List<TsRuleWeight> weights;
                 payload.RuleWeightsByProjectGuid.TryGetValue(proj.Guid, out weights);
@@ -735,6 +739,30 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return true;
         }
 
+        /// Delete the cadence rows of every target in an updated project whose
+        /// switch frequency or smart order this push wrote. Target Scheduler
+        /// rebuilds a cadence from the stored rows before anything else
+        /// (FilterCadenceFactory.cs:19-29), so without this a new setting does
+        /// nothing until the old cadence runs out. TS's own editor does the
+        /// same (Project.cs:257). docs/specs/goal-panel-and-ts-order.md
+        /// section 4; matches _reset_cadence_if_order_written in upsert.py.
+        private static void ResetCadenceIfOrderWritten(
+            SqliteConnection conn, TsProject proj, int projectId, TsSyncOutcome outcome
+        ) {
+            if (!proj.ConditionalColumnsToWrite.Contains("filterswitchfrequency")
+                && !proj.ConditionalColumnsToWrite.Contains("smartexposureorder")) {
+                return;
+            }
+            using (var cmd = conn.CreateCommand()) {
+                cmd.CommandText =
+                    "DELETE FROM filtercadenceitem WHERE targetid IN " +
+                    "(SELECT Id FROM target WHERE projectid = $p)";
+                cmd.Parameters.AddWithValue("$p", projectId);
+                cmd.ExecuteNonQuery();
+            }
+            outcome.CadenceResetProjects.Add(proj.Name);
+        }
+
         private static bool HasOverrideRows(SqliteConnection conn, int targetId) {
             using (var cmd = conn.CreateCommand()) {
                 cmd.CommandText = "SELECT 1 FROM overrideexposureorderitem WHERE targetid = $t LIMIT 1";
@@ -1061,6 +1089,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Targets whose override rows were remapped because a plan was
         /// disabled or enabled again.
         public List<string> OverrideRebuilt { get; } = new List<string>();
+
+        /// Projects whose switch frequency or smart order this push wrote, so
+        /// every target's cadence rows were deleted.
+        public List<string> CadenceResetProjects { get; } = new List<string>();
 
         /// One line per project where this push's state decision met a value
         /// Target Scheduler already held that ACP did not expect, per

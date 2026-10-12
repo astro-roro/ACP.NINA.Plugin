@@ -194,6 +194,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// which is always safe, just conservative. TsPushService passes both
         /// after a push; a caller building a base outside a push, if one ever
         /// exists, gets the conservative behaviour for free.
+        /// Base project fields a push writes only when ACP changed them, and
+        /// which otherwise keep the old base's value. See BuildBaseSnapshot.
+        private static readonly string[] CarriedProjectFields = { "filterswitchfrequency", "smartexposureorder" };
+
         public static JObject BuildBaseSnapshot(
             TsSnapshot snap, Plan plan, string profileId,
             TsProject pushedProject = null, TsSyncOutcome outcome = null,
@@ -257,6 +261,25 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     projectBlock["state"] = pushedProject.State;
                     projectBlock["priority"] = pushedProject.Priority;
                     projectBlock["minimumtime"] = pushedProject.MinimumTime;
+                }
+
+                // The shooting-order settings
+                // (docs/specs/goal-panel-and-ts-order.md section 4). The base
+                // takes what Target Scheduler holds, except that a setting this
+                // push did not write keeps the old base's value, for the same
+                // reason as state above. ditherevery is TS's own, kept for the
+                // order writer. Matches _project_snapshot and
+                // carry_unwritten_project_fields in state.py.
+                projectBlock["filterswitchfrequency"] = proj.FilterSwitchFrequency;
+                projectBlock["smartexposureorder"] = proj.SmartExposureOrder;
+                projectBlock["ditherevery"] = proj.DitherEvery;
+                if (pushedProject != null) {
+                    var oldProject = TsConvert.BaseProjectFor(plan, profileId);
+                    foreach (var column in CarriedProjectFields) {
+                        if (oldProject == null || pushedProject.ConditionalColumnsToWrite.Contains(column)) continue;
+                        var old = oldProject[column];
+                        if (old != null && old.Type != JTokenType.Null) projectBlock[column] = old.DeepClone();
+                    }
                 }
 
                 snapshot["project"] = projectBlock;

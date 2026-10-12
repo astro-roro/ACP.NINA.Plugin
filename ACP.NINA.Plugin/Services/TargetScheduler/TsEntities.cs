@@ -129,9 +129,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// actually write on update: ACP changed that setting since the last
         /// sync on this rig (docs/specs/ts-project-settings.md section 5).
         /// TsConvert fills this in per project group. Empty means the update
-        /// touches none of state, priority, minimumtime, activedate or
-        /// inactivedate, leaving whatever Target Scheduler already has. Not a
-        /// column itself.
+        /// touches none of state, priority, minimumtime, activedate,
+        /// inactivedate, filterswitchfrequency or smartexposureorder, leaving
+        /// whatever Target Scheduler already has. Not a column itself.
         public HashSet<string> ConditionalColumnsToWrite { get; set; } =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -288,6 +288,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public string ProfileId { get; set; }
 
         public List<TsExposureTemplate> Templates { get; } = new List<TsExposureTemplate>();
+
+        /// Lines for the push result that TsConvert works out, such as plans
+        /// in one project disagreeing on the filter switch frequency.
+        public List<string> Notes { get; } = new List<string>();
 
         /// Plan filter names that were written under the wheel's own spelling,
         /// for example "OIII" written as "O". Empty when no wheel names were
