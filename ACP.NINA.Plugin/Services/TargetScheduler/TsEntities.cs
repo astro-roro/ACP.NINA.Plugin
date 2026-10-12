@@ -291,6 +291,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     public class TsAacProject {
         public string Name { get; set; }
         public string FiledThroughNight { get; set; }
+        /// Whether any plan or row in the project carries an aac block. A
+        /// project AAC has never reported on is skipped without a push note.
+        public bool Linked { get; set; }
         public string Blocked { get; set; }
         public Dictionary<string, int> AcceptedByPlanGuid { get; } =
             new Dictionary<string, int>(StringComparer.Ordinal);

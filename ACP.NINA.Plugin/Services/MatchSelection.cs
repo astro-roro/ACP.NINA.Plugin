@@ -38,7 +38,7 @@ namespace ACP.NINA.Plugin.Services {
             foreach (var plan in plans ?? Enumerable.Empty<Plan>()) {
                 if (plan == null) continue;
                 var copy = Newtonsoft.Json.JsonConvert.DeserializeObject<MatchedPlan>(
-                    Newtonsoft.Json.JsonConvert.SerializeObject(plan));
+                    Newtonsoft.Json.JsonConvert.SerializeObject(plan), AcpApiClient.JsonSettings);
                 copy.Match = new PlanMatch { Verdict = MatchVerdict.Unconstrained };
                 response.Plans.Add(copy);
             }

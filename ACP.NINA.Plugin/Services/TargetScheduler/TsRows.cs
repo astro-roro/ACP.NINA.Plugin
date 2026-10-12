@@ -95,6 +95,46 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return double.IsNaN(v) || double.IsInfinity(v) ? (double?)null : v;
         }
 
+        /// The row's goal in its own unit: hours for "h", frames for "fr".
+        /// Matches goal_of in rows.py.
+        public static double GoalOf(FilterRow row) {
+            if (row == null) return 0.0;
+            if (row.Unit == "fr") {
+                var frames = row.TargetFrames ?? 0.0;
+                return frames > 0 ? Math.Truncate(frames) : 0.0;
+            }
+            return row.TargetHours ?? 0.0;
+        }
+
+        /// Whether the row's aac.complete still stands. AAC judged it against
+        /// the goal the row had when it sent the figures (goal_at_send, in the
+        /// row's unit); a goal raised since means AAC has not seen the new
+        /// goal, so the row reads as incomplete until AAC reports again. A
+        /// block with no goal_at_send has nothing to compare and stands.
+        /// Matches complete_counts in rows.py.
+        public static bool CompleteCounts(FilterRow row) {
+            var block = AacBlock(row);
+            if (block == null) return false;
+            var complete = block["complete"];
+            if (complete == null || complete.Type != Newtonsoft.Json.Linq.JTokenType.Boolean || !(bool)complete) {
+                return false;
+            }
+            var sent = JsonNumber(block["goal_at_send"]);
+            if (!sent.HasValue) return true;
+            return GoalOf(row) <= sent.Value + 1e-9;
+        }
+
+        /// TS's desired read as ACP's goal. AAC's floor lifts what the writer
+        /// sends (DesiredFor), so a desired of exactly that is the row's own
+        /// goal, never a change to take; anything else is a real edit in TS.
+        /// Matches unfloored_goal in rows.py.
+        public static int UnflooredGoal(FilterRow row, Plan plan, int tsDesired) {
+            if (AacBlock(row) != null && Desired(row) > 0 && tsDesired == DesiredFor(row, plan)) {
+                return Desired(row);
+            }
+            return tsDesired;
+        }
+
         /// The accepted count to write for an AAC-linked row, or null when the
         /// row has no usable figures. `wanted` is the row's desired after the
         /// floor. Matches aac_accepted in rows.py.
@@ -106,8 +146,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var frames = JsonNumber(block["accepted_frames"]);
             if (!seconds.HasValue || seconds.Value < 0 || !frames.HasValue || frames.Value < 0) return null;
             var count = (int)Math.Floor(seconds.Value / SubS(row) + 0.000001);
-            var complete = block["complete"];
-            if (complete != null && complete.Type == Newtonsoft.Json.Linq.JTokenType.Boolean && (bool)complete) {
+            if (CompleteCounts(row)) {
                 return Math.Max(count, wanted);
             }
             var floor = (int)(long)planBlock["min_total_frames"];

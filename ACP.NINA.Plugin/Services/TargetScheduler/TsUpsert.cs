@@ -369,6 +369,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             SqliteConnection conn, TsSyncPayload payload, Dictionary<string, int> projectIdByGuid,
             Dictionary<string, int> planIdByGuid, TsSyncOutcome outcome
         ) {
+            // A project AAC has reported on says why it is skipped; one AAC
+            // has never touched stays quiet.
+            foreach (var kv in payload.AacByProjectGuid) {
+                if (kv.Value.Blocked != null && kv.Value.Linked && projectIdByGuid.ContainsKey(kv.Key)) {
+                    AacWarn(outcome, $"{kv.Value.Name}: AAC counts not written, {kv.Value.Blocked}.");
+                }
+            }
             var candidates = payload.AacByProjectGuid
                 .Where(kv => kv.Value.Blocked == null && projectIdByGuid.ContainsKey(kv.Key))
                 .ToList();
@@ -408,7 +415,29 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     int planId;
                     if (planIdByGuid.TryGetValue(kv.Key, out planId)) counts[planId] = kv.Value;
                 }
-                if (enabled.Count == 0 || !enabled.All(counts.ContainsKey)) continue;
+                if (enabled.Count == 0 || !enabled.All(counts.ContainsKey)) {
+                    string why;
+                    if (enabled.Count == 0) {
+                        why = "no exposure plan is enabled";
+                    } else {
+                        var names = new List<string>();
+                        foreach (var id in enabled.Where(i => !counts.ContainsKey(i)).OrderBy(i => i)) {
+                            using (var cmd = conn.CreateCommand()) {
+                                cmd.CommandText =
+                                    "SELECT x.name FROM exposureplan e JOIN exposuretemplate x " +
+                                    "ON x.Id = e.exposureTemplateId WHERE e.Id = $id";
+                                cmd.Parameters.AddWithValue("$id", id);
+                                var name = cmd.ExecuteScalar();
+                                names.Add(name == null || name is DBNull
+                                    ? id.ToString(CultureInfo.InvariantCulture)
+                                    : Convert.ToString(name, CultureInfo.InvariantCulture));
+                            }
+                        }
+                        why = $"{string.Join(", ", names)} is enabled in Target Scheduler but is not a row in ACP";
+                    }
+                    AacWarn(outcome, $"{aac.Name}: AAC counts not written, {why}.");
+                    continue;
+                }
                 if (!profileChecked) {
                     profileProblem = AacProfileProblem(conn, payload.ProfileId);
                     profileChecked = true;

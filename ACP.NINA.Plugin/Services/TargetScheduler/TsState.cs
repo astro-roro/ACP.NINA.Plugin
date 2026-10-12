@@ -365,7 +365,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         if (tpl != null && templatesByFilter[row.Id] == null) {
                             templatesByFilter[row.Id] = TemplateEntry(tpl);
                         }
-                        plansByPanelFilter[$"{PanelKey(r, c)}_{row.Id}"] = PlanEntry(ep, tpl, row.Filter, row.Template);
+                        plansByPanelFilter[$"{PanelKey(r, c)}_{row.Id}"] = PlanEntry(ep, tpl, row.Filter, row.Template, row, plan);
                     }
                 }
             }
@@ -415,10 +415,19 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// it was written for, so the next push can tell a template change,
         /// the one update that writes exposure. template_sub_s is the sub TS
         /// uses, which ACP copies onto the row when the links post arrives.
+        ///
+        /// desired is the row's goal: when the row is AAC-linked and TS holds
+        /// exactly the floored value, the base records the unfloored goal, so
+        /// AAC's floor never reads as an edit
+        /// (docs/specs/goal-panel-and-ts-order.md section 6).
         /// Matches _plan_entry in nina_ts_sync/state.py.
-        private static JObject PlanEntry(TsExposurePlan ep, TsExposureTemplate tpl, string filter, string template) {
+        private static JObject PlanEntry(
+            TsExposurePlan ep, TsExposureTemplate tpl, string filter, string template, FilterRow row, Plan plan
+        ) {
+            var desired = ep.Desired;
+            if (row != null) desired = TsRows.UnflooredGoal(row, plan, desired);
             return new JObject {
-                { "desired", ep.Desired },
+                { "desired", desired },
                 { "acquired", ep.Acquired },
                 { "accepted", ep.Accepted },
                 { "exposure", ep.Exposure },
