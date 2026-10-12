@@ -538,7 +538,9 @@ namespace ACP.NINA.Plugin.Tests {
                     var acquired = db.ReadAcquired(TsTestPlans.ProfileId);
                     Assert.Equal(7, acquired.Count);
                     Assert.All(acquired.Values, a => Assert.InRange(a.Count, 10, 16));
-                    Assert.All(acquired.Values, a => Assert.True(a.ExposureSeconds > 0));
+                    // A plan the push inserted takes its sub from the template,
+                    // stored as -1 (goal-panel-and-ts-order.md section 3).
+                    Assert.All(acquired.Values, a => Assert.Equal(-1.0, a.ExposureSeconds));
                 }
             }
         }
