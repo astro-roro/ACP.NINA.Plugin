@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -262,6 +263,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         EnableGrader = ReadInt(r, "enablegrader"),
                         State = ReadInt(r, "state", 1),
                         MinimumTime = ReadInt(r, "minimumtime"),
+                        FilterSwitchFrequency = ReadInt(r, "filterswitchfrequency"),
+                        SmartExposureOrder = ReadInt(r, "smartexposureorder"),
+                        DitherEvery = ReadInt(r, "ditherevery"),
                     };
                     snap.ProjectsById[id] = proj;
                     if (!string.IsNullOrEmpty(proj.Guid)) snap.ProjectIdByGuid[proj.Guid] = id;
@@ -318,6 +322,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     };
                     snap.PlansById[id] = plan;
                     if (!string.IsNullOrEmpty(plan.Guid)) snap.PlanIdByGuid[plan.Guid] = id;
+                });
+
+            // Each target's override rows, in order, for the base's
+            // exposure_order and override_rows
+            // (docs/specs/goal-panel-and-ts-order.md section 5).
+            Query(
+                "SELECT o.targetid, o.\"action\", o.referenceIdx FROM overrideexposureorderitem o " +
+                "JOIN target t ON t.Id = o.targetid JOIN project p ON p.Id = t.projectid " +
+                "WHERE p.profileId = $p ORDER BY o.targetid, o.\"order\", o.Id",
+                new Dictionary<string, object> { { "$p", profileId } },
+                r => {
+                    var tid = ReadInt(r, "targetid");
+                    List<Tuple<int, int>> rows;
+                    if (!snap.OverrideRowsByTarget.TryGetValue(tid, out rows)) {
+                        rows = new List<Tuple<int, int>>();
+                        snap.OverrideRowsByTarget[tid] = rows;
+                    }
+                    rows.Add(Tuple.Create(ReadInt(r, "action"), ReadInt(r, "referenceIdx", -1)));
                 });
 
             return snap;
@@ -441,5 +463,20 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public Dictionary<string, int> TargetIdByGuid { get; } = new Dictionary<string, int>();
 
         public Dictionary<string, int> PlanIdByGuid { get; } = new Dictionary<string, int>();
+
+        /// Each target's override rows as (action, referenceIdx) pairs, in
+        /// order. A target without any has no entry.
+        public Dictionary<int, List<Tuple<int, int>>> OverrideRowsByTarget { get; } =
+            new Dictionary<int, List<Tuple<int, int>>>();
+
+        /// The target's enabled plans in natural order, which is what an
+        /// override row's referenceIdx counts over (SchedulerPlanLoader.cs:53).
+        public List<int> EnabledPlanIds(int targetId) {
+            return PlansById
+                .Where(kv => kv.Value.TargetId == targetId && kv.Value.Enabled != 0)
+                .Select(kv => kv.Key)
+                .OrderBy(id => id)
+                .ToList();
+        }
     }
 }

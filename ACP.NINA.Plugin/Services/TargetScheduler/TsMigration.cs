@@ -26,14 +26,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     /// it. It is idempotent: on a database that has already been migrated
     /// nothing matches the old recipe and nothing is written.
     ///
-    /// Three of the four tables carry their whole natural key on the row, or on
-    /// the row plus a join to its parent. exposuretemplate does not: its key
-    /// includes the camera id, which Target Scheduler has no column for. Those
-    /// legacy guids come from the payload instead, via
-    /// TsSyncPayload.LegacyTemplateGuidByGuid, which the converter fills in.
-    /// The consequence is that a template row for a camera no longer in ACP's
-    /// gear is not migrated. It gets picked up the next time that camera is
-    /// pushed, and until then it is a row nothing was going to update anyway.
+    /// Projects, targets and exposure plans carry their whole natural key on
+    /// the row, or on the row plus a join to its parent, so their old guids
+    /// are recomputed from the database alone. Templates are not migrated:
+    /// the push finds a template by profile and name and uses it as it is
+    /// (docs/specs/goal-panel-and-ts-order.md section 3), so a template's guid
+    /// is never looked up and an old one does no harm.
     public static class TsMigration {
 
         public class Result {
@@ -47,30 +45,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// transaction.
         public static Result MigrateLegacyGuids(SqliteConnection conn, TsSyncPayload payload) {
             var result = new Result();
-            MigrateTemplates(conn, payload, result);
             MigrateProjects(conn, result);
             MigrateTargets(conn, result);
             MigrateExposurePlans(conn, result);
             return result;
-        }
-
-        private static void MigrateTemplates(
-            SqliteConnection conn, TsSyncPayload payload, Result result
-        ) {
-            foreach (var tpl in payload.Templates) {
-                string old;
-                if (!payload.LegacyTemplateGuidByGuid.TryGetValue(tpl.Guid, out old)) continue;
-                if (string.IsNullOrEmpty(old) || old == tpl.Guid) continue;
-
-                using (var cmd = conn.CreateCommand()) {
-                    cmd.CommandText = "SELECT Id FROM exposuretemplate WHERE guid = $g";
-                    cmd.Parameters.AddWithValue("$g", old);
-                    var value = cmd.ExecuteScalar();
-                    if (value == null || value == DBNull.Value) continue;
-                    Rewrite(conn, "exposuretemplate",
-                        Convert.ToInt32(value, CultureInfo.InvariantCulture), tpl.Guid, result);
-                }
-            }
         }
 
         private static void MigrateProjects(SqliteConnection conn, Result result) {

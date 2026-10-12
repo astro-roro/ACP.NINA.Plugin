@@ -51,6 +51,8 @@ namespace ACP.NINA.Plugin.Services {
                     ExposurePlanId = entry.Key,
                     TargetId = plan.TargetId,
                     FilterName = template.FilterName,
+                    TemplateName = template.Name,
+                    Enabled = plan.Enabled != 0,
                     Acquired = plan.Acquired,
                     Accepted = plan.Accepted,
                     // Target Scheduler stores -1 for "use the template", which

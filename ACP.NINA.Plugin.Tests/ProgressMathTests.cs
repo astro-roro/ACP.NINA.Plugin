@@ -124,6 +124,35 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.True(filters.ContainsKey("L"));
         }
 
+        /// docs/specs/goal-panel-and-ts-order.md test S6: two TS plans on R,
+        /// templates R (120 s) and R Stars (15 s), 10 frames each, become two
+        /// entries, each naming its template.
+        [Fact]
+        public void S6_each_exposure_plan_is_its_own_entry_with_its_template() {
+            var entries = ProgressMath.BuildEntries(new[] {
+                Fixtures.Row("R", acquired: 10, exposureSeconds: 120, exposurePlanId: 1, template: "R"),
+                Fixtures.Row("R", acquired: 10, exposureSeconds: -1, templateDefaultSeconds: 15,
+                             exposurePlanId: 2, template: "R Stars"),
+            });
+            Assert.Equal(2, entries.Count);
+            Assert.Equal(("R", "R"), (entries[0].Filter, entries[0].Template));
+            Assert.Equal(0.3333, entries[0].AcquiredHours, 4);
+            Assert.Equal(("R", "R Stars"), (entries[1].Filter, entries[1].Template));
+            Assert.Equal(0.0417, entries[1].AcquiredHours, 4);
+            Assert.Equal(10, entries[1].AcquiredCount);
+        }
+
+        [Fact]
+        public void A_disabled_exposure_plan_is_not_reported() {
+            // A disabled plan is a row removed in ACP.
+            var rows = new[] {
+                Fixtures.Row("Ha", acquired: 18, exposureSeconds: 300, exposurePlanId: 1, enabled: false),
+                Fixtures.Row("OIII", acquired: 6, exposureSeconds: 300, exposurePlanId: 2),
+            };
+            Assert.Equal(new[] { "OIII" }, ProgressMath.BuildEntries(rows).Select(e => e.Filter).ToArray());
+            Assert.Equal(new[] { "OIII" }, ProgressMath.BuildFilters(rows).Keys.ToArray());
+        }
+
         [Fact]
         public void A_negative_count_is_treated_as_none() {
             var row = Fixtures.Row("L", acquired: -3, exposureSeconds: 300);

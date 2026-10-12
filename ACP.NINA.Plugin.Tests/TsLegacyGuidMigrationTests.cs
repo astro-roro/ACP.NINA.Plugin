@@ -30,8 +30,10 @@ namespace ACP.NINA.Plugin.Tests {
 
                 var outcome = TsUpsert.Apply(db, Payload());
 
-                // 2 templates + 3 projects + 6 targets + 7 plans.
-                Assert.Equal(18, outcome.MigratedGuids);
+                // 3 projects + 6 targets + 7 plans. Templates are found by
+                // name and left as they are (goal-panel-and-ts-order.md
+                // section 3), so their guids are no longer restamped.
+                Assert.Equal(16, outcome.MigratedGuids);
                 Assert.Empty(outcome.Notes);
                 // Nothing new was inserted, so no second tree beside the old one.
                 Assert.Equal(before, Counts(db.Connection));
@@ -43,6 +45,7 @@ namespace ACP.NINA.Plugin.Tests {
                 foreach (var table in Tables) {
                     var now = Guids(db.Connection, table);
                     Assert.Equal(expected[table].Keys.OrderBy(k => k), now.Keys.OrderBy(k => k));
+                    if (table == "exposuretemplate") continue;
                     foreach (var row in now) {
                         Assert.True(
                             row.Value != expected[table][row.Key],
@@ -60,8 +63,7 @@ namespace ACP.NINA.Plugin.Tests {
 
                 var payload = Payload();
                 var wanted = new HashSet<string>(
-                    payload.Templates.Select(t => t.Guid)
-                        .Concat(payload.Projects.Select(p => p.Guid))
+                    payload.Projects.Select(p => p.Guid)
                         .Concat(payload.TargetsByProjectGuid.Values.SelectMany(v => v)
                             .Select(t => t.Guid))
                         .Concat(payload.PlansByTargetGuid.Values.SelectMany(v => v)
@@ -69,7 +71,9 @@ namespace ACP.NINA.Plugin.Tests {
                     StringComparer.Ordinal);
 
                 var onDisk = new HashSet<string>(
-                    Tables.SelectMany(t => Guids(db.Connection, t).Values), StringComparer.Ordinal);
+                    Tables.Where(t => t != "exposuretemplate")
+                        .SelectMany(t => Guids(db.Connection, t).Values),
+                    StringComparer.Ordinal);
                 Assert.Equal(wanted.OrderBy(g => g), onDisk.OrderBy(g => g));
             }
         }

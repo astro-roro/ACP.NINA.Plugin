@@ -1,4 +1,5 @@
 using ACP.NINA.Plugin.Models;
+using ACP.NINA.Plugin.Services.TargetScheduler;
 using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 
@@ -63,8 +64,12 @@ namespace ACP.NINA.Plugin.Tests {
             double minAltitudeDeg = 30,
             int? meridianWindowMin = null,
             string state = "active",
-            int? minimumTimeMin = null
+            int? minimumTimeMin = null,
+            List<FilterRow> filterRows = null
         ) {
+            var goals = filterGoals ?? new Dictionary<string, FilterGoal> {
+                { "OIII", new FilterGoal { TargetHours = 1.0, SubExposureS = 300 } },
+            };
             return new Plan {
                 Id = id,
                 Guid = "guid-" + id,
@@ -83,10 +88,29 @@ namespace ACP.NINA.Plugin.Tests {
                     RotationDeg = rot,
                     Mosaic = new Mosaic { Rows = rows, Cols = cols, OverlapPct = overlapPct },
                 },
-                FilterGoals = filterGoals ?? new Dictionary<string, FilterGoal> {
-                    { "OIII", new FilterGoal { TargetHours = 1.0, SubExposureS = 300 } },
-                },
+                FilterGoals = goals,
+                // As a current ACP hands plans over: rows made from the goals
+                // the way its migration does, with each row's id its goal
+                // key. tests/plans.py builds the same rows. A test that wants
+                // the old-ACP shape sets FilterRows to null.
+                FilterRows = filterRows ?? TsRows.RowsOf(new Plan { FilterGoals = goals }, Gear().Cameras[0]),
             };
+        }
+
+        /// One filter row, as tests/row_scenarios.py's row() makes it: a frame
+        /// row when frames is given, else an hour row.
+        public static FilterRow Row(
+            string id, string filter, string template, double sub, int? frames = null, double? hours = null
+        ) {
+            var row = new FilterRow { Id = id, Filter = filter, Template = template, TemplateSubS = sub };
+            if (frames.HasValue) {
+                row.Unit = "fr";
+                row.TargetFrames = frames.Value;
+            } else {
+                row.Unit = "h";
+                row.TargetHours = hours ?? 0.0;
+            }
+            return row;
         }
 
         /// One single target, one 2 by 2 mosaic, one with two filters.

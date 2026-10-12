@@ -55,12 +55,16 @@ namespace ACP.NINA.Plugin.Services {
         /// Two rows for one filter on one target is not something TS produces,
         /// but if it ever does they are summed rather than one of them winning
         /// silently.
+        /// This is the body an ACP from before filter rows reads, so a plan
+        /// on R and one on R Stars sum onto R there. BuildEntries is what a
+        /// current ACP reads.
         public static Dictionary<string, ProgressFilter> BuildFilters(IEnumerable<TsProgressRow> rows) {
             var result = new Dictionary<string, ProgressFilter>(StringComparer.OrdinalIgnoreCase);
             if (rows == null) return result;
 
             foreach (var row in rows) {
                 if (row == null || string.IsNullOrWhiteSpace(row.FilterName)) continue;
+                if (!row.Enabled) continue;
                 if (SubExposureSeconds(row) <= 0) continue;
 
                 var name = row.FilterName.Trim();
@@ -70,6 +74,28 @@ namespace ACP.NINA.Plugin.Services {
                 }
                 entry.AcquiredCount += GoodCount(row);
                 entry.AcquiredHours = Math.Round(entry.AcquiredHours + AcquiredHours(row), 4);
+            }
+            return result;
+        }
+
+        /// One entry per exposure plan, naming its filter and template, so
+        /// ACP can put each on its own filter row
+        /// (docs/specs/goal-panel-and-ts-order.md section 3, "Progress from
+        /// the plugin"). Disabled plans and plans with no usable sub length
+        /// are left out, as in BuildFilters.
+        public static List<ProgressEntry> BuildEntries(IEnumerable<TsProgressRow> rows) {
+            var result = new List<ProgressEntry>();
+            if (rows == null) return result;
+            foreach (var row in rows) {
+                if (row == null || string.IsNullOrWhiteSpace(row.FilterName)) continue;
+                if (!row.Enabled) continue;
+                if (SubExposureSeconds(row) <= 0) continue;
+                result.Add(new ProgressEntry {
+                    Filter = row.FilterName.Trim(),
+                    Template = row.TemplateName,
+                    AcquiredHours = AcquiredHours(row),
+                    AcquiredCount = GoodCount(row),
+                });
             }
             return result;
         }
