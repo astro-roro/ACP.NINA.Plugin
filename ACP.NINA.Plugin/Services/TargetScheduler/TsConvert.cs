@@ -282,17 +282,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             PinnedId = targetPin,
                         });
 
-                        List<TsExposurePlan> planList;
-                        if (!payload.PlansByTargetGuid.TryGetValue(targetGuid, out planList)) {
-                            planList = new List<TsExposurePlan>();
-                            payload.PlansByTargetGuid[targetGuid] = planList;
+                        List<TsExposurePlan> targetPlans;
+                        if (!payload.PlansByTargetGuid.TryGetValue(targetGuid, out targetPlans)) {
+                            targetPlans = new List<TsExposurePlan>();
+                            payload.PlansByTargetGuid[targetGuid] = targetPlans;
                         }
 
                         var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
                         foreach (var row in pushed) {
                             var planGuid = TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template);
                             var acquired = TsRows.AcquiredFrames(row);
-                            planList.Add(new TsExposurePlan {
+                            targetPlans.Add(new TsExposurePlan {
                                 ProfileId = profileId,
                                 TargetId = 0,
                                 ExposureTemplateId = 0,
