@@ -299,15 +299,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         }
 
                         var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
-                        // The order this panel's base recorded (section 5).
-                        // Every panel of a mosaic gets the plan's one order.
-                        var seenTarget = BaseSnapshotFor(plan, profileId)?["targets_by_panel"]?[panelKey]
-                            as Newtonsoft.Json.Linq.JObject;
-                        var seenOrder = seenTarget?["exposure_order"] as Newtonsoft.Json.Linq.JArray;
-                        if (seenOrder != null) {
+                        // The base order is the target's, which is the anchor
+                        // panel's (1,1): ACP's order has changed when it differs
+                        // from that, for every panel. Each panel's base rows are
+                        // its own (section 5).
+                        var baseTargets = BaseSnapshotFor(plan, profileId)?["targets_by_panel"] as Newtonsoft.Json.Linq.JObject;
+                        var anchorTarget = baseTargets?["1,1"] as Newtonsoft.Json.Linq.JObject;
+                        var seenTarget = baseTargets?[panelKey] as Newtonsoft.Json.Linq.JObject;
+                        var anchorOrder = anchorTarget?["exposure_order"] as Newtonsoft.Json.Linq.JArray;
+                        if (anchorOrder != null) {
                             payload.OrderByTargetGuid[targetGuid] = new TsTargetOrder {
-                                BaseOrder = seenOrder.Select(t => (string)t).ToList(),
-                                BaseRows = TsOrder.AsRows(seenTarget["override_rows"]),
+                                BaseOrder = anchorOrder.Select(t => (string)t).ToList(),
+                                BaseRows = seenTarget == null ? null : TsOrder.AsRows(seenTarget["override_rows"]),
                             };
                         }
                         foreach (var row in pushed) {

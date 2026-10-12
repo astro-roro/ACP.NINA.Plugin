@@ -291,7 +291,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // whose override rows are ACP's after the push record what TS now
             // has; every other target keeps what the old base recorded, or
             // nothing, because a push that left TS's rows alone keeps the old
-            // base order. With no outcome, every target records TS's state.
+            // base order. With no outcome, each target records the order TS
+            // shoots, and its override rows only when TS has none, as an import
+            // does, so rows set in TS are never taken for rows the sync wrote.
+            // The base order is the anchor panel's (1,1) for every panel.
             // Matches build_base_snapshot in state.py.
             var planRows = TsRows.RowsOf(plan, camera);
             var orderTargets = outcome?.OrderSyncedTargetIds;
@@ -330,7 +333,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         var order = TsOrder.EffectivePlanOrder(snap.EnabledPlanIds(tid), overrideRows, out neverShot);
                         entry["exposure_order"] = new JArray(
                             order.Where(rowIdByPlan.ContainsKey).Select(p => rowIdByPlan[p]));
-                        entry["override_rows"] = TsOrder.ToJson(overrideRows);
+                        if (orderTargets != null || overrideRows.Count == 0) {
+                            entry["override_rows"] = TsOrder.ToJson(overrideRows);
+                        }
                     } else {
                         var old = oldTargets?[PanelKey(r, c)] as JObject;
                         foreach (var key in new[] { "exposure_order", "override_rows" }) {
@@ -341,6 +346,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     targetsByPanel[PanelKey(r, c)] = entry;
                 }
             }
+            ShareAnchorOrder(targetsByPanel);
 
             for (var r = 1; r <= rows; r++) {
                 for (var c = 1; c <= cols; c++) {
@@ -364,6 +370,27 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             }
 
             return snapshot;
+        }
+
+        /// The base order is one per target: the anchor panel's (1,1). Every
+        /// other panel records the anchor's order as its exposure_order, never
+        /// its own, so a hand-made order on one panel is not mistaken for ACP's
+        /// order at the next push (docs/specs/goal-panel-and-ts-order.md
+        /// section 5). Without an anchor order, no panel records one. Matches
+        /// _share_anchor_order in state.py.
+        private static void ShareAnchorOrder(JObject targetsByPanel) {
+            var anchor = targetsByPanel["1,1"] as JObject;
+            var order = anchor?["exposure_order"] as JArray;
+            foreach (var pair in targetsByPanel.Properties().ToList()) {
+                if (pair.Name == "1,1") continue;
+                var entry = pair.Value as JObject;
+                if (entry == null) continue;
+                if (order != null) {
+                    entry["exposure_order"] = order.DeepClone();
+                } else {
+                    entry.Remove("exposure_order");
+                }
+            }
         }
 
         private static JObject TemplateEntry(TsExposureTemplate tpl) {
