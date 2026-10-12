@@ -47,6 +47,10 @@ namespace ACP.NINA.Plugin.Tests {
             "o8_new_plan_appended_to_ts_order",
             "o11_no_base_order_writes_nothing",
             "f1_override_rows_rebuilt",
+            "x1_mosaic_hand_order_on_panel_two_kept",
+            "x2_mosaic_acp_reorder_writes_both_panels",
+            "x3_added_row_dragged_to_top_is_a_reorder",
+            "x3b_added_row_at_end_keeps_hand_order",
         };
 
         public static TsSyncOutcome Run(string name, TargetSchedulerDb db) {
@@ -75,6 +79,10 @@ namespace ACP.NINA.Plugin.Tests {
                 case "o8_new_plan_appended_to_ts_order": return O8(db);
                 case "o11_no_base_order_writes_nothing": return O11(db);
                 case "f1_override_rows_rebuilt": return F1Override(db);
+                case "x1_mosaic_hand_order_on_panel_two_kept": return X1(db);
+                case "x2_mosaic_acp_reorder_writes_both_panels": return X2(db);
+                case "x3_added_row_dragged_to_top_is_a_reorder": return X3(db);
+                case "x3b_added_row_at_end_keeps_hand_order": return X3b(db);
                 default: throw new ArgumentOutOfRangeException(nameof(name), name, null);
             }
         }
@@ -103,7 +111,8 @@ namespace ACP.NINA.Plugin.Tests {
 
         /// What a push leaves on each plan: its link for this profile, and each
         /// row's template_sub_s from the base, as ACP's links route sets it.
-        /// Every target records the order TS has; see the overload below.
+        /// Each target records the order TS shoots, and its override rows only
+        /// when TS has none; see the overload below.
         public static void Link(TargetSchedulerDb db, params Plan[] plans) {
             Link(db, null, plans);
         }
@@ -539,6 +548,10 @@ namespace ACP.NINA.Plugin.Tests {
             Exec(db.Connection, $"UPDATE project SET enablegrader = 1 WHERE name = '{M42}'");
         }
 
+        public static void GraderOn(TargetSchedulerDb db, string project) {
+            Exec(db.Connection, $"UPDATE project SET enablegrader = 1 WHERE name = '{project}'");
+        }
+
         public static void Reorder(Plan plan, params string[] ids) {
             var byId = plan.FilterRows.ToDictionary(r => r.Id, r => r, StringComparer.Ordinal);
             plan.FilterRows = ids.Select(i => byId[i]).ToList();
@@ -641,6 +654,78 @@ namespace ACP.NINA.Plugin.Tests {
                 entry.Remove("override_rows");
             }
             Reorder(plan, "row-ha", "row-oiii");
+            return Push(db, plan);
+        }
+
+        // -- One order decision per target (section 5) --------------------
+
+        private const string Mos = "Mos";
+
+        private static readonly Tuple<int, int>[] HandOrder = {
+            Tuple.Create(0, 2), Tuple.Create(0, 0), Tuple.Create(0, 1),
+        };
+
+        /// A 1 by 2 mosaic with rows Ha, OIII and SII, pushed and linked, the
+        /// grader on. Gives the plan and its two target Ids. As mosaic_state.
+        public static Plan MosaicState(TargetSchedulerDb db, out int target1, out int target2) {
+            var plan = TsTestPlans.Plan("mos", projectName: Mos, targetName: Mos, rows: 1, cols: 2,
+                filterRows: new List<FilterRow> {
+                    TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4),
+                    TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 4),
+                    TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4),
+                });
+            Link(db, Push(db, plan), plan);
+            GraderOn(db, Mos);
+            target1 = Scalar(db.Connection, "SELECT Id FROM target ORDER BY Id LIMIT 1");
+            target2 = Scalar(db.Connection, "SELECT Id FROM target ORDER BY Id LIMIT 1 OFFSET 1");
+            return plan;
+        }
+
+        /// A hand order on panel 2 only, SII, Ha, OIII. Two pushes with no ACP
+        /// change leave it. As x1.
+        public static TsSyncOutcome X1(TargetSchedulerDb db) {
+            int target1;
+            int target2;
+            var plan = MosaicState(db, out target1, out target2);
+            SetOverride(db.Connection, target2, HandOrder);
+            Link(db, Push(db, plan), plan);
+            return Push(db, plan);
+        }
+
+        /// As X1 with a different hand order, then ACP reordered to SII, Ha,
+        /// OIII. Both panels get ACP's order. As x2.
+        public static TsSyncOutcome X2(TargetSchedulerDb db) {
+            int target1;
+            int target2;
+            var plan = MosaicState(db, out target1, out target2);
+            SetOverride(db.Connection, target2, new[] { Tuple.Create(0, 1), Tuple.Create(0, 0), Tuple.Create(0, 2) });
+            Link(db, Push(db, plan), plan);
+            Reorder(plan, "row-sii", "row-ha", "row-oiii");
+            return Push(db, plan);
+        }
+
+        /// Hand-made override rows OIII, Ha on the spec's fixture, pushed and
+        /// linked, so the base order stays Ha, OIII. As added_row_state.
+        private static Plan AddedRowState(TargetSchedulerDb db) {
+            var plan = OState(db);
+            SetOverride(db.Connection, M42TargetId(db.Connection), new[] { Tuple.Create(0, 1), Tuple.Create(0, 0) });
+            Link(db, Push(db, plan), plan);
+            return plan;
+        }
+
+        /// A row for SII added in ACP and dragged to the top. ACP's order is
+        /// written over the hand order. As x3.
+        public static TsSyncOutcome X3(TargetSchedulerDb db) {
+            var plan = AddedRowState(db);
+            plan.FilterRows.Insert(0, TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4));
+            return Push(db, plan);
+        }
+
+        /// A row for SII added at the end. The hand order stays and SII's
+        /// block is appended. As x3b.
+        public static TsSyncOutcome X3b(TargetSchedulerDb db) {
+            var plan = AddedRowState(db);
+            plan.FilterRows.Add(TsTestPlans.Row("row-sii", "SII", "SII", 300, frames: 4));
             return Push(db, plan);
         }
 

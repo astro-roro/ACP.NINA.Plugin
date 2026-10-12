@@ -107,6 +107,10 @@ namespace ACP.NINA.Plugin.Tests {
         [InlineData("o8_new_plan_appended_to_ts_order")]
         [InlineData("o11_no_base_order_writes_nothing")]
         [InlineData("f1_override_rows_rebuilt")]
+        [InlineData("x1_mosaic_hand_order_on_panel_two_kept")]
+        [InlineData("x2_mosaic_acp_reorder_writes_both_panels")]
+        [InlineData("x3_added_row_dragged_to_top_is_a_reorder")]
+        [InlineData("x3b_added_row_at_end_keeps_hand_order")]
         public void AFilterRowPushWritesTheSameRowsAsThePythonExtension(string scenario) {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File($"{scenario}.sqlite"));

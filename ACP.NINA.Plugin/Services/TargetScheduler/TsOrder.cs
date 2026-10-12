@@ -23,7 +23,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public const int Dither = 1;
 
         /// A stored list of [action, referenceIdx] pairs, or null when the
-        /// token is not such a list.
+        /// token is not such a list. A token that is not a pair of integers
+        /// makes the whole list absent. Matches as_rows in order.py.
         public static List<Tuple<int, int>> AsRows(JToken raw) {
             var array = raw as JArray;
             if (array == null) return null;
@@ -31,10 +32,31 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             foreach (var item in array) {
                 var pair = item as JArray;
                 if (pair == null || pair.Count != 2) return null;
-                if (pair[0].Type != JTokenType.Integer || pair[1].Type != JTokenType.Integer) return null;
-                rows.Add(Tuple.Create((int)pair[0], (int)pair[1]));
+                int action;
+                int reference;
+                if (!TryInt(pair[0], out action) || !TryInt(pair[1], out reference)) return null;
+                rows.Add(Tuple.Create(action, reference));
             }
             return rows;
+        }
+
+        /// An integer token that fits 32 bits. A float, a string, a boolean
+        /// or a larger integer is not one.
+        private static bool TryInt(JToken token, out int value) {
+            value = 0;
+            if (token == null || token.Type != JTokenType.Integer) return false;
+            var raw = ((JValue)token).Value;
+            if (raw is int) {
+                value = (int)raw;
+                return true;
+            }
+            if (raw is long) {
+                var wide = (long)raw;
+                if (wide < int.MinValue || wide > int.MaxValue) return false;
+                value = (int)wide;
+                return true;
+            }
+            return false;
         }
 
         public static JArray ToJson(IEnumerable<Tuple<int, int>> rows) {
@@ -101,12 +123,26 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return output;
         }
 
-        /// Whether ACP's order equals the base's, over the rows both have. A
-        /// row added or removed since the base is not a change of order.
+        /// Whether ACP's order equals the base's, over the rows both have, and
+        /// no row new since the base sits before one the base has. A row
+        /// removed since the base is not a change of order, and neither is a
+        /// row added at the end; a row added anywhere else is the user
+        /// placing it, so it is a reorder. Matches same_order in order.py.
         public static bool SameOrder(IList<string> acp, IList<string> baseOrder) {
+            var baseSet = new HashSet<string>(baseOrder, StringComparer.Ordinal);
             var common = new HashSet<string>(acp, StringComparer.Ordinal);
-            common.IntersectWith(baseOrder);
-            return acp.Where(common.Contains).SequenceEqual(baseOrder.Where(common.Contains), StringComparer.Ordinal);
+            common.IntersectWith(baseSet);
+            if (!acp.Where(common.Contains).SequenceEqual(baseOrder.Where(common.Contains), StringComparer.Ordinal)) {
+                return false;
+            }
+            var last = -1;
+            for (var i = 0; i < acp.Count; i++) {
+                if (common.Contains(acp[i])) last = i;
+            }
+            for (var i = 0; i < last; i++) {
+                if (!baseSet.Contains(acp[i])) return false;
+            }
+            return true;
         }
 
         public static bool SameRows(IList<Tuple<int, int>> a, IList<Tuple<int, int>> b) {
