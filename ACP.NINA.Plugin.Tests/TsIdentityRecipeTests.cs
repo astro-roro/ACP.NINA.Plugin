@@ -41,6 +41,22 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.Equal("80e4a6ad-29a0-57ad-83b5-f0a07560b561", a);
         }
 
+        /// docs/specs/goal-panel-and-ts-order.md section 3: a row's exposure
+        /// plan and the template the push inserts for it name both the
+        /// filter and the template. Same literals as the Python test.
+        [Fact]
+        public void TheFilterRowRecipes() {
+            Assert.Equal(TsGuid.Stable("9:profile-1/plan/3:abc/1:R/7:R Stars"),
+                TsGuid.RowPlan(Profile, "abc", "R", "R Stars"));
+            Assert.Equal("715ccc47-9d4a-58d4-b9ab-a8cc00190da9", TsGuid.RowPlan(Profile, "abc", "R", "R Stars"));
+            Assert.Equal(TsGuid.Stable("9:profile-1/template/1:R/5:cam-1/7:R Stars"),
+                TsGuid.RowTemplate(Profile, "R", "cam-1", "R Stars"));
+            Assert.Equal("b6b57e89-affc-5f6a-8db1-c75c0804c73e", TsGuid.RowTemplate(Profile, "R", "cam-1", "R Stars"));
+            // A row whose template is named after its filter is not the
+            // goal-key plan.
+            Assert.NotEqual(TsGuid.RowPlan(Profile, "abc", "R", "R"), TsGuid.ExposurePlan(Profile, "abc", "R"));
+        }
+
         [Fact]
         public void TheNewRecipeIsNotTheOldOne() {
             Assert.NotEqual(

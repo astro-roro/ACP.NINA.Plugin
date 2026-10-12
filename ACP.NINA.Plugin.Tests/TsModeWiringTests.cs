@@ -31,6 +31,7 @@ namespace ACP.NINA.Plugin.Tests {
                 CameraId = plan.CameraId,
                 Target = plan.Target,
                 FilterGoals = plan.FilterGoals,
+                FilterRows = plan.FilterRows,
                 Match = new PlanMatch {
                     Verdict = verdict,
                     Reasons = reason == null ? new List<string>() : new List<string> { reason },
@@ -125,6 +126,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var selected = MatchSelection.SelectForMode(Response(), SyncMode.Everything);
                 selected.Add(Matched("empty", "Nothing", MatchVerdict.Fit));
                 selected.Last().FilterGoals = new Dictionary<string, FilterGoal>();
+                selected.Last().FilterRows = new List<FilterRow>();
 
                 var result = await PushSelection(path, selected);
 
@@ -132,7 +134,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var summary = result.Summary();
                 Assert.Contains("4 plans loaded into Target Scheduler", summary);
                 Assert.Contains("1 left out", summary);
-                Assert.Contains("no filter goals", summary);
+                Assert.Contains("no filter rows", summary);
             }
         }
 

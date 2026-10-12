@@ -61,7 +61,12 @@ namespace ACP.NINA.Plugin.Tests {
 
                 Assert.Equal(3, result.Outcome.Project.Pinned);
                 Assert.Equal(3, result.Outcome.Target.Pinned);
-                Assert.Equal(16, result.Outcome.ExposurePlan.Pinned);
+                // Exposure plans are found through the pins too, then
+                // restamped with their row's guid (docs/specs/
+                // goal-panel-and-ts-order.md section 3), so they count as
+                // updates. Every one keeps the template it had: the goal
+                // keyed "R" is TS's "R Stars", and no template is added.
+                Assert.Equal(16, result.Outcome.ExposurePlan.Updated);
                 Assert.Equal(0, result.Outcome.ExposureTemplate.Inserted);
             }
         }
@@ -100,7 +105,7 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Equal(0, second.Outcome.ExposurePlan.Inserted);
                 Assert.Equal(3, second.Outcome.Project.Pinned);
                 Assert.Equal(3, second.Outcome.Target.Pinned);
-                Assert.Equal(16, second.Outcome.ExposurePlan.Pinned);
+                Assert.Equal(16, second.Outcome.ExposurePlan.Updated);
                 var after = ReadAll(path);
                 foreach (var table in Tables) {
                     Assert.True(before[table].Keys.SequenceEqual(after[table].Keys), $"{table} rows changed");
@@ -162,7 +167,7 @@ namespace ACP.NINA.Plugin.Tests {
                         Assert.Equal(before["target"][id][col], after["target"][id][col]);
                     }
                 }
-                foreach (var col in new[] { "exposureTemplateId", "targetid", "enabled", "guid" }) {
+                foreach (var col in new[] { "exposureTemplateId", "targetid", "enabled", "exposure" }) {
                     foreach (var id in before["exposureplan"].Keys) {
                         Assert.Equal(before["exposureplan"][id][col], after["exposureplan"][id][col]);
                     }
@@ -223,11 +228,10 @@ namespace ACP.NINA.Plugin.Tests {
 
                 var outcome = Apply(path, Plans());
 
-                Assert.Equal(15, outcome.ExposurePlan.Pinned);
+                Assert.Equal(15, outcome.ExposurePlan.Updated);
                 Assert.Equal(1, outcome.ExposurePlan.Inserted);
-                Assert.Contains(outcome.Notes, n => n.Contains("exposure plan 32"));
-                // The new row goes on the pinned target, under the template the
-                // refs give for the filter, so no template is added for it.
+                // The new row goes on the pinned target, under the template
+                // named like its row, so no template is added for it.
                 var added = ReadAll(path)["exposureplan"].Values.Single(r => (long)r["Id"] > 127);
                 Assert.Equal(5L, added["targetid"]);
                 Assert.Equal(0, outcome.ExposureTemplate.Inserted);

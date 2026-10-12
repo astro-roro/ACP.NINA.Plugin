@@ -351,8 +351,12 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
+        /// ACP no longer updates a template it finds: Target Scheduler owns
+        /// the templates it has (docs/specs/goal-panel-and-ts-order.md
+        /// section 3, "Templates"). A changed gain or sub in ACP's gear
+        /// reaches only a template the push inserts.
         [Fact]
-        public void ASecondSyncLeavesHandTuningAloneButStillUpdatesAcpsOwnColumns() {
+        public void ASecondSyncLeavesAnExistingTemplateAsItIs() {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File("resync.sqlite"));
                 using (var db = TargetSchedulerDb.Open(path)) {
@@ -364,15 +368,15 @@ namespace ACP.NINA.Plugin.Tests {
                     second.Templates[0].DefaultExposure = 45.0;
                     var outcome = TsUpsert.Apply(db, second);
 
-                    Assert.Equal(1, outcome.ExposureTemplate.Updated);
+                    Assert.Equal(0, outcome.ExposureTemplate.Updated);
                     Assert.Equal(0, outcome.ExposureTemplate.Inserted);
                     AssertHandTuningSurvived(db.Connection);
                     using (var cmd = db.Connection.CreateCommand()) {
                         cmd.CommandText = "SELECT gain, defaultexposure FROM exposuretemplate";
                         using (var reader = cmd.ExecuteReader()) {
                             Assert.True(reader.Read());
-                            Assert.Equal(200L, reader.GetInt64(0));
-                            Assert.Equal(45.0, reader.GetDouble(1));
+                            Assert.Equal(100L, reader.GetInt64(0));
+                            Assert.Equal(300.0, reader.GetDouble(1));
                         }
                     }
                 }
@@ -380,7 +384,7 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         [Fact]
-        public void ClaimingAHandMadeTemplateLeavesItsTuningAloneButUpdatesAcpsOwnColumns() {
+        public void AHandMadeTemplateOfTheSameNameIsUsedAsItIs() {
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File("claim.sqlite"));
                 using (var db = TargetSchedulerDb.Open(path)) {
@@ -397,20 +401,25 @@ namespace ACP.NINA.Plugin.Tests {
 
                     var outcome = TsUpsert.Apply(db, payload);
 
-                    Assert.Equal(1, outcome.ExposureTemplate.Claimed);
+                    Assert.Equal(0, outcome.ExposureTemplate.Claimed);
                     Assert.Equal(0, outcome.ExposureTemplate.Inserted);
                     Assert.Equal(1L, Scalar(db.Connection, "SELECT COUNT(*) FROM exposuretemplate"));
                     AssertHandTuningSurvived(db.Connection);
                     using (var cmd = db.Connection.CreateCommand()) {
-                        cmd.CommandText = "SELECT gain, offset, bin, guid FROM exposuretemplate";
+                        cmd.CommandText = "SELECT gain, offset, bin, defaultexposure, guid FROM exposuretemplate";
                         using (var reader = cmd.ExecuteReader()) {
                             Assert.True(reader.Read());
-                            Assert.Equal((long)tpl.Gain, reader.GetInt64(0));
-                            Assert.Equal((long)tpl.Offset, reader.GetInt64(1));
-                            Assert.Equal((long)tpl.Bin, reader.GetInt64(2));
-                            Assert.Equal(tpl.Guid, reader.GetString(3));
+                            Assert.Equal(-1L, reader.GetInt64(0));
+                            Assert.Equal(-1L, reader.GetInt64(1));
+                            Assert.Equal(1L, reader.GetInt64(2));
+                            Assert.Equal(60.0, reader.GetDouble(3));
+                            Assert.True(reader.IsDBNull(4));
                         }
                     }
+                    // The plan points at it.
+                    Assert.Equal(
+                        Scalar(db.Connection, "SELECT Id FROM exposuretemplate"),
+                        Scalar(db.Connection, "SELECT exposureTemplateId FROM exposureplan"));
                 }
             }
         }
@@ -731,7 +740,9 @@ namespace ACP.NINA.Plugin.Tests {
             // disagreeing about the count.
             Assert.Equal(4, row.Acquired);
             Assert.Equal(4, row.Accepted);
-            Assert.Equal(400.0, row.Exposure);
+            // A new plan takes its sub from the template, -1 meaning "use
+            // the template's default" (goal-panel-and-ts-order.md section 3).
+            Assert.Equal(-1.0, row.Exposure);
         }
 
         [Fact]
@@ -747,7 +758,8 @@ namespace ACP.NINA.Plugin.Tests {
                 plans, TsTestPlans.Gear(), TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
             var row = payload.PlansByTargetGuid.Values.Single().Single();
 
-            Assert.Equal(300.0, row.Exposure);
+            Assert.Equal(-1.0, row.Exposure);
+            Assert.Equal(300.0, payload.Templates.Single().DefaultExposure);
             Assert.Equal(12, row.Desired);
         }
 
@@ -774,9 +786,12 @@ namespace ACP.NINA.Plugin.Tests {
             var gear = TsTestPlans.Gear();
             gear.Cameras[0].Filters["OIII"].TsTemplateName = null;
 
+            // A plan from an ACP before filter rows, whose rows the push
+            // derives from its goals with this camera.
+            var plan = TsTestPlans.Plan("p", projectName: "P", targetName: "T");
+            plan.FilterRows = null;
             var payload = TsConvert.BuildPayload(
-                new List<Plan> { TsTestPlans.Plan("p", projectName: "P", targetName: "T") },
-                gear, TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
+                new List<Plan> { plan }, gear, TsTestPlans.ProfileId, TsTestPlans.FrozenNow);
 
             Assert.Equal("OIII (Test IMX571)", payload.Templates[0].Name);
         }
