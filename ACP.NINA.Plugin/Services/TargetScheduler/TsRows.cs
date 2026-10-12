@@ -72,6 +72,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return null;
         }
 
+        /// A row's filter for a goal key or a TS filtername: the one
+        /// vocabulary ACP's migration, both writers and the importer share
+        /// (Fixtures/row_filter_cases.json, the same table the Python sync
+        /// and ACP test against). The known filter it names, else the
+        /// trimmed name as it is. Matches row_filter in nina_ts_sync/rows.py.
+        public static string RowFilter(string name) {
+            return KnownFilter(name) ?? (name ?? string.Empty).Trim();
+        }
+
+        /// Whether two filter names are the same row filter. A difference
+        /// only canonicalisation makes is never an edit.
+        public static bool SameFilter(string a, string b) {
+            return string.Equals(RowFilter(a), RowFilter(b), StringComparison.Ordinal);
+        }
+
         private static int FilterRank(string name) {
             var i = Array.IndexOf(FilterOrder, name);
             return i >= 0 ? i : FilterOrder.Length;
