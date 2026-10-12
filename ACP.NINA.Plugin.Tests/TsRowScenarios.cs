@@ -53,6 +53,7 @@ namespace ACP.NINA.Plugin.Tests {
             "x3b_added_row_at_end_keeps_hand_order",
             "x4_goal_raised_from_zero_keeps_hand_order",
             "x5_stale_sync_rows_refreshed_hand_rows_kept",
+            "x6_readded_row_with_no_rows_writes_acps_order",
         };
 
         public static TsSyncOutcome Run(string name, TargetSchedulerDb db) {
@@ -87,6 +88,7 @@ namespace ACP.NINA.Plugin.Tests {
                 case "x3b_added_row_at_end_keeps_hand_order": return X3b(db);
                 case "x4_goal_raised_from_zero_keeps_hand_order": return X4(db);
                 case "x5_stale_sync_rows_refreshed_hand_rows_kept": return X5(db);
+                case "x6_readded_row_with_no_rows_writes_acps_order": return X6(db);
                 default: throw new ArgumentOutOfRangeException(nameof(name), name, null);
             }
         }
@@ -747,6 +749,22 @@ namespace ACP.NINA.Plugin.Tests {
             SetOverride(db.Connection, M42TargetId(db.Connection), new[] { Tuple.Create(0, 1), Tuple.Create(0, 0) });
             Link(db, Push(db, plan), plan);
             plan.FilterRows.First(r => r.Id == "row-oiii").TargetFrames = 4;
+            return Push(db, plan);
+        }
+
+        /// Natural order Ha, OIII so no rows exist. Ha is removed and pushed
+        /// (its plan is disabled, base and TS rows both empty), then added
+        /// back at the end. The plan keeps its lower Id, so TS would shoot Ha
+        /// first; ACP's order matched the natural order before the push, so the
+        /// rows are written. As x6.
+        public static TsSyncOutcome X6(TargetSchedulerDb db) {
+            var plan = M42Plan(
+                TsTestPlans.Row("row-ha", "Ha", "Ha", 300, frames: 4),
+                TsTestPlans.Row("row-oiii", "OIII", "OIII", 300, frames: 4));
+            Link(db, Push(db, plan), plan);
+            plan.FilterRows = plan.FilterRows.Where(r => r.Id != "row-ha").ToList();
+            Link(db, Push(db, plan), plan);
+            plan.FilterRows.Add(TsTestPlans.Row("row-ha2", "Ha", "Ha", 300, frames: 4));
             return Push(db, plan);
         }
 
