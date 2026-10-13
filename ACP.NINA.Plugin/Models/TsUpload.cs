@@ -111,6 +111,71 @@ namespace ACP.NINA.Plugin.Models {
 
         [JsonProperty("states")]
         public List<TsLinkState> States { get; set; } = new List<TsLinkState>();
+
+        /// What the push did to each gear template, for a filter that has
+        /// templates. Empty (and left out) from a push against today's ACP.
+        [JsonProperty("templates", NullValueHandling = NullValueHandling.Ignore)]
+        public List<TsTemplateResult> Templates { get; set; }
+
+        /// What this plugin can do with template links. ACP sets
+        /// links_capable from it and deletes the entry when it is missing.
+        [JsonProperty("capabilities")]
+        public List<string> Capabilities { get; set; } = new List<string>(TsLinksCapabilities);
+
+        public static readonly string[] TsLinksCapabilities = { "templates", "repoint" };
+
+        /// True when every repoint_from move of this push was done, so ACP
+        /// clears the lists. Left out when the push moved nothing.
+        [JsonProperty("repoint_done", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? RepointDone { get; set; }
+    }
+
+    /// What the writer did with one gear template, per
+    /// docs/specs/gear-templates.md section 8.
+    public class TsTemplateResult {
+
+        /// The gear template's id.
+        [JsonProperty("template_id")]
+        public string TemplateId { get; set; }
+
+        [JsonProperty("ts_id", NullValueHandling = NullValueHandling.Include)]
+        public int? TsId { get; set; }
+
+        [JsonProperty("guid")]
+        public string Guid { get; set; }
+
+        /// The values TS holds after the push, except that a field the push
+        /// left alone (a held conflict, a name it skipped, a field TS changed
+        /// that the pull will take) keeps its old base value.
+        [JsonProperty("base")]
+        public GearTemplateBase Base { get; set; }
+
+        /// inserted, updated, unchanged, adopted, conflict or skipped.
+        [JsonProperty("action")]
+        public string Action { get; set; }
+
+        [JsonProperty("fields_written")]
+        public List<string> FieldsWritten { get; set; } = new List<string>();
+
+        /// Fields held because both sides changed them: field, ACP's value
+        /// and TS's.
+        [JsonProperty("conflicts", NullValueHandling = NullValueHandling.Ignore)]
+        public List<TsTemplateConflict> Conflicts { get; set; }
+
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
+    }
+
+    public class TsTemplateConflict {
+
+        [JsonProperty("field")]
+        public string Field { get; set; }
+
+        [JsonProperty("acp")]
+        public object Acp { get; set; }
+
+        [JsonProperty("ts")]
+        public object Ts { get; set; }
     }
 
     public class TsLinkState {

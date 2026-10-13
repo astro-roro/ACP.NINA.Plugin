@@ -51,7 +51,7 @@ namespace ACP.NINA.Plugin.Tests {
 
             var body = JObject.Parse(post.Body);
             Assert.Equal(Profile, (string)body["profile_id"]);
-            Assert.NotNull(DateTime.Parse((string)body["sent_at"]));
+            Assert.NotNull(DateTime.Parse((string)body["sent_at"], System.Globalization.CultureInfo.InvariantCulture));
             var templates = (JArray)body["templates"];
             Assert.Equal(new[] { "L", "R", "R Stars" }, templates.Select(t => (string)t["name"]).ToArray());
             var stars = templates.First(t => (string)t["name"] == "R Stars");

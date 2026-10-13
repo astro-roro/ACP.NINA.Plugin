@@ -68,11 +68,15 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         [Fact]
-        public void AFilterMissingFromTheWheelIsKeptAndReported() {
+        public void AFilterMissingFromTheWheelIsSkippedAndReported() {
+            // docs/specs/gear-templates.md L6: a filter with no slot is not on
+            // the wheel yet. Its rows are skipped and named, not pushed with a
+            // warning as before.
             var payload = Build(new[] { "L", "R", "G", "B", "H" });
 
             Assert.Contains("OIII", payload.FiltersNotOnWheel);
-            Assert.Contains(payload.Templates, t => t.FilterName == "OIII");
+            Assert.DoesNotContain(payload.Templates, t => t.FilterName == "OIII");
+            Assert.Contains(payload.SyncNotes, n => n.Contains("OIII is not on the wheel"));
             Assert.Equal("H", payload.FilterRenames["Ha"]);
         }
 
@@ -88,11 +92,11 @@ namespace ACP.NINA.Plugin.Tests {
             var result = new TsPushResult { Success = true, Outcome = new TsSyncOutcome() };
             result.Pushed.Add("NGC 7000");
             result.FilterRenames["OIII"] = "O";
-            result.FiltersNotOnWheel.Add("Duo");
+            result.SyncNotes.Add("Test IMX571: Duo is not on the wheel of Foo yet, so 1 row was skipped: NGC 7000 Duo.");
 
             var line = result.Summary();
             Assert.Contains("OIII as O", line);
-            Assert.Contains("no slot for Duo", line);
+            Assert.Contains("Duo is not on the wheel of Foo yet", line);
         }
 
         private static TsSyncPayload Build(IReadOnlyList<string> wheel) {
