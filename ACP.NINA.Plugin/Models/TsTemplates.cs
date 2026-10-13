@@ -38,5 +38,49 @@ namespace ACP.NINA.Plugin.Models {
 
         [JsonProperty("bin")]
         public int Bin { get; set; }
+
+        /// exposuretemplate.Id, and the guid on the row. Both are what ACP
+        /// needs to link a gear template to its TS row. A list whose
+        /// templates carry no id comes from an older plugin and never
+        /// triggers adoption or Tidy.
+        [JsonProperty("id")]
+        public int Id { get; set; }
+
+        [JsonProperty("guid")]
+        public string Guid { get; set; }
+
+        /// The columns Tidy compares when it shows what a choice drops.
+        [JsonProperty("moonavoidanceenabled")]
+        public int MoonAvoidanceEnabled { get; set; }
+
+        [JsonProperty("moonavoidanceseparation")]
+        public double MoonAvoidanceSeparation { get; set; }
+
+        [JsonProperty("moonavoidancewidth")]
+        public int MoonAvoidanceWidth { get; set; }
+
+        [JsonProperty("twilightlevel")]
+        public int TwilightLevel { get; set; }
+
+        [JsonProperty("maximumhumidity")]
+        public double MaximumHumidity { get; set; }
+
+        [JsonProperty("ditherevery")]
+        public int DitherEvery { get; set; }
+
+        /// Every exposure plan using the template, enabled or not, at most
+        /// 5000. ACP reads `exposure` to tell a plan that follows the
+        /// template's default (-1) from one with its own.
+        [JsonProperty("plans")]
+        public List<TsTemplatePlan> Plans { get; set; } = new List<TsTemplatePlan>();
+    }
+
+    public class TsTemplatePlan {
+
+        [JsonProperty("id")]
+        public int Id { get; set; }
+
+        [JsonProperty("exposure")]
+        public double Exposure { get; set; }
     }
 }
