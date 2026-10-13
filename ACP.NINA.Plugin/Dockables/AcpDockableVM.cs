@@ -37,6 +37,7 @@ namespace ACP.NINA.Plugin.Dockables {
         private readonly IAcpPlateSolver plateSolver;
         private readonly ISyncForTonightRunner syncRunner;
         private readonly ITsPushService tsPush;
+        private readonly IGearFingerprintService fingerprintService;
         private readonly AcpSettings settings;
 
         [ImportingConstructor]
@@ -47,8 +48,10 @@ namespace ACP.NINA.Plugin.Dockables {
             ISyncForTonightRunner syncRunner,
             ITsPushService tsPush,
             [Import(AllowDefault = true)] IMessageBroker messageBroker,
-            [Import(AllowDefault = true)] ITsContainerWatch containerWatch
+            [Import(AllowDefault = true)] ITsContainerWatch containerWatch,
+            [Import(AllowDefault = true)] IGearFingerprintService fingerprintService
         ) : base(profileService) {
+            this.fingerprintService = fingerprintService;
             this.framingAssistantVM = framingAssistantVM;
             this.plateSolver = plateSolver;
             this.syncRunner = syncRunner;
@@ -883,36 +886,20 @@ namespace ACP.NINA.Plugin.Dockables {
                 LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
 
                 var client = new AcpApiClient(AcpSettings.Load().ServerUrl);
-                var plans = (await client.GetPlansAsync().ConfigureAwait(false))?.Plans ?? new List<Plan>();
-                GearResponse gear = null;
-                try {
-                    gear = await client.GetGearAsync().ConfigureAwait(false);
-                } catch (AcpUnauthorizedException) {
-                    throw;
-                } catch (Exception ex) {
-                    // Without gear the rows still load, with no mosaic panels
-                    // and default exposure settings, as Sync for tonight does.
-                    Logger.Warning($"ACP: could not read gear for Sync All to TS: {ex.Message}");
-                }
                 var wheelFilters = profile.FilterWheelSettings?.FilterWheelFilters?
                     .Select(f => f?.Name)
                     .Where(n => !string.IsNullOrWhiteSpace(n))
                     .ToList();
 
-                var result = await tsPush
-                    .PushAsync(plans, gear, profileId, default, wheelFilters)
+                // The fingerprint, the template list, then the push. See
+                // TsSyncAllRunner.
+                var run = await TsSyncAllRunner
+                    .RunAsync(client, fingerprintService, tsPush, profileId, profile.Name,
+                        wheelFilters, AcpSettings.Load().SyncMode)
                     .ConfigureAwait(false);
+                var result = run.Push;
                 InvalidateProgressCaches();
-
-                // Tell ACP what was written. A failure costs a warning, not
-                // the sync.
-                string linksWarning = null;
-                if (result.Success) {
-                    linksWarning = await TsLinksReporter.PostAsync(client, result, profileId)
-                        .ConfigureAwait(false);
-                    await TsTemplatesReporter.PostAsync(client, result, profileId)
-                        .ConfigureAwait(false);
-                }
+                var linksWarning = run.LinksWarning;
                 var line = (result.Success ? "✓ " : "✗ ") + result.Summary() +
                            (linksWarning == null ? string.Empty : " " + linksWarning);
 

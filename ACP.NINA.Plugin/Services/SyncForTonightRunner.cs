@@ -212,8 +212,27 @@ namespace ACP.NINA.Plugin.Services {
                 .Select(f => f?.Name)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .ToList();
+
+            // Send the template list as the database holds it, then read gear
+            // again, so ACP's pull of edits made in Target Scheduler runs
+            // before the push and the push sees the gear it produced
+            // (docs/specs/gear-templates.md section 9). The writers do not
+            // rely on the order, so a failure here only costs freshness.
+            try {
+                var current = await tsPush.ReadTemplatesAsync(profileId, token).ConfigureAwait(false);
+                if (current != null &&
+                    await TsTemplatesReporter.PostAsync(client, current, profileId, token).ConfigureAwait(false)) {
+                    gear = await client.GetGearAsync(token).ConfigureAwait(false) ?? gear;
+                }
+            } catch (AcpUnauthorizedException) {
+                throw;
+            } catch (Exception ex) {
+                Logger.Warning($"ACP: could not refresh the template list and gear before the push: {ex.Message}");
+            }
+
             outcome.TsPush = await tsPush
-                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token, wheelFilters)
+                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token, wheelFilters,
+                    profileService?.ActiveProfile?.Name)
                 .ConfigureAwait(false);
             outcome.Lines.Add(outcome.TsPush.Summary());
 
