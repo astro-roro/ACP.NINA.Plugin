@@ -52,8 +52,22 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public SortedDictionary<string, string> FilterRenames { get; } =
             new SortedDictionary<string, string>(StringComparer.Ordinal);
 
-        /// Plan filter names the wheel has no slot for.
+        /// Plan filter names the wheel has no slot for. Their rows are
+        /// skipped, not pushed (docs/specs/gear-templates.md section 5).
         public List<string> FiltersNotOnWheel { get; } = new List<string>();
+
+        /// What the gear template writer did with each gear template of the
+        /// pushed plans' cameras. Empty against today's ACP.
+        public List<TsTemplateResult> GearResults { get; } = new List<TsTemplateResult>();
+
+        /// Lines worth reading after the sync: rows skipped for a filter not
+        /// on the wheel, a template field held on a conflict, a rename that
+        /// waits. Shown after Sync for tonight and Sync All to TS.
+        public List<string> SyncNotes { get; } = new List<string>();
+
+        /// True when the push moved the plans listed in some template's
+        /// repoint_from, so ACP can clear the lists.
+        public bool RepointDone { get; set; }
 
         /// The line the spec asks for: N plans synced, M left out and why.
         public string Summary() {
@@ -73,9 +87,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 var pairs = string.Join(", ", FilterRenames.Select(kv => $"{kv.Key} as {kv.Value}"));
                 line += $" Filters written under the wheel's names: {pairs}.";
             }
-            if (FiltersNotOnWheel.Count > 0) {
-                line += $" The filter wheel has no slot for {string.Join(", ", FiltersNotOnWheel)}, " +
-                        "so Target Scheduler will not run those exposures.";
+            foreach (var note in SyncNotes) {
+                line += " " + (note.EndsWith(".", StringComparison.Ordinal) ? note : note + ".");
             }
             if (Outcome.ConflictLines.Count > 0) {
                 line += " " + string.Join(" ", Outcome.ConflictLines.Select(l => l + "."));
@@ -120,7 +133,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             GearResponse gear,
             string profileId,
             CancellationToken token = default,
-            IReadOnlyList<string> wheelFilters = null
+            IReadOnlyList<string> wheelFilters = null,
+            string profileName = null
+        );
+
+        /// Every exposure template the profile holds now, read without
+        /// writing, with each one's id, guid and plans. Null when the
+        /// database cannot be read. Sent to ACP before a sync so its pull runs
+        /// first (docs/specs/gear-templates.md section 9).
+        Task<IReadOnlyList<TsExposureTemplate>> ReadTemplatesAsync(
+            string profileId,
+            CancellationToken token = default
         );
 
         /// Write the state column, and only that column, for every plan in
@@ -180,7 +203,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             GearResponse gear,
             string profileId,
             CancellationToken token = default,
-            IReadOnlyList<string> wheelFilters = null
+            IReadOnlyList<string> wheelFilters = null,
+            string profileName = null
         ) {
             var result = new TsPushResult();
             plans = plans ?? new List<Plan>();
@@ -243,7 +267,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                 TsSyncPayload payload;
                 try {
-                    payload = TsConvert.BuildPayload(plans, gear, profileId, clock(), wheelFilters);
+                    payload = TsConvert.BuildPayload(plans, gear, profileId, clock(), wheelFilters, null, profileName);
                     foreach (var kv in payload.FilterRenames) result.FilterRenames[kv.Key] = kv.Value;
                     result.FiltersNotOnWheel.AddRange(payload.FiltersNotOnWheel);
                 } catch (TsPushValidationException ex) {
@@ -258,6 +282,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     result.Failure =
                         "None of the plans had a filter goal with hours on it, so there was " +
                         "nothing to write.";
+                    if (payload.SyncNotes.Count > 0) {
+                        result.Failure = "None of the plans had a row to write. " +
+                            string.Join(" ", payload.SyncNotes) + " Nothing was written.";
+                    }
                     return result;
                 }
 
@@ -278,6 +306,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     // 2026-10-09 sync made duplicates.
                     foreach (var note in result.Outcome.Notes) {
                         Logger.Info($"ACP: sync note: {note}");
+                    }
+                    result.GearResults.AddRange(result.Outcome.GearResults);
+                    result.RepointDone = result.Outcome.RepointDone == true;
+                    foreach (var line in payload.SyncNotes.Concat(result.Outcome.SyncNotes)) {
+                        if (!result.SyncNotes.Contains(line)) result.SyncNotes.Add(line);
                     }
                     if (result.Outcome.MigratedGuids > 0) {
                         Logger.Info(
@@ -328,6 +361,30 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
                 result.Success = true;
                 return result;
+            }
+        }
+
+        public Task<IReadOnlyList<TsExposureTemplate>> ReadTemplatesAsync(
+            string profileId,
+            CancellationToken token = default
+        ) {
+            if (string.IsNullOrWhiteSpace(profileId)) return Task.FromResult<IReadOnlyList<TsExposureTemplate>>(null);
+            TargetSchedulerDb db;
+            try {
+                db = openDb(DbPathOverride);
+            } catch (Exception) {
+                return Task.FromResult<IReadOnlyList<TsExposureTemplate>>(null);
+            }
+            using (db) {
+                try {
+                    var snapshot = db.ReadAll(profileId);
+                    IReadOnlyList<TsExposureTemplate> templates =
+                        snapshot.TemplatesById.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
+                    return Task.FromResult(templates);
+                } catch (Exception ex) {
+                    Logger.Warning($"ACP: could not read the template list: {ex.Message}");
+                    return Task.FromResult<IReadOnlyList<TsExposureTemplate>>(null);
+                }
             }
         }
 

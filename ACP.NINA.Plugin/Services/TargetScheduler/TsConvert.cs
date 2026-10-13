@@ -81,9 +81,27 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             string profileId,
             long createDateUnix,
             IReadOnlyList<string> wheelFilters = null,
-            DateTimeOffset? now = null
+            DateTimeOffset? now = null,
+            string profileName = null
         ) {
-            var payload = new TsSyncPayload { ProfileId = profileId };
+            var payload = new TsSyncPayload {
+                ProfileId = profileId, ProfileName = profileName, WheelSlots = wheelFilters,
+            };
+            // Null means the caller gave no wheel at all, which keeps today's
+            // behaviour: names are written as the plan has them. A list is an
+            // answer, even an empty one: empty is "the wheel is unknown", and
+            // a list with no slot for a filter is "not on the wheel yet". Both
+            // skip the rows (docs/specs/gear-templates.md section 5).
+            var wheelGiven = wheelFilters != null;
+            var wheelKnown = wheelFilters != null && wheelFilters.Any(f => !string.IsNullOrWhiteSpace(f));
+            var profileLabel = string.IsNullOrWhiteSpace(profileName) ? "this profile" : profileName;
+            var gearWorkByKey = new Dictionary<string, TsGearWork>(StringComparer.Ordinal);
+            var templateByName = new Dictionary<string, TsExposureTemplate>(StringComparer.Ordinal);
+            // (camera, filter) to the rows skipped because the filter is not
+            // on the wheel, in the order met.
+            var offWheelOrder = new List<string>();
+            var offWheelRows = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            var offWheelOwner = new Dictionary<string, Tuple<string, string>>(StringComparer.Ordinal);
             // The moment the AAC freshness rule is judged at
             // (docs/specs/goal-panel-and-ts-order.md section 6).
             payload.AacNow = now ?? DateTimeOffset.FromUnixTimeSeconds(createDateUnix);
@@ -100,7 +118,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
             }
 
-            var seenTemplateNames = new HashSet<string>(StringComparer.Ordinal);
             var templateGuidByName = new Dictionary<string, string>(StringComparer.Ordinal);
             // Target identity to the ACP plan that produced it, so a collision
             // can say which two plans need looking at rather than just that one
@@ -208,35 +225,81 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     // One template per name per profile. The push looks each
                     // one up by name and inserts it only when TS has none
                     // (docs/specs/goal-panel-and-ts-order.md section 3,
-                    // "Templates").
+                    // "Templates"). A camera whose filters carry gear
+                    // templates is written by the gear template writer
+                    // instead, one template per gear template
+                    // (docs/specs/gear-templates.md section 8).
+                    if (camera != null) {
+                        RegisterGearTemplates(
+                            payload, camera, profileId, wheelFilters, wheelKnown, gearWorkByKey);
+                    }
+                    var owner = RowOwnerLabel(plan);
+                    var usable = new List<FilterRow>();
+                    var gearOf = new Dictionary<string, TsGearWork>(StringComparer.Ordinal);
                     foreach (var row in pushed) {
-                        var templateGuid = TsGuid.RowTemplate(profileId, row.Filter, cameraId, row.Template);
-                        if (!seenTemplateNames.Add(row.Template)) continue;
                         var filterCfg = FilterConfig(camera, row.Filter);
+                        var gearTemplates = filterCfg?.Templates;
+                        if (gearTemplates != null && gearTemplates.Count > 0) {
+                            var found = ResolveGearTemplate(gearTemplates, row);
+                            TsGearWork work;
+                            if (found == null ||
+                                !gearWorkByKey.TryGetValue(camera.Id + "|" + found.Id, out work)) {
+                                payload.Notes.Add($"{owner} {row.Filter}: template '{row.Template}' is not in gear, row skipped");
+                                payload.SyncNotes.Add($"{owner} {row.Filter}: template '{row.Template}' is not in gear, row skipped");
+                                continue;
+                            }
+                            if (work.OffWheel) {
+                                NoteOffWheelRow(
+                                    camera, row.Filter, owner, offWheelOrder, offWheelRows, offWheelOwner);
+                                payload.FiltersNotOnWheel.Add(row.Filter);
+                                continue;
+                            }
+                            work.RowLabels.Add($"{owner} {row.Filter}");
+                            gearOf[row.Id] = work;
+                            usable.Add(row);
+                            continue;
+                        }
 
                         // Identity uses the row's own filter. Only the
                         // written filter name follows the wheel's spelling.
                         var filterName = row.Filter;
-                        if (wheelFilters != null && wheelFilters.Count > 0) {
+                        if (wheelKnown) {
                             var slot = TsFilterNames.ResolveToWheel(row.Filter, wheelFilters);
                             if (slot == null) {
+                                NoteOffWheelRow(
+                                    camera, row.Filter, owner, offWheelOrder, offWheelRows, offWheelOwner);
                                 payload.FiltersNotOnWheel.Add(row.Filter);
-                            } else if (!string.Equals(slot, row.Filter, StringComparison.Ordinal)) {
+                                continue;
+                            }
+                            if (!string.Equals(slot, row.Filter, StringComparison.Ordinal)) {
                                 payload.FilterRenames[row.Filter] = slot;
                                 filterName = slot;
                             }
                         }
+                        usable.Add(row);
 
-                        payload.Templates.Add(new TsExposureTemplate {
+                        var templateGuid = TsGuid.RowTemplate(profileId, row.Filter, cameraId, row.Template);
+                        TsExposureTemplate seenTemplate;
+                        if (templateByName.TryGetValue(row.Template, out seenTemplate)) {
+                            seenTemplate.RowLabels.Add($"{owner} {row.Filter}");
+                            continue;
+                        }
+                        var legacyFilterCfg = filterCfg;
+                        var legacyTemplate = new TsExposureTemplate {
                             ProfileId = profileId,
                             Name = row.Template,
                             FilterName = filterName,
                             Guid = templateGuid,
                             DefaultExposure = TsRows.SubS(row),
-                            Gain = filterCfg?.Gain ?? -1,
-                            Offset = filterCfg?.Offset ?? -1,
-                            Bin = filterCfg?.Bin ?? 1,
-                        });
+                            Gain = legacyFilterCfg?.Gain ?? -1,
+                            Offset = legacyFilterCfg?.Offset ?? -1,
+                            Bin = legacyFilterCfg?.Bin ?? 1,
+                            SkipIfMissing = wheelGiven && !wheelKnown,
+                            CameraName = camera?.Name,
+                        };
+                        legacyTemplate.RowLabels.Add($"{owner} {row.Filter}");
+                        payload.Templates.Add(legacyTemplate);
+                        templateByName[row.Template] = legacyTemplate;
                         templateGuidByName[row.Template] = templateGuid;
                     }
 
@@ -338,16 +401,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                                     BaseSnapshotFor(plan, profileId)?["exposure_plans_by_panel_filter"] as Newtonsoft.Json.Linq.JObject),
                             };
                         }
-                        foreach (var row in pushed) {
+                        foreach (var row in usable) {
                             var planGuid = TsGuid.RowPlan(profileId, targetGuid, row.Filter, row.Template);
                             var acquired = TsRows.AcquiredFrames(row);
                             var wanted = TsRows.DesiredFor(row, plan);
+                            TsGearWork rowWork;
+                            gearOf.TryGetValue(row.Id, out rowWork);
+                            var rowSub = TsRows.SubS(row);
+                            // A row on a gear template inserts its plan on the
+                            // template's default (-1) when it follows it, and
+                            // with its own sub when it deviates, so TS never
+                            // shoots a sub other than the row's.
+                            var follows = rowWork != null && SameSub(rowSub, rowWork.Template.SubS);
                             targetPlans.Add(new TsExposurePlan {
                                 ProfileId = profileId,
                                 TargetId = 0,
                                 ExposureTemplateId = 0,
                                 Guid = planGuid,
-                                Exposure = -1.0,
+                                Exposure = rowWork == null || follows ? -1.0 : rowSub,
                                 Desired = wanted,
                                 Acquired = acquired,
                                 Accepted = acquired,
@@ -358,7 +429,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             } else {
                                 aac.AcceptedByPlanGuid[planGuid] = counted.Value;
                             }
-                            payload.TemplateGuidByPlanGuid[planGuid] = templateGuidByName[row.Template];
+                            payload.TemplateGuidByPlanGuid[planGuid] = rowWork != null
+                                ? rowWork.Guid
+                                : templateGuidByName[row.Template];
 
                             var lookup = new TsPlanLookup { Label = $"{targetName} {TsRows.RowLabel(row)}", RowId = row.Id };
                             lookup.OldGuids.Add(TsGuid.ExposurePlan(profileId, targetGuid, row.Template));
@@ -374,8 +447,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             var seen = basePlans?[$"{panelKey}_{row.Id}"] as Newtonsoft.Json.Linq.JObject;
                             var seenFilter = (string)seen?["filter"];
                             var seenTemplate = (string)seen?["template"];
-                            lookup.TemplateChanged = !derived && !string.IsNullOrEmpty(seenTemplate) &&
-                                (!TsRows.SameFilter(seenFilter, row.Filter) || seenTemplate != row.Template);
+                            if (rowWork == null) {
+                                lookup.TemplateChanged = !derived && !string.IsNullOrEmpty(seenTemplate) &&
+                                    (!TsRows.SameFilter(seenFilter, row.Filter) || seenTemplate != row.Template);
+                            } else {
+                                lookup.GearMode = true;
+                                lookup.RowSubS = rowSub;
+                                lookup.RowFollows = follows;
+                                var seenSub = JsonNumberOf(seen?["template_sub_s"]);
+                                lookup.RowSubChanged = seenSub.HasValue && !SameSub(seenSub.Value, rowSub);
+                                lookup.TemplateChanged = GearRowMoved(seen, rowWork.Template, profileId);
+                                var link = rowWork.Template.LinkFor(profileId);
+                                if (link?.RepointFrom != null) {
+                                    foreach (var fromId in link.RepointFrom) lookup.RepointFrom.Add(fromId);
+                                }
+                            }
                             payload.PlanLookupByGuid[planGuid] = lookup;
                         }
 
@@ -415,7 +501,144 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 if (aac.AcceptedByPlanGuid.Count == 0 && aac.Blocked == null) aac.Blocked = "no row has AAC figures yet";
             }
 
+            // The rows a filter that is not on the wheel kept out, said once
+            // per camera and filter (docs/specs/gear-templates.md section 5).
+            foreach (var key in offWheelOrder) {
+                var rowsHere = offWheelRows[key];
+                var who = offWheelOwner[key];
+                var line = $"{who.Item1}: {who.Item2} is not on the wheel of {profileLabel} yet, " +
+                           $"so {rowsHere.Count} {(rowsHere.Count == 1 ? "row was" : "rows were")} skipped: " +
+                           $"{string.Join(", ", rowsHere)}.";
+                payload.Notes.Add(line);
+                payload.SyncNotes.Add(line);
+            }
+
             return payload;
+        }
+
+        // -- Gear templates --------------------------------------------------
+
+        /// Add the camera's gear templates to the payload's work list, once
+        /// per camera, in gear order. A filter is on the wheel when the
+        /// profile's slots hold one for it (TsFilterNames.ResolveToWheel). The
+        /// template is registered either way: the gear template writer reports
+        /// it, and skips it when the filter is off the wheel.
+        private static void RegisterGearTemplates(
+            TsSyncPayload payload, Camera camera, string profileId, IReadOnlyList<string> wheelFilters,
+            bool wheelKnown, Dictionary<string, TsGearWork> workByKey
+        ) {
+            if (camera?.Filters == null || string.IsNullOrEmpty(camera.Id)) return;
+            foreach (var pair in camera.Filters) {
+                var templates = pair.Value?.Templates;
+                if (templates == null || templates.Count == 0) continue;
+                string slot = null;
+                var offWheel = false;
+                if (wheelKnown) {
+                    slot = TsFilterNames.ResolveToWheel(pair.Key, wheelFilters);
+                    offWheel = slot == null;
+                }
+                foreach (var template in templates) {
+                    if (template == null || string.IsNullOrEmpty(template.Id)) continue;
+                    var key = camera.Id + "|" + template.Id;
+                    if (workByKey.ContainsKey(key)) continue;
+                    var work = new TsGearWork {
+                        CameraId = camera.Id,
+                        CameraName = camera.Name,
+                        Filter = pair.Key,
+                        Template = template,
+                        Slot = slot,
+                        OffWheel = offWheel,
+                        Guid = TsGuid.GearTemplate(profileId, template.Id),
+                    };
+                    workByKey[key] = work;
+                    payload.GearWorks.Add(work);
+                    payload.Templates.Add(new TsExposureTemplate {
+                        ProfileId = profileId,
+                        Name = template.Name,
+                        FilterName = slot ?? string.Empty,
+                        Guid = work.Guid,
+                        DefaultExposure = template.SubS,
+                        Gain = template.Gain,
+                        Offset = template.Offset,
+                        Bin = template.Bin,
+                        Gear = work,
+                        CameraName = camera.Name,
+                    });
+                }
+            }
+        }
+
+        /// The gear template a row uses: its template_id, else its template
+        /// name, else an alias or a ts_names entry. Null when none matches, and
+        /// then the row is skipped with a note. There is no fallback to the
+        /// starred template.
+        public static GearTemplate ResolveGearTemplate(List<GearTemplate> templates, FilterRow row) {
+            if (templates == null || row == null) return null;
+            if (!string.IsNullOrEmpty(row.TemplateId)) {
+                var byId = templates.FirstOrDefault(t => t != null && string.Equals(t.Id, row.TemplateId, StringComparison.Ordinal));
+                if (byId != null) return byId;
+            }
+            var name = row.Template;
+            if (string.IsNullOrEmpty(name)) return null;
+            return templates.FirstOrDefault(t => t != null && string.Equals(t.Name, name, StringComparison.Ordinal))
+                ?? templates.FirstOrDefault(t => t?.Aliases != null && t.Aliases.Contains(name))
+                ?? templates.FirstOrDefault(t => t?.TsNames != null && t.TsNames.Contains(name));
+        }
+
+        /// Whether ACP moved the row to another template since the last push
+        /// (docs/specs/gear-templates.md section 8, "Which template a plan is
+        /// on"). The base entry's template_id is compared with the row's. A
+        /// base from before gear templates has the template's name only: the
+        /// row is unchanged when that name is one the template is known by.
+        /// No base entry at all is not a change.
+        private static bool GearRowMoved(Newtonsoft.Json.Linq.JObject seen, GearTemplate template, string profileId) {
+            if (seen == null) return false;
+            var seenId = (string)seen["template_id"];
+            if (!string.IsNullOrEmpty(seenId)) {
+                return !string.Equals(seenId, template.Id, StringComparison.Ordinal);
+            }
+            var seenName = (string)seen["template"];
+            if (string.IsNullOrEmpty(seenName)) return false;
+            if (string.Equals(seenName, template.Name, StringComparison.Ordinal)) return false;
+            if (template.Aliases != null && template.Aliases.Contains(seenName)) return false;
+            if (template.TsNames != null && template.TsNames.Contains(seenName)) return false;
+            var baseName = template.LinkFor(profileId)?.Base?.Name;
+            if (baseName != null && string.Equals(seenName, baseName, StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        private static void NoteOffWheelRow(
+            Camera camera, string filter, string owner, List<string> order,
+            Dictionary<string, List<string>> rowsByKey, Dictionary<string, Tuple<string, string>> whoByKey
+        ) {
+            var cameraName = camera?.Name ?? "The camera";
+            var key = (camera?.Id ?? string.Empty) + "|" + filter;
+            List<string> list;
+            if (!rowsByKey.TryGetValue(key, out list)) {
+                list = new List<string>();
+                rowsByKey[key] = list;
+                whoByKey[key] = Tuple.Create(cameraName, filter);
+                order.Add(key);
+            }
+            list.Add($"{owner} {filter}");
+        }
+
+        /// The plan's target name for a note, the plan id when it has none.
+        private static string RowOwnerLabel(Plan plan) {
+            var name = (plan?.Target?.Name ?? string.Empty).Trim();
+            if (name.Length > 0) return name;
+            return FirstNonEmpty(plan?.Id, "Untitled");
+        }
+
+        private static bool SameSub(double a, double b) {
+            return Math.Abs(a - b) < 1e-9;
+        }
+
+        private static double? JsonNumberOf(Newtonsoft.Json.Linq.JToken token) {
+            if (token == null) return null;
+            if (token.Type != Newtonsoft.Json.Linq.JTokenType.Integer
+                && token.Type != Newtonsoft.Json.Linq.JTokenType.Float) return null;
+            return (double)token;
         }
 
         // -- Grouping and constraints ---------------------------------------
