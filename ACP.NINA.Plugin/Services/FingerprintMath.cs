@@ -1,3 +1,4 @@
+using ACP.NINA.Plugin.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -71,6 +72,20 @@ namespace ACP.NINA.Plugin.Services {
                 .OrderBy(f => f.Item2)
                 .Select(f => f.Item1.Trim())
                 .ToList();
+        }
+
+        /// Put the profile's id and its wheel slots on the fingerprint. The
+        /// slots come from the profile in slot order whether or not the wheel
+        /// is connected, because ACP needs the wheel to judge which filters a
+        /// camera has even on a daytime sync. `Filters` is left as it is: it
+        /// is empty with no wheel connected, and ACP reads that as OSC for a
+        /// colour camera. docs/specs/gear-templates.md section 5.
+        public static void ApplyProfileWheel(
+            Fingerprint fingerprint, string profileId, IEnumerable<Tuple<string, int>> profileSlots
+        ) {
+            if (fingerprint == null) return;
+            fingerprint.ProfileId = string.IsNullOrWhiteSpace(profileId) ? null : profileId;
+            fingerprint.WheelSlots = FingerprintMath.FilterNamesInSlotOrder(profileSlots);
         }
 
         /// The 5 percent rule from the spec. A RedCat solving at 248 mm against
