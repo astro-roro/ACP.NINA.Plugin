@@ -17,7 +17,7 @@ namespace ACP.NINA.Plugin.Tests {
     /// empty database at user_version 28 and returns the last push's outcome.
     /// Every step is a push, a link, or a plain SQL edit, so the two sides
     /// start each push from the same database.
-    public static class TsRowScenarios {
+    public static partial class TsRowScenarios {
 
         private const string Profile = TsTestPlans.ProfileId;
         private const string M42 = "M42";
