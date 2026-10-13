@@ -40,6 +40,19 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("profile_name")]
         public string ProfileName { get; set; }
 
+        /// The NINA profile's id. TS keeps templates per profile id, so ACP
+        /// cannot join a fingerprint to a TS profile without it. An older ACP
+        /// ignores the field.
+        [JsonProperty("profile_id", NullValueHandling = NullValueHandling.Ignore)]
+        public string ProfileId { get; set; }
+
+        /// The slot names from the profile in slot order, whether or not the
+        /// wheel is connected. `filters` above stays empty with no wheel
+        /// connected, which ACP reads as OSC for a colour camera; this does
+        /// not, so ACP knows the wheel without the wheel being attached.
+        [JsonProperty("wheel_slots")]
+        public List<string> WheelSlots { get; set; } = new List<string>();
+
         [JsonProperty("nina_version")]
         public string NinaVersion { get; set; }
 
