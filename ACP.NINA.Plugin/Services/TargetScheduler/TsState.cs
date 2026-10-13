@@ -430,6 +430,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "desired", desired },
                 { "acquired", ep.Acquired },
                 { "accepted", ep.Accepted },
+                { "enabled", ep.Enabled },
                 { "exposure", ep.Exposure },
                 { "filter", filter },
                 { "template", template },

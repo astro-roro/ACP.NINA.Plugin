@@ -218,6 +218,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     written.Add(planId);
                     writtenRows.Add(lookup.RowId ?? plan.Guid);
                     if (wasInsert) inserted.Add(planId);
+                    if (plan.Enabled == 0) {
+                        outcome.KeptDisabled.Add(lookup.Label);
+                        var kept = $"{lookup.Label}: turned off in TS, so the sync left it off.";
+                        outcome.Notes.Add(kept);
+                        outcome.SyncNotes.Add(kept);
+                    }
                     NoteExposureMismatch(conn, planId, lookup.Label, outcome);
                 }
                 List<TsRemovedPlan> removedPlans;
@@ -925,6 +931,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         ) {
             inserted = false;
             var found = FindExposurePlan(conn, plan, lookup, used);
+            // A plan the last sync left enabled and TS now has disabled was
+            // turned off in TS by the user: it stays off.
+            if (found.HasValue && lookup.InBase) {
+                var enabledRow = ReadRow(conn, "SELECT enabled FROM exposureplan WHERE Id = $id", found.Value);
+                if (enabledRow != null && enabledRow[0] != null && enabledRow[0] != DBNull.Value
+                    && ToInt(enabledRow[0]) == 0) {
+                    plan.Enabled = 0;
+                }
+            }
             var move = !found.HasValue || lookup.TemplateChanged;
             var writeExposure = false;
             if (found.HasValue && lookup.GearMode) {
@@ -1577,6 +1592,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         /// Exposure plans of rows removed in ACP, set to enabled 0 by this push.
         public int DisabledPlans { get; set; }
+
+        /// "M42 R" for each plan the user turned off in TS since the last
+        /// sync, which this push left off.
+        public List<string> KeptDisabled { get; } = new List<string>();
 
         /// "M42 R: TS shoots 300 s, template R says 180 s" for every written
         /// plan whose own exposure overrides its template's default.

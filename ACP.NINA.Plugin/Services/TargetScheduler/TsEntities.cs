@@ -465,6 +465,12 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public List<string> OldGuids { get; } = new List<string>();
         public bool TemplateChanged { get; set; }
 
+        /// The base records this row's plan as enabled after the last sync.
+        /// A plan TS now has disabled was then turned off in TS by the user,
+        /// and the push leaves it off. A base from before `enabled` was
+        /// recorded gives false, so such a plan is enabled as before.
+        public bool InBase { get; set; }
+
         /// The row is written for a gear template. Its exposure then follows
         /// the sub rules of docs/specs/gear-templates.md section 8.
         public bool GearMode { get; set; }
