@@ -462,6 +462,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                                     foreach (var fromId in link.RepointFrom) lookup.RepointFrom.Add(fromId);
                                 }
                             }
+                            lookup.InBase = JsonNumberOf(seen?["enabled"]) == 1;
                             payload.PlanLookupByGuid[planGuid] = lookup;
                         }
 
