@@ -146,7 +146,7 @@ namespace ACP.NINA.Plugin.Tests {
 
         // -- L3 -------------------------------------------------------------
 
-        private class FakeFingerprints : IGearFingerprintService {
+        internal class FakeFingerprints : IGearFingerprintService {
             public string CameraName = "ZWO ASI6200MM Pro";
             public Fingerprint Build(SolveSnapshot solve) {
                 var fp = new Fingerprint {
@@ -158,7 +158,7 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
-        private class FakeTsPush : ITsPushService {
+        internal class FakeTsPush : ITsPushService {
             private readonly List<string> events;
             public FakeTsPush(List<string> events) { this.events = events; }
 
