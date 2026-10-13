@@ -78,5 +78,28 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Empty(back.KeptDisabled);
             }
         }
+
+        [Fact]
+        public void APlanTurnedOffInTsStaysOffAtEveryPush() {
+            using (var tmp = new TempDir())
+            using (var db = TargetSchedulerDb.Open(TsFixtures.MakeDb(28, tmp.File("s.sqlite")))) {
+                var p = TwoRows();
+                TsRowScenarios.Link(db, TsRowScenarios.Push(db, p), p);
+                TurnOffPlanOne(db);
+                for (var i = 0; i < 3; i++) {
+                    var outcome = TsRowScenarios.Push(db, p);
+                    TsRowScenarios.Link(db, outcome, p);
+                    Assert.Equal(new[] { "0", "1" }, Enabled(db));
+                    Assert.Single(outcome.KeptDisabled);
+                }
+                using (var cmd = db.Connection.CreateCommand()) {
+                    cmd.CommandText = "UPDATE exposureplan SET enabled = 1 WHERE Id = 1";
+                    cmd.ExecuteNonQuery();
+                }
+                var again = TsRowScenarios.Push(db, p);
+                Assert.Equal(new[] { "1", "1" }, Enabled(db));
+                Assert.Empty(again.KeptDisabled);
+            }
+        }
     }
 }

@@ -426,11 +426,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         ) {
             var desired = ep.Desired;
             if (row != null) desired = TsRows.UnflooredGoal(row, plan, desired);
+            // ACP's intent, not TS's flag: 1 when the row's goal (with AAC's
+            // floor) is above 0, so a plan the user turned off in TS stays
+            // off at every later push. With no row it is TS's flag.
+            var enabled = row != null ? (TsRows.DesiredFor(row, plan) > 0 ? 1 : 0) : ep.Enabled;
             var entry = new JObject {
                 { "desired", desired },
                 { "acquired", ep.Acquired },
                 { "accepted", ep.Accepted },
-                { "enabled", ep.Enabled },
+                { "enabled", enabled },
                 { "exposure", ep.Exposure },
                 { "filter", filter },
                 { "template", template },
