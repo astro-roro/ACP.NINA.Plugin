@@ -32,8 +32,21 @@ namespace ACP.NINA.Plugin.Services {
                 .Where(s => s != null && !string.IsNullOrWhiteSpace(s.PlanId) && push.PushedPlanIds.Contains(s.PlanId))
                 .Select(s => new TsLinkState { PlanId = s.PlanId, Refs = s.Refs, BaseSnapshot = s.BaseSnapshot })
                 .ToList();
-            if (states.Count == 0) return null;
-            return new TsLinksRequest { ProfileId = profileId, Machine = machine, States = states };
+            // Against today's ACP there is nothing but plan states. With gear
+            // templates the per-template results go too, and the
+            // capabilities say this plugin can read them
+            // (docs/specs/gear-templates.md section 9).
+            var templates = push.GearResults != null && push.GearResults.Count > 0
+                ? push.GearResults.ToList()
+                : null;
+            if (states.Count == 0 && templates == null) return null;
+            return new TsLinksRequest {
+                ProfileId = profileId,
+                Machine = machine,
+                States = states,
+                Templates = templates,
+                RepointDone = templates != null && push.RepointDone ? true : (bool?)null,
+            };
         }
 
         /// Post the push state. Returns null when it went, or when there was
