@@ -1,0 +1,442 @@
+{
+  "exposuretemplate": [
+    {
+      "Id": 1,
+      "profileId": "profile-under-test",
+      "name": "OIII 3nm",
+      "filtername": "O",
+      "gain": 100,
+      "offset": 50,
+      "bin": 1,
+      "readoutmode": -1,
+      "twilightlevel": 1,
+      "moonavoidanceenabled": 0,
+      "moonavoidanceseparation": 0.0,
+      "moonavoidancewidth": 0,
+      "maximumhumidity": 100.0,
+      "defaultexposure": 300.0,
+      "moonrelaxscale": 0.0,
+      "moonrelaxmaxaltitude": 5.0,
+      "moonrelaxminaltitude": -15.0,
+      "moondownenabled": 0,
+      "ditherevery": -1,
+      "minutesOffset": 0,
+      "guid": "564a8c20-b11b-58f8-8acf-edc81beffa03"
+    },
+    {
+      "Id": 2,
+      "profileId": "profile-under-test",
+      "name": "Ha 3nm",
+      "filtername": "H",
+      "gain": 100,
+      "offset": 50,
+      "bin": 1,
+      "readoutmode": -1,
+      "twilightlevel": 1,
+      "moonavoidanceenabled": 0,
+      "moonavoidanceseparation": 0.0,
+      "moonavoidancewidth": 0,
+      "maximumhumidity": 100.0,
+      "defaultexposure": 600.0,
+      "moonrelaxscale": 0.0,
+      "moonrelaxmaxaltitude": 5.0,
+      "moonrelaxminaltitude": -15.0,
+      "moondownenabled": 0,
+      "ditherevery": -1,
+      "minutesOffset": 0,
+      "guid": "f6e9d1c3-a5f0-5b64-a6f9-363de6fb9c3a"
+    }
+  ],
+  "project": [
+    {
+      "Id": 1,
+      "profileId": "profile-under-test",
+      "name": "Single Target",
+      "description": "",
+      "state": 1,
+      "priority": 1,
+      "createdate": 1700000000,
+      "activedate": 1700000000,
+      "inactivedate": null,
+      "minimumtime": 0,
+      "minimumaltitude": 30.0,
+      "usecustomhorizon": 0,
+      "horizonoffset": 0.0,
+      "meridianwindow": 0,
+      "filterswitchfrequency": 0,
+      "ditherevery": 0,
+      "enablegrader": 0,
+      "isMosaic": 0,
+      "flatsHandling": 1,
+      "maximumAltitude": 0.0,
+      "smartexposureorder": 0,
+      "guid": "490c9e65-39e3-5aa5-85e3-d14c3907cb94"
+    },
+    {
+      "Id": 2,
+      "profileId": "profile-under-test",
+      "name": "Mosaic",
+      "description": "",
+      "state": 2,
+      "priority": 2,
+      "createdate": 1700000000,
+      "activedate": null,
+      "inactivedate": 1700000000,
+      "minimumtime": 0,
+      "minimumaltitude": 30.0,
+      "usecustomhorizon": 0,
+      "horizonoffset": 0.0,
+      "meridianwindow": 0,
+      "filterswitchfrequency": 0,
+      "ditherevery": 0,
+      "enablegrader": 0,
+      "isMosaic": 0,
+      "flatsHandling": 1,
+      "maximumAltitude": 0.0,
+      "smartexposureorder": 0,
+      "guid": "0cf53b4b-db92-52f2-a7ca-1efa15442572"
+    },
+    {
+      "Id": 3,
+      "profileId": "profile-under-test",
+      "name": "Two Filters",
+      "description": "",
+      "state": 0,
+      "priority": 1,
+      "createdate": 1700000000,
+      "activedate": null,
+      "inactivedate": null,
+      "minimumtime": 30,
+      "minimumaltitude": 30.0,
+      "usecustomhorizon": 0,
+      "horizonoffset": 0.0,
+      "meridianwindow": 0,
+      "filterswitchfrequency": 0,
+      "ditherevery": 0,
+      "enablegrader": 0,
+      "isMosaic": 0,
+      "flatsHandling": 1,
+      "maximumAltitude": 0.0,
+      "smartexposureorder": 0,
+      "guid": "844d2611-d755-5e36-a96e-a9260749408b"
+    }
+  ],
+  "target": [
+    {
+      "Id": 1,
+      "name": "NGC 253",
+      "active": 1,
+      "ra": 6.666666666666667,
+      "dec": -30.0,
+      "epochcode": 2,
+      "rotation": 0.0,
+      "roi": 100.0,
+      "projectid": 1,
+      "unusedOEO": null,
+      "guid": "cde25964-1afe-5d45-8470-47af3a752a05",
+      "priority": -1
+    },
+    {
+      "Id": 2,
+      "name": "M31 Panel 1 (R1C1)",
+      "active": 1,
+      "ra": 0.6274333439123203,
+      "dec": 41.90721666666667,
+      "epochcode": 2,
+      "rotation": 0.0,
+      "roi": 100.0,
+      "projectid": 2,
+      "unusedOEO": null,
+      "guid": "e6182b98-7fed-5346-a742-dbb235d01bac",
+      "priority": -1
+    },
+    {
+      "Id": 3,
+      "name": "M31 Panel 2 (R1C2)",
+      "active": 1,
+      "ra": 0.7965666560876797,
+      "dec": 41.90721666666667,
+      "epochcode": 2,
+      "rotation": 0.0,
+      "roi": 100.0,
+      "projectid": 2,
+      "unusedOEO": null,
+      "guid": "3dc6dfdc-8242-507f-898f-d96598dffa29",
+      "priority": -1
+    },
+    {
+      "Id": 4,
+      "name": "M31 Panel 3 (R2C1)",
+      "active": 1,
+      "ra": 0.6274333439123203,
+      "dec": 40.632783333333336,
+      "epochcode": 2,
+      "rotation": 0.0,
+      "roi": 100.0,
+      "projectid": 2,
+      "unusedOEO": null,
+      "guid": "87c98975-31ed-5c1b-a886-931e5e88bfeb",
+      "priority": -1
+    },
+    {
+      "Id": 5,
+      "name": "M31 Panel 4 (R2C2)",
+      "active": 1,
+      "ra": 0.7965666560876797,
+      "dec": 40.632783333333336,
+      "epochcode": 2,
+      "rotation": 0.0,
+      "roi": 100.0,
+      "projectid": 2,
+      "unusedOEO": null,
+      "guid": "1b62e372-2274-561c-9e77-83bbf3ac4eed",
+      "priority": -1
+    },
+    {
+      "Id": 6,
+      "name": "NGC 7000",
+      "active": 1,
+      "ra": 20.98,
+      "dec": 44.5,
+      "epochcode": 2,
+      "rotation": 0.0,
+      "roi": 100.0,
+      "projectid": 3,
+      "unusedOEO": null,
+      "guid": "634dab75-75cd-5551-8745-9ea7c612c1c2",
+      "priority": -1
+    }
+  ],
+  "exposureplan": [
+    {
+      "Id": 1,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 12,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 1,
+      "exposureTemplateId": 1,
+      "enabled": 1,
+      "guid": "f17bc9a0-4813-5574-ae03-aaeaeffb2585"
+    },
+    {
+      "Id": 2,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 12,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 2,
+      "exposureTemplateId": 1,
+      "enabled": 1,
+      "guid": "d63c61f7-bd58-5d4c-b02f-2ab44d0bb301"
+    },
+    {
+      "Id": 3,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 12,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 3,
+      "exposureTemplateId": 1,
+      "enabled": 1,
+      "guid": "23d97362-a4e5-5891-9359-7bf6967f2dec"
+    },
+    {
+      "Id": 4,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 12,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 4,
+      "exposureTemplateId": 1,
+      "enabled": 1,
+      "guid": "a67e77d2-cfe5-5b83-8619-fce14017d654"
+    },
+    {
+      "Id": 5,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 12,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 5,
+      "exposureTemplateId": 1,
+      "enabled": 1,
+      "guid": "3a171c18-a4fc-5bb2-9b86-cbb0e07ebaee"
+    },
+    {
+      "Id": 6,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 24,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 6,
+      "exposureTemplateId": 2,
+      "enabled": 1,
+      "guid": "5d289f44-5d7e-5cd0-82f3-d41f69d6c1cf"
+    },
+    {
+      "Id": 7,
+      "profileId": "profile-under-test",
+      "exposure": -1.0,
+      "desired": 24,
+      "acquired": 0,
+      "accepted": 0,
+      "targetid": 6,
+      "exposureTemplateId": 1,
+      "enabled": 1,
+      "guid": "2254c30d-4848-5388-9908-cfdc48f02811"
+    }
+  ],
+  "ruleweight": [
+    {
+      "Id": 1,
+      "name": "Percent Complete",
+      "weight": 50.0,
+      "projectid": 1
+    },
+    {
+      "Id": 2,
+      "name": "Project Priority",
+      "weight": 50.0,
+      "projectid": 1
+    },
+    {
+      "Id": 3,
+      "name": "Setting Soonest",
+      "weight": 50.0,
+      "projectid": 1
+    },
+    {
+      "Id": 4,
+      "name": "Meridian Window Priority",
+      "weight": 75.0,
+      "projectid": 1
+    },
+    {
+      "Id": 5,
+      "name": "Target Switch Penalty",
+      "weight": 67.0,
+      "projectid": 1
+    },
+    {
+      "Id": 6,
+      "name": "Mosaic Completion",
+      "weight": 0.0,
+      "projectid": 1
+    },
+    {
+      "Id": 7,
+      "name": "Smart Exposure Order",
+      "weight": 0.0,
+      "projectid": 1
+    },
+    {
+      "Id": 8,
+      "name": "Meridian Flip Penalty",
+      "weight": 0.0,
+      "projectid": 1
+    },
+    {
+      "Id": 9,
+      "name": "Percent Complete",
+      "weight": 50.0,
+      "projectid": 2
+    },
+    {
+      "Id": 10,
+      "name": "Project Priority",
+      "weight": 50.0,
+      "projectid": 2
+    },
+    {
+      "Id": 11,
+      "name": "Setting Soonest",
+      "weight": 50.0,
+      "projectid": 2
+    },
+    {
+      "Id": 12,
+      "name": "Meridian Window Priority",
+      "weight": 75.0,
+      "projectid": 2
+    },
+    {
+      "Id": 13,
+      "name": "Target Switch Penalty",
+      "weight": 67.0,
+      "projectid": 2
+    },
+    {
+      "Id": 14,
+      "name": "Mosaic Completion",
+      "weight": 0.0,
+      "projectid": 2
+    },
+    {
+      "Id": 15,
+      "name": "Smart Exposure Order",
+      "weight": 0.0,
+      "projectid": 2
+    },
+    {
+      "Id": 16,
+      "name": "Meridian Flip Penalty",
+      "weight": 0.0,
+      "projectid": 2
+    },
+    {
+      "Id": 17,
+      "name": "Percent Complete",
+      "weight": 50.0,
+      "projectid": 3
+    },
+    {
+      "Id": 18,
+      "name": "Project Priority",
+      "weight": 50.0,
+      "projectid": 3
+    },
+    {
+      "Id": 19,
+      "name": "Setting Soonest",
+      "weight": 50.0,
+      "projectid": 3
+    },
+    {
+      "Id": 20,
+      "name": "Meridian Window Priority",
+      "weight": 75.0,
+      "projectid": 3
+    },
+    {
+      "Id": 21,
+      "name": "Target Switch Penalty",
+      "weight": 67.0,
+      "projectid": 3
+    },
+    {
+      "Id": 22,
+      "name": "Mosaic Completion",
+      "weight": 0.0,
+      "projectid": 3
+    },
+    {
+      "Id": 23,
+      "name": "Smart Exposure Order",
+      "weight": 0.0,
+      "projectid": 3
+    },
+    {
+      "Id": 24,
+      "name": "Meridian Flip Penalty",
+      "weight": 0.0,
+      "projectid": 3
+    }
+  ]
+}

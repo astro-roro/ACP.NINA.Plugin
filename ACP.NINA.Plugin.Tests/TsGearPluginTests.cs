@@ -281,31 +281,20 @@ namespace ACP.NINA.Plugin.Tests {
 
         [Fact]
         public async Task L5_AGearWithNoTemplatesPushesExactlyTodaysRowsAndLinksNoTemplates() {
-            string withNone, withEmptyList;
             TsPushResult first;
             using (var tmp = new TempDir()) {
                 var path = TsFixtures.MakeDb(28, tmp.File("a.sqlite"));
                 first = await ServiceFor(path).PushAsync(
                     LegacyPlans(), TsTestPlans.Gear(), TsTestPlans.ProfileId, default, TsRowScenarios.WheelSlots, "Foo");
                 Assert.True(first.Success, first.Failure);
-                withNone = Dump(path);
 
-                // Every filter is on a known slot, so the row names follow the wheel as before.
-                using (var db = TargetSchedulerDb.Open(path)) {
-                    Assert.Equal("O", TsRowScenarios.Cell(db.Connection, "SELECT filtername FROM exposuretemplate WHERE name = 'OIII 3nm'"));
-                    Assert.Equal("H", TsRowScenarios.Cell(db.Connection, "SELECT filtername FROM exposuretemplate WHERE name = 'Ha 3nm'"));
-                }
+                // Every table equals what main (f731199, before gear templates)
+                // wrote for the same plans, gear and wheel list. The fixture
+                // was dumped from a build of that commit.
+                var expected = JToken.Parse(TsFixtures.ReadFixture("legacy-push-main-f731199.json"));
+                Assert.True(JToken.DeepEquals(expected, JToken.Parse(Dump(path))),
+                    "the push no longer writes the rows main wrote");
             }
-            using (var tmp = new TempDir()) {
-                var path = TsFixtures.MakeDb(28, tmp.File("b.sqlite"));
-                var gear = TsTestPlans.Gear();
-                foreach (var filter in gear.Cameras[0].Filters.Values) filter.Templates = new List<GearTemplate>();
-                var second = await ServiceFor(path).PushAsync(
-                    LegacyPlans(), gear, TsTestPlans.ProfileId, default, TsRowScenarios.WheelSlots, "Foo");
-                Assert.True(second.Success, second.Failure);
-                withEmptyList = Dump(path);
-            }
-            Assert.Equal(withNone, withEmptyList);
 
             Assert.Empty(first.GearResults);
             var acp = OkAcp();
