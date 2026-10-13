@@ -147,9 +147,10 @@ namespace ACP.NINA.Plugin.Tests {
         // -- L3 -------------------------------------------------------------
 
         private class FakeFingerprints : IGearFingerprintService {
+            public string CameraName = "ZWO ASI6200MM Pro";
             public Fingerprint Build(SolveSnapshot solve) {
                 var fp = new Fingerprint {
-                    Camera = new FingerprintCamera { Name = "ZWO ASI6200MM Pro", SensorPx = new[] { 9576, 6388 }, PixelSizeUm = 3.76 },
+                    Camera = new FingerprintCamera { Name = CameraName, SensorPx = new[] { 9576, 6388 }, PixelSizeUm = 3.76 },
                     ProfileName = "Foo",
                 };
                 FingerprintMath.ApplyProfileWheel(fp, GearProfile, new[] { Tuple.Create("L", 0), Tuple.Create("R", 1) });
@@ -219,6 +220,22 @@ namespace ACP.NINA.Plugin.Tests {
             var fingerprint = JObject.Parse(bodies["POST /api/plans/match"]);
             Assert.Equal(GearProfile, (string)fingerprint["profile_id"]);
             Assert.Equal(new[] { "L", "R" }, fingerprint["wheel_slots"].Select(t => (string)t).ToArray());
+        }
+
+        [Fact]
+        public async Task L3_NoCameraMeansNoFingerprintPostAndTheSyncStillRuns() {
+            var events = new List<string>();
+            var acp = new ScriptedAcp(seen => {
+                events.Add(seen.Method.Method + " " + seen.Path);
+                if (seen.Path == "/api/plans") return ScriptedAcp.Json(HttpStatusCode.OK, "{\"version\": 2, \"plans\": []}");
+                return ScriptedAcp.Json(HttpStatusCode.OK, "{}");
+            });
+            var run = await TsSyncAllRunner.RunAsync(
+                new AcpApiClient(Base, () => "tok", acp), new FakeFingerprints { CameraName = "" },
+                new FakeTsPush(events), GearProfile, "Foo", TsRowScenarios.WheelSlots, SyncMode.Everything);
+            Assert.True(run.Push.Success);
+            Assert.DoesNotContain("POST /api/plans/match", events);
+            Assert.Contains("push", events);
         }
 
         [Fact]

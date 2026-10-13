@@ -43,7 +43,14 @@ namespace ACP.NINA.Plugin.Services {
             if (fingerprintService != null) {
                 try {
                     var fingerprint = fingerprintService.Build(null);
-                    await client.MatchPlansAsync(fingerprint, mode, ct).ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(fingerprint?.Camera?.Name)) {
+                        // With no camera connected the fingerprint holds an
+                        // empty camera and a 0 by 0 sensor, and posting it
+                        // would overwrite the one ACP stored.
+                        Logger.Info("ACP: no camera is connected, so Sync All to TS did not send a gear fingerprint.");
+                    } else {
+                        await client.MatchPlansAsync(fingerprint, mode, ct).ConfigureAwait(false);
+                    }
                 } catch (AcpUnauthorizedException) {
                     throw;
                 } catch (Exception ex) {
