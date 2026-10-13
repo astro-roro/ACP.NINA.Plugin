@@ -91,7 +91,16 @@ namespace ACP.NINA.Plugin.Services {
         private readonly IGearFingerprintService fingerprintService;
         private readonly IProfileWriteBack writeBack;
         private readonly ITsPushService tsPush;
-        private readonly IProfileService profileService;
+        private readonly Func<ActiveProfileView> profileReader;
+        private readonly Func<AcpSettings> settingsReader;
+        private readonly Func<string, AcpApiClient> clientFactory;
+
+        /// The parts of the active NINA profile the run reads.
+        public class ActiveProfileView {
+            public string Id { get; set; }
+            public string Name { get; set; }
+            public List<string> WheelFilters { get; set; }
+        }
 
         [ImportingConstructor]
         public SyncForTonightRunner(
@@ -99,19 +108,49 @@ namespace ACP.NINA.Plugin.Services {
             IProfileWriteBack writeBack,
             ITsPushService tsPush,
             IProfileService profileService
+        ) : this(
+            fingerprintService, writeBack, tsPush,
+            () => {
+                var profile = profileService?.ActiveProfile;
+                return new ActiveProfileView {
+                    Id = profile?.Id.ToString(),
+                    Name = profile?.Name,
+                    // Slot names from the profile rather than the wheel, so a
+                    // daytime sync with nothing connected still writes names
+                    // Target Scheduler can match.
+                    WheelFilters = profile?.FilterWheelSettings?.FilterWheelFilters?
+                        .Select(f => f?.Name)
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .ToList(),
+                };
+            },
+            AcpSettings.Load,
+            url => new AcpApiClient(url)) { }
+
+        /// The seam the tests use: the profile, the settings and the ACP
+        /// client come from delegates, so the run can be driven without NINA.
+        public SyncForTonightRunner(
+            IGearFingerprintService fingerprintService,
+            IProfileWriteBack writeBack,
+            ITsPushService tsPush,
+            Func<ActiveProfileView> profileReader,
+            Func<AcpSettings> settingsReader,
+            Func<string, AcpApiClient> clientFactory
         ) {
             this.fingerprintService = fingerprintService;
             this.writeBack = writeBack;
             this.tsPush = tsPush;
-            this.profileService = profileService;
+            this.profileReader = profileReader;
+            this.settingsReader = settingsReader;
+            this.clientFactory = clientFactory;
         }
 
         public async Task<SyncOutcome> RunAsync(
             SolveSnapshot solve, bool writeBackEnabled, CancellationToken token
         ) {
-            var settings = AcpSettings.Load();
+            var settings = settingsReader();
             var outcome = new SyncOutcome { Solve = solve };
-            var client = new AcpApiClient(settings.ServerUrl);
+            var client = clientFactory(settings.ServerUrl);
 
             outcome.Fingerprint = fingerprintService.Build(solve);
             outcome.Lines.Add(DescribeFingerprint(outcome.Fingerprint));
@@ -173,7 +212,8 @@ namespace ACP.NINA.Plugin.Services {
             outcome.Selected = MatchSelection.SelectForMode(outcome.Match, settings.SyncMode);
             outcome.Lines.Add(MatchSelection.Summarise(outcome.Match, settings.SyncMode));
 
-            var profileId = profileService?.ActiveProfile?.Id.ToString();
+            var profile = profileReader();
+            var profileId = profile?.Id;
 
             // A paused plan is not loaded, so the push below never touches its
             // row and Target Scheduler would keep imaging it. This writes the
@@ -205,15 +245,28 @@ namespace ACP.NINA.Plugin.Services {
                 return outcome;
             }
 
-            // Slot names from the profile rather than the wheel, so a daytime
-            // sync with nothing connected still writes names Target Scheduler
-            // can match.
-            var wheelFilters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters?
-                .Select(f => f?.Name)
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .ToList();
+            var wheelFilters = profile?.WheelFilters;
+
+            // Send the template list as the database holds it, then read gear
+            // again, so ACP's pull of edits made in Target Scheduler runs
+            // before the push and the push sees the gear it produced
+            // (docs/specs/gear-templates.md section 9). The writers do not
+            // rely on the order, so a failure here only costs freshness.
+            try {
+                var current = await tsPush.ReadTemplatesAsync(profileId, token).ConfigureAwait(false);
+                if (current != null &&
+                    await TsTemplatesReporter.PostAsync(client, current, profileId, token).ConfigureAwait(false)) {
+                    gear = await client.GetGearAsync(token).ConfigureAwait(false) ?? gear;
+                }
+            } catch (AcpUnauthorizedException) {
+                throw;
+            } catch (Exception ex) {
+                Logger.Warning($"ACP: could not refresh the template list and gear before the push: {ex.Message}");
+            }
+
             outcome.TsPush = await tsPush
-                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token, wheelFilters)
+                .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token, wheelFilters,
+                    profile?.Name)
                 .ConfigureAwait(false);
             outcome.Lines.Add(outcome.TsPush.Summary());
 

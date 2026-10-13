@@ -141,6 +141,11 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("template")]
         public string Template { get; set; }
 
+        /// The id of the gear template this row uses, from an ACP that has
+        /// gear templates. Null from today's ACP.
+        [JsonProperty("template_id", NullValueHandling = NullValueHandling.Ignore)]
+        public string TemplateId { get; set; }
+
         /// The sub TS uses for this row, in seconds. What the writers divide
         /// an hour goal by.
         [JsonProperty("template_sub_s")]

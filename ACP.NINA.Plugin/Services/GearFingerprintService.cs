@@ -94,6 +94,11 @@ namespace ACP.NINA.Plugin.Services {
                 ProfileName = profile?.Name,
                 NinaVersion = ReadNinaVersion(),
             };
+            FingerprintMath.ApplyProfileWheel(
+                fingerprint,
+                profile?.Id.ToString(),
+                profile?.FilterWheelSettings?.FilterWheelFilters?
+                    .Select(f => Tuple.Create(f?.Name, (int)(f?.Position ?? 0))));
 
             Logger.Info(
                 $"ACP: fingerprint built - camera {fingerprint.Camera.Name} " +
@@ -101,6 +106,7 @@ namespace ACP.NINA.Plugin.Services {
                 $"at {fingerprint.Camera.PixelSizeUm} um bin {binning}, " +
                 $"{(fingerprint.Camera.Colour ? "colour" : "mono")}, " +
                 $"filters [{string.Join(", ", fingerprint.Filters)}], " +
+                $"wheel slots [{string.Join(", ", fingerprint.WheelSlots)}], " +
                 $"mount {fingerprint.Mount.Name}, " +
                 $"focal length {focalLength.Effective:F1} mm from {focalLength.Source}"
             );

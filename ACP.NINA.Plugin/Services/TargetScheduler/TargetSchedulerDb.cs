@@ -226,6 +226,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Every row for a profile across the four tables the push writes, with
         /// the on-disk Ids preserved. Ported from reader.read_all; the base
         /// snapshot needs it after a push to record what actually landed.
+        /// The cap on the plans listed per template in the list sent to ACP.
+        public const int MaxPlansPerTemplate = 5000;
+
         public TsSnapshot ReadAll(string profileId) {
             var snap = new TsSnapshot { ProfileId = profileId };
 
@@ -235,6 +238,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 r => {
                     var id = ReadInt(r, "Id");
                     var tpl = new TsExposureTemplate {
+                        Id = id,
                         ProfileId = ReadString(r, "profileId"),
                         Name = ReadString(r, "name"),
                         FilterName = ReadString(r, "filtername"),
@@ -243,6 +247,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         Gain = ReadInt(r, "gain", -1),
                         Offset = ReadInt(r, "offset", -1),
                         Bin = ReadInt(r, "bin", 1),
+                        // The columns Tidy compares. Read with the column's
+                        // own default so a schema that lacks one still reads.
+                        TwilightLevel = ReadInt(r, "twilightlevel", 1),
+                        MaximumHumidity = ReadDouble(r, "maximumhumidity", 100.0),
+                        MoonAvoidanceEnabled = ReadInt(r, "moonavoidanceenabled"),
+                        MoonAvoidanceSeparation = ReadDouble(r, "moonavoidanceseparation"),
+                        MoonAvoidanceWidth = ReadInt(r, "moonavoidancewidth"),
+                        DitherEvery = ReadInt(r, "ditherevery", -1),
                     };
                     snap.TemplatesById[id] = tpl;
                     if (!string.IsNullOrEmpty(tpl.Guid)) snap.TemplateIdByGuid[tpl.Guid] = id;
@@ -323,6 +335,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     snap.PlansById[id] = plan;
                     if (!string.IsNullOrEmpty(plan.Guid)) snap.PlanIdByGuid[plan.Guid] = id;
                 });
+
+            // Each template's exposure plans, enabled or not, for the list
+            // ACP is sent (docs/specs/gear-templates.md section 3).
+            foreach (var pair in snap.PlansById.OrderBy(kv => kv.Key)) {
+                TsExposureTemplate owner;
+                if (!snap.TemplatesById.TryGetValue(pair.Value.ExposureTemplateId, out owner)) continue;
+                if (owner.Plans.Count >= MaxPlansPerTemplate) continue;
+                owner.Plans.Add(new ACP.NINA.Plugin.Models.TsTemplatePlan { Id = pair.Key, Exposure = pair.Value.Exposure });
+            }
 
             // Each target's override rows, in order, for the base's
             // exposure_order and override_rows

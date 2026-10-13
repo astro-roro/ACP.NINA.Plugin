@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased: Gear templates
+
+The plugin side of ACP's gear templates (`docs/specs/gear-templates.md` in ACP, phase 4). It works against today's ACP and the one that follows.
+
+### Added
+
+- **Gear templates are written by id.** When a camera filter in `GET /api/gear` carries `templates`, the writer finds each template's Target Scheduler row by the id ACP recorded, then by guid, then by an unambiguous name. Each field is decided from ACP's value, the value at the last sync and Target Scheduler's value now: a change made only in ACP is written, a change made only in Target Scheduler is left for ACP to pick up, and a change made in both is held and reported. A rename updates the same row, so no second template appears. A template with no row is inserted under the wheel slot's name.
+- **The fingerprint carries `profile_id` and `wheel_slots`.** The slots come from the profile in slot order, whether or not the wheel is connected, so ACP knows the wheel on a daytime sync. Sync All to TS now sends the fingerprint before it pushes.
+- **The template list carries more.** Each template adds its id, guid, moon avoidance, twilight, humidity and dither columns and the exposure plans using it. The list is posted before gear is read for the push, in both Sync for tonight and Sync All to TS.
+- **The links post carries per-template results and `capabilities` of `templates` and `repoint`.** ACP uses them to record the new base and to know this plugin can rename and repoint safely.
+- **Row sub rules.** A plan's exposure follows its row: -1 when the row follows its template's sub, the row's own sub when it deviates. A plan moves to another template only when ACP changed which template the row uses, or the template lists the plan's template in `repoint_from`.
+
+### Changed
+
+- **A filter that is not on the wheel is skipped, not pushed with a warning.** The rows are named in the push result ("SII is not on the wheel of Foo yet, so 3 rows were skipped"). An empty slot list means the wheel is unknown: templates Target Scheduler already has are used, and rows on a template it lacks are skipped, because the filter name column cannot be guessed.
+
 ## Unreleased: Send TS to ACP
 
 Plans made or changed in a rig's Target Scheduler can go back into ACP. ACP shows what would change and nothing changes until Apply is pressed there.

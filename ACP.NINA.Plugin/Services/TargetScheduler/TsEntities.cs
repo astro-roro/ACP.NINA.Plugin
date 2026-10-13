@@ -1,3 +1,4 @@
+using ACP.NINA.Plugin.Models;
 using System;
 using System.Collections.Generic;
 
@@ -38,6 +39,29 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     }
 
     public class TsExposureTemplate : TsEntity {
+
+        /// exposuretemplate.Id, set when the row is read back. Not a column.
+        public int Id { get; set; }
+
+        /// The exposure plans using this template, set when the row is read
+        /// back. Not a column.
+        public List<TsTemplatePlan> Plans { get; } = new List<TsTemplatePlan>();
+
+        /// Set by TsConvert when the template stands for a gear template. The
+        /// gear writer finds, updates or inserts the row before any plan is
+        /// written, and plans point at the Id it settles on.
+        public TsGearWork Gear { get; set; }
+
+        /// A template found by name only (today's ACP, no gear templates) when
+        /// the profile's wheel is unknown. It is used when TS has it and its
+        /// rows are skipped when TS does not, because the filtername column is
+        /// not null and a guess would be a wrong one.
+        public bool SkipIfMissing { get; set; }
+
+        /// For the skip note: the camera, and the rows that wait on this
+        /// template.
+        public string CameraName { get; set; }
+        public List<string> RowLabels { get; } = new List<string>();
 
         public string ProfileId { get; set; }
         public string Name { get; set; }
@@ -95,6 +119,31 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 default: return null;
             }
         }
+    }
+
+    /// One gear template the push has to settle in TS
+    /// (docs/specs/gear-templates.md section 8).
+    public class TsGearWork {
+        public string CameraId { get; set; }
+        public string CameraName { get; set; }
+
+        /// ACP's filter name for the template, for example "Ha".
+        public string Filter { get; set; }
+
+        public GearTemplate Template { get; set; }
+
+        /// The wheel slot for the filter, null when the wheel is unknown or
+        /// the filter is not on it.
+        public string Slot { get; set; }
+
+        /// The profile's slots are known and none is this filter's.
+        public bool OffWheel { get; set; }
+
+        /// The guid stamped on an insert.
+        public string Guid { get; set; }
+
+        /// Rows of pushed plans on this template, named for the push result.
+        public List<string> RowLabels { get; } = new List<string>();
     }
 
     public class TsProject : TsEntity {
@@ -308,11 +357,29 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         public string ProfileId { get; set; }
 
+        /// The profile's name, for notes. Null reads as "this profile".
+        public string ProfileName { get; set; }
+
+        /// The profile's wheel slot names, null when the caller gave none.
+        /// An empty list is a real answer ("the wheel is unknown"), and
+        /// decides differently from null: see TsConvert.BuildPayload.
+        public IReadOnlyList<string> WheelSlots { get; set; }
+
+        /// The gear templates of the cameras the pushed plans use, in gear
+        /// order, for the gear template writer. Empty with today's ACP.
+        public List<TsGearWork> GearWorks { get; } = new List<TsGearWork>();
+
         public List<TsExposureTemplate> Templates { get; } = new List<TsExposureTemplate>();
 
         /// Lines for the push result that TsConvert works out, such as plans
         /// in one project disagreeing on the filter switch frequency.
         public List<string> Notes { get; } = new List<string>();
+
+        /// Lines the user should read after the sync: a row skipped because
+        /// its filter is not on the wheel, or its template is not in gear.
+        /// The plugin shows them with the push summary. Notes above are only
+        /// logged.
+        public List<string> SyncNotes { get; } = new List<string>();
 
         /// Plan filter names that were written under the wheel's own spelling,
         /// for example "OIII" written as "O". Empty when no wheel names were
@@ -397,6 +464,30 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public int? PinnedId { get; set; }
         public List<string> OldGuids { get; } = new List<string>();
         public bool TemplateChanged { get; set; }
+
+        /// The base records this row's plan as enabled after the last sync.
+        /// A plan TS now has disabled was then turned off in TS by the user,
+        /// and the push leaves it off. A base from before `enabled` was
+        /// recorded gives false, so such a plan is enabled as before.
+        public bool InBase { get; set; }
+
+        /// The row is written for a gear template. Its exposure then follows
+        /// the sub rules of docs/specs/gear-templates.md section 8.
+        public bool GearMode { get; set; }
+
+        /// The row's template_sub_s, and whether it equals the gear
+        /// template's sub (the row follows the template).
+        public double RowSubS { get; set; }
+        public bool RowFollows { get; set; }
+
+        /// The base recorded a different sub for the row, so ACP changed it
+        /// since the last push.
+        public bool RowSubChanged { get; set; }
+
+        /// TS template ids whose plans move onto this row's template: the
+        /// gear template's ts[P].repoint_from.
+        public HashSet<int> RepointFrom { get; } = new HashSet<int>();
+
         /// The ACP row this plan is written for, which the order writer needs
         /// to compare ACP's order with the base's.
         public string RowId { get; set; }
