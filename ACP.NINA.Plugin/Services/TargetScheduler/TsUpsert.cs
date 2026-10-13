@@ -1,3 +1,4 @@
+using ACP.NINA.Plugin.Models;
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
@@ -26,7 +27,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     /// database has, so target.priority, which arrived at user_version 24, is
     /// simply left out against a 23 database and Target Scheduler's own default
     /// applies. See docs/schema-history.md in the acp-nina-ts-sync repo.
-    public static class TsUpsert {
+    public static partial class TsUpsert {
 
         public static TsSyncOutcome Apply(TargetSchedulerDb db, TsSyncPayload payload) {
             if (db == null) throw new ArgumentNullException(nameof(db));
@@ -71,10 +72,39 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             // the row's template changed in ACP, so it may never need one.
             var templateIdByGuid = new Dictionary<string, int>();
             var templateByGuid = new Dictionary<string, TsExposureTemplate>();
+            var skippedTemplateGuids = new HashSet<string>(StringComparer.Ordinal);
+            var unknownWheelRows = new Dictionary<string, int>(StringComparer.Ordinal);
+            var unknownWheelOrder = new List<string>();
+            // A camera whose filters carry gear templates has its rows settled
+            // first by the gear template writer: found by TS id, compared
+            // three ways, renamed in place, or inserted
+            // (docs/specs/gear-templates.md section 8). Plans then point at
+            // the Id it settled on.
+            if (payload.GearWorks.Count > 0) {
+                ApplyGearTemplates(
+                    conn, userVersion, columnsByTable, payload, outcome,
+                    templateIdByGuid, skippedTemplateGuids, unknownWheelRows, unknownWheelOrder);
+            }
             foreach (var tpl in payload.Templates) {
                 templateByGuid[tpl.Guid] = tpl;
+                if (tpl.Gear != null) continue;
                 var found = TemplateIdByName(conn, tpl);
-                if (found.HasValue) templateIdByGuid[tpl.Guid] = found.Value;
+                if (found.HasValue) {
+                    templateIdByGuid[tpl.Guid] = found.Value;
+                } else if (tpl.SkipIfMissing) {
+                    // The wheel is unknown, so there is no filtername to
+                    // insert the template under.
+                    skippedTemplateGuids.Add(tpl.Guid);
+                    CountUnknownWheel(unknownWheelRows, unknownWheelOrder, tpl.CameraName, tpl.RowLabels.Count);
+                }
+            }
+            var profileLabel = string.IsNullOrWhiteSpace(payload.ProfileName) ? "this profile" : payload.ProfileName;
+            foreach (var camera in unknownWheelOrder) {
+                var n = unknownWheelRows[camera];
+                if (n == 0) continue;
+                var line = $"{camera}: the wheel of {profileLabel} is unknown, so {n} {(n == 1 ? "row was" : "rows were")} skipped";
+                outcome.Notes.Add(line);
+                outcome.SyncNotes.Add(line + ".");
             }
 
             // 2) Projects. Rule weights are seeded only when the project was
@@ -158,6 +188,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             $"plan {plan.Guid} for target {group.Key} has no template, skipped");
                         continue;
                     }
+                    // A template that waits (filter not on the wheel, wheel
+                    // unknown, name left for adoption) holds its rows back.
+                    // Their plans stay as they are in TS.
+                    if (skippedTemplateGuids.Contains(tplGuid)) continue;
+                    if (templateByGuid[tplGuid].Gear != null && !templateIdByGuid.ContainsKey(tplGuid)) continue;
                     TsPlanLookup lookup;
                     if (!payload.PlanLookupByGuid.TryGetValue(plan.Guid, out lookup)) {
                         lookup = new TsPlanLookup { Label = plan.Guid };
@@ -271,7 +306,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 if (HasOverrideRows(conn, tid)) DeleteCadence(conn, tid);
             }
 
-            NoteStrayTemplates(conn, payload, outcome);
+            if (payload.GearWorks.Count == 0) NoteStrayTemplates(conn, payload, outcome);
+
+            // Every plan written for a row whose template has a repoint list
+            // left that list's templates in this push, so ACP can clear it.
+            if (outcome.ExposurePlan.RepointRows > 0) outcome.RepointDone = true;
 
             return outcome;
         }
@@ -887,10 +926,41 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             inserted = false;
             var found = FindExposurePlan(conn, plan, lookup, used);
             var move = !found.HasValue || lookup.TemplateChanged;
+            var writeExposure = false;
+            if (found.HasValue && lookup.GearMode) {
+                var current = ReadRow(
+                    conn, "SELECT exposureTemplateId, exposure FROM exposureplan WHERE Id = $id", found.Value);
+                var currentTemplate = current == null ? -1 : ToInt(current[0]);
+                var currentExposure = current == null || current[1] == null || current[1] == DBNull.Value
+                    ? -1.0 : ToDouble(current[1]);
+                // A plan on a template ACP is repointing moves with the row.
+                var repoint = lookup.RepointFrom.Count > 0 && lookup.RepointFrom.Contains(currentTemplate);
+                if (lookup.RepointFrom.Count > 0) counts.RepointRows++;
+                if (repoint && !move) {
+                    move = true;
+                    counts.Repointed++;
+                }
+                if (move) {
+                    // The sub rules of docs/specs/gear-templates.md section 8:
+                    // -1 when the row follows its template, else its own sub.
+                    plan.Exposure = lookup.RowFollows ? -1.0 : lookup.RowSubS;
+                } else if (lookup.RowSubChanged) {
+                    // ACP changed the row's sub: TS shoots the row's sub.
+                    if (lookup.RowFollows) {
+                        if (currentExposure > 0 && Math.Abs(currentExposure - lookup.RowSubS) > 1e-9) {
+                            plan.Exposure = -1.0;
+                            writeExposure = true;
+                        }
+                    } else if (Math.Abs(currentExposure - lookup.RowSubS) > 1e-9) {
+                        plan.Exposure = lookup.RowSubS;
+                        writeExposure = true;
+                    }
+                }
+            }
             if (move) plan.ExposureTemplateId = rowTemplate();
             var wanted = move
                 ? planUpdateColumns.Concat(new[] { "exposureTemplateId", "exposure" })
-                : planUpdateColumns;
+                : writeExposure ? planUpdateColumns.Concat(new[] { "exposure" }) : planUpdateColumns;
             var updateCols = WritableColumns("exposureplan", wanted, userVersion, columnsByTable);
             var setClause = string.Join(", ", updateCols.Select(c => $"{Quote(c)} = ${c}"));
 
@@ -1462,6 +1532,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// The row was found by the Id in the plan's ts_refs and updated in
         /// place, before any guid or name lookup.
         public int Pinned { get; set; }
+        /// Plans a push moved off a template listed in repoint_from, and the
+        /// plans it wrote for rows that had such a list.
+        public int Repointed { get; set; }
+        public int RepointRows { get; set; }
     }
 
     /// What one push did, in the same shape as the Python extension's
@@ -1485,6 +1559,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public HashSet<string> InsertedProjectGuids { get; } = new HashSet<string>(StringComparer.Ordinal);
 
         public List<string> Notes { get; } = new List<string>();
+
+        /// Lines the user should read after the sync: a template field held
+        /// on a conflict, a name that waits for adoption. The plugin shows
+        /// them with the push summary.
+        public List<string> SyncNotes { get; } = new List<string>();
+
+        /// What the gear template writer did, per gear template.
+        public List<TsTemplateResult> GearResults { get; } = new List<TsTemplateResult>();
+
+        /// TS ids of the profile's templates that no gear template stands for,
+        /// when the push ran in gear mode.
+        public List<int> StrayTemplateIds { get; } = new List<int>();
+
+        /// Set when a push moved plans for rows that had a repoint list.
+        public bool? RepointDone { get; set; }
 
         /// Exposure plans of rows removed in ACP, set to enabled 0 by this push.
         public int DisabledPlans { get; set; }

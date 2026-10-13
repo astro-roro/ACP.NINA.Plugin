@@ -116,6 +116,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 $"{NamePart(cameraId)}/{NamePart(templateName)}");
         }
 
+        /// The guid stamped on a template the push inserts for a gear
+        /// template: the profile and the gear template's stable id. Only
+        /// written on insert. docs/specs/gear-templates.md section 8.
+        public static string GearTemplate(string profileId, string templateId) {
+            return Stable($"{NamePart(profileId)}/gear-template/{NamePart(templateId)}");
+        }
+
         // -- The pre-length-prefix recipe, for the migration only -------------
 
         public static string LegacyTemplate(string profileId, string filterName, string cameraId) {

@@ -426,7 +426,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         ) {
             var desired = ep.Desired;
             if (row != null) desired = TsRows.UnflooredGoal(row, plan, desired);
-            return new JObject {
+            var entry = new JObject {
                 { "desired", desired },
                 { "acquired", ep.Acquired },
                 { "accepted", ep.Accepted },
@@ -435,6 +435,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 { "template", template },
                 { "template_sub_s", TsRows.PlanSubS(ep.Exposure, tpl?.DefaultExposure ?? 0.0) },
             };
+            // The gear template the row used, so the next push can tell a
+            // move to another template from a rename
+            // (docs/specs/gear-templates.md section 8).
+            if (!string.IsNullOrEmpty(row?.TemplateId)) entry["template_id"] = row.TemplateId;
+            return entry;
         }
     }
 
