@@ -2,6 +2,7 @@ using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services.TargetScheduler;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace ACP.NINA.Plugin.Tests {
@@ -44,6 +45,26 @@ namespace ACP.NINA.Plugin.Tests {
         public void AFilterTheWheelDoesNotHaveResolvesToNull() {
             Assert.Null(TsFilterNames.ResolveToWheel("OIII", new[] { "L", "R", "G", "B" }));
             Assert.Null(TsFilterNames.ResolveToWheel("Duo", SingleLetterWheel));
+        }
+
+        /// W3 (docs/specs/gear-templates.md): the same case file ACP and the
+        /// Python sync read. Every case must resolve to ACP's answer.
+        [Fact]
+        public void EverySharedWheelCaseResolvesAsAcpDoes() {
+            var root = JObject.Parse(TsFixtures.ReadFixture("wheel_resolve_cases.json"));
+            var cases = (JArray)root["cases"];
+            Assert.NotEmpty(cases);
+            var failures = new List<string>();
+            foreach (var c in cases) {
+                var filter = (string)c["filter"];
+                var slots = c["slots"].Select(s => (string)s).ToList();
+                var expect = c["expect"].Type == JTokenType.Null ? null : (string)c["expect"];
+                var actual = TsFilterNames.ResolveToWheel(filter, slots);
+                if (actual != expect) {
+                    failures.Add($"filter '{filter}' on [{string.Join(", ", slots)}]: expected {expect ?? "null"}, got {actual ?? "null"}");
+                }
+            }
+            Assert.True(failures.Count == 0, string.Join("\n", failures));
         }
 
         [Fact]
