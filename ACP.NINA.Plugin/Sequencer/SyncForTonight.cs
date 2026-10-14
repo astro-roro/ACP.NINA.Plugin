@@ -139,6 +139,22 @@ namespace ACP.NINA.Plugin.Sequencer {
         // -- Execution ----------------------------------------------------------
 
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
+            // The ACP time limit wraps the whole instruction. Running out of
+            // time fails the instruction, so the sequence's own error handling
+            // decides what happens next; NINA cancelling the sequence still
+            // cancels it.
+            using (var run = new ActionRun(token)) {
+                try {
+                    await ExecuteCore(progress, run.Token);
+                } catch (OperationCanceledException) when (run.TimedOut) {
+                    throw new SequenceEntityFailedException(
+                        run.Why("Sync for tonight") + " Target Scheduler was left as it was."
+                    );
+                }
+            }
+        }
+
+        private async Task ExecuteCore(IProgress<ApplicationStatus> progress, CancellationToken token) {
             if (SlewFirst) {
                 var target = Coordinates?.Coordinates;
                 if (target == null) {

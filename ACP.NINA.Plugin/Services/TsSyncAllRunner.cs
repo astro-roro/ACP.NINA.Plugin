@@ -53,7 +53,7 @@ namespace ACP.NINA.Plugin.Services {
                     }
                 } catch (AcpUnauthorizedException) {
                     throw;
-                } catch (Exception ex) {
+                } catch (Exception ex) when (!ct.IsCancellationRequested) {
                     Logger.Warning($"ACP: could not send the gear fingerprint before Sync All to TS: {ex.Message}");
                 }
             }
@@ -64,7 +64,7 @@ namespace ACP.NINA.Plugin.Services {
                 if (templates != null) {
                     await TsTemplatesReporter.PostAsync(client, templates, profileId, ct).ConfigureAwait(false);
                 }
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!ct.IsCancellationRequested) {
                 Logger.Warning($"ACP: could not send the template list before Sync All to TS: {ex.Message}");
             }
 
@@ -75,13 +75,15 @@ namespace ACP.NINA.Plugin.Services {
                 gear = await client.GetGearAsync(ct).ConfigureAwait(false);
             } catch (AcpUnauthorizedException) {
                 throw;
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!ct.IsCancellationRequested) {
                 // Without gear the rows still load, with no mosaic panels
                 // and default exposure settings, as Sync for tonight does.
                 Logger.Warning($"ACP: could not read gear for Sync All to TS: {ex.Message}");
             }
 
-            // 4) The push.
+            // 4) The push. A stop is honoured only before the write takes its
+            // lock; once it has committed, step 5 always runs, so ACP's
+            // record of what Target Scheduler holds never falls behind it.
             var result = new TsSyncAllResult();
             result.Push = await tsPush
                 .PushAsync(plans, gear, profileId, ct, wheelFilters, profileName)
@@ -90,9 +92,9 @@ namespace ACP.NINA.Plugin.Services {
             // 5) Tell ACP what was written. A failure costs a warning, not
             // the sync.
             if (result.Push.Success) {
-                result.LinksWarning = await TsLinksReporter.PostAsync(client, result.Push, profileId, ct)
+                result.LinksWarning = await TsLinksReporter.PostAsync(client, result.Push, profileId, CancellationToken.None)
                     .ConfigureAwait(false);
-                await TsTemplatesReporter.PostAsync(client, result.Push, profileId, ct)
+                await TsTemplatesReporter.PostAsync(client, result.Push, profileId, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             return result;
