@@ -6,6 +6,7 @@ using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
 using System;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
@@ -38,11 +39,10 @@ namespace ACP.NINA.Plugin.Services {
         private readonly object gate = new object();
 
         private readonly Func<bool> isActive;
-        private readonly Channel<Func<Task>> work =
-            Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(2000) {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
-            });
+        private readonly Action<string> log;
+        private readonly Channel<Func<Task>> work;
+        private int droppedFrames;
+        private string lastDropLogNight;
 
         private DateTimeOffset? sessionStart;
         private bool? lastSafe;
@@ -70,9 +70,17 @@ namespace ACP.NINA.Plugin.Services {
             Func<string, int?> tsTargetIdByName,
             Func<int?, string, Task<string>> planIdFor,
             Func<ImagingFrame, System.Collections.Generic.IEnumerable<ImagingSeed>> imagingSeeder = null,
-            Func<bool> isActive = null
+            Func<bool> isActive = null,
+            Action<string> log = null
         ) {
             this.isActive = isActive ?? (() => true);
+            this.log = log ?? (m => Logger.Warning(m));
+            // 2000 waiting frames is hours of imaging. When the consumer is stuck
+            // and the channel is full the oldest job goes; it is counted and
+            // logged once a night (OnJobDropped).
+            work = Channel.CreateBounded<Func<Task>>(
+                new BoundedChannelOptions(2000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true },
+                OnJobDropped);
             this.post = post ?? (e => { });
             this.profileId = profileId ?? (() => null);
             this.profileName = profileName ?? (() => null);
@@ -120,6 +128,21 @@ namespace ACP.NINA.Plugin.Services {
             work.Writer.TryWrite(() => OnLightFrameAsync(targetName, filter, exposureSeconds, at));
         }
 
+        /// How many queued frames were dropped because the channel was full.
+        public int DroppedFrames => Volatile.Read(ref droppedFrames);
+
+        private void OnJobDropped(Func<Task> job) {
+            Interlocked.Increment(ref droppedFrames);
+            string night;
+            try { night = ActivityNight.For(clock()); } catch (Exception) { night = "unknown"; }
+            lock (gate) {
+                if (lastDropLogNight == night) return;
+                lastDropLogNight = night;
+            }
+            log($"ACP: the activity frame queue is full, so the oldest saved frames are being dropped (night {night}). "
+                + "Imaging totals for that night may read low until the queue catches up.");
+        }
+
         /// Completes when every frame queued before the call has been handled.
         public Task FlushFramesAsync() {
             var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -127,6 +150,14 @@ namespace ACP.NINA.Plugin.Services {
                 done.TrySetResult(true);
             }
             return done.Task;
+        }
+
+        /// Wait for the frames queued so far, but no longer than the timeout.
+        /// The marker itself can be dropped from a full channel or sit behind a
+        /// stuck lookup, so this never waits unbounded. True when it drained.
+        public async Task<bool> DrainFramesAsync(TimeSpan timeout) {
+            var drained = FlushFramesAsync();
+            return await Task.WhenAny(drained, Task.Delay(timeout)).ConfigureAwait(false) == drained;
         }
 
         private async Task ConsumeFramesAsync() {

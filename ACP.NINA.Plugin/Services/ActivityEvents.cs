@@ -309,6 +309,8 @@ namespace ACP.NINA.Plugin.Services {
 
         private class State {
             public long Seq;
+            public bool Seeded;
+            public string PlanId;
             public readonly Dictionary<string, Group> Groups = new Dictionary<string, Group>();
         }
 
@@ -380,28 +382,36 @@ namespace ACP.NINA.Plugin.Services {
                 var id = frame.TsTargetId;
                 int learned;
                 if (!id.HasValue && idByName.TryGetValue(learnKey, out learned)) id = learned;
-                var key = id.HasValue
-                    ? $"img:{profile}:{id.Value.ToString(CultureInfo.InvariantCulture)}:{night}"
-                    : slugKey;
 
+                // ACP keeps every key it is sent, and counts each row as its own
+                // imaging, so a target gets one key for the night. Once a name
+                // has posted under its slug it stays there even when the id
+                // resolves later; otherwise the id key is used when known.
                 State state;
-                if (!states.TryGetValue(key, out state)) {
-                    state = new State();
-                    states[key] = state;
-                    SeedFrom(state, frame);
-
-                    // The id has just resolved for a name already counted under
-                    // its slug: fold those counts in and drop the slug key. The
-                    // seed already covers every earlier frame the database
-                    // holds, so the larger count wins per group rather than
-                    // the two being added.
-                    State slugState;
-                    if (id.HasValue && states.TryGetValue(slugKey, out slugState)) {
-                        MergeLarger(state, slugState);
-                        states.Remove(slugKey);
+                string key;
+                if (states.TryGetValue(slugKey, out state)) {
+                    key = slugKey;
+                } else {
+                    key = id.HasValue
+                        ? $"img:{profile}:{id.Value.ToString(CultureInfo.InvariantCulture)}:{night}"
+                        : slugKey;
+                    if (!states.TryGetValue(key, out state)) {
+                        state = new State();
+                        states[key] = state;
                     }
                 }
-                if (id.HasValue) idByName[learnKey] = id.Value;
+
+                // The database seed needs the id. Take it once, as soon as the
+                // id is known; the larger count wins per group so frames the
+                // row already counted live are not added twice.
+                if (!state.Seeded && frame.TsTargetId.HasValue) {
+                    state.Seeded = true;
+                    var seeded = new State();
+                    SeedFrom(seeded, frame);
+                    MergeLarger(state, seeded);
+                }
+                if (frame.TsTargetId.HasValue) idByName[learnKey] = frame.TsTargetId.Value;
+                if (!string.IsNullOrWhiteSpace(frame.PlanId)) state.PlanId = frame.PlanId;
 
                 Tally(state, frame.Filter, frame.ExposureSeconds, frame.At);
 
@@ -428,7 +438,7 @@ namespace ACP.NINA.Plugin.Services {
 
                 var extra = new Dictionary<string, object> {
                     { "target", frame.TargetName },
-                    { "plan_id", frame.PlanId },
+                    { "plan_id", state.PlanId },
                 };
                 return ActivityEvents.MakeTracked(
                     "imaging_target", key, frame.At, frame.ProfileId, frame.ProfileName, title,

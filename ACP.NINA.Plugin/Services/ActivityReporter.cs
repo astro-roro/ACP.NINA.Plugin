@@ -357,12 +357,33 @@ namespace ACP.NINA.Plugin.Services {
         /// resumes on the caller's thread, so waiting here cannot deadlock.
         public static void Shutdown() {
             try {
-                collector?.Close();
-                current?.FlushAsync().Wait(TimeSpan.FromSeconds(5));
+                var budget = System.Diagnostics.Stopwatch.StartNew();
+                var total = TimeSpan.FromSeconds(5);
+
+                // Frames still in the channel become events first, so they are
+                // in the final flush. The drain has its own, shorter timeout.
+                var c = collector;
+                if (c != null) {
+                    var drain = DrainTimeout < total - budget.Elapsed ? DrainTimeout : total - budget.Elapsed;
+                    if (drain > TimeSpan.Zero) c.DrainFramesAsync(drain).Wait(drain + TimeSpan.FromSeconds(1));
+                    c.Close();
+                }
+
+                var r = current;
+                var left = total - budget.Elapsed;
+                if (r != null && left > TimeSpan.Zero) {
+                    using (var cts = new CancellationTokenSource(left)) {
+                        try { r.FlushAsync(cts.Token).Wait(left); } catch (AggregateException) { }
+                    }
+                }
             } catch (Exception ex) {
                 Logger.Debug($"ACP: activity shutdown failed: {ex.Message}");
             }
         }
+
+        /// How long Shutdown waits for queued frames before moving on. Part of
+        /// the same 5 second budget as the final flush.
+        public static TimeSpan DrainTimeout { get; set; } = TimeSpan.FromSeconds(2);
 
         public static void Post(ActivityEvent e) {
             try {
