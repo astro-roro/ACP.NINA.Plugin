@@ -207,7 +207,13 @@ namespace ACP.NINA.Plugin.Dockables {
                         if (!tsTargetId.HasValue || planRefsSource == null) return null;
                         var all = await planRefsSource.ReadPlanRefsAsync(CancellationToken.None).ConfigureAwait(false);
                         return ProgressMapper.FindPlanForTarget(all, tsTargetId.Value, profileId())?.AcpPlanId;
-                    });
+                    },
+                    // Read only, opened and closed per seed (once per target per night).
+                    new ActivityImagingSeeder((profile, from, to) => {
+                        using (var db = TargetSchedulerDb.Open(null, readOnly: true)) {
+                            return db.ReadAcquiredImages(profile, from, to);
+                        }
+                    }).Seed);
 
                 ActivityHub.Attach(activityReporter);
                 activityReporter.Start();

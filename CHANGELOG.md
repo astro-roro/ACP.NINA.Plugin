@@ -6,7 +6,7 @@ The plugin side of ACP's Activity tab (`docs/specs/activity-tab.md` in ACP, phas
 
 ### Added
 
-- **The plugin posts what happens at the scope to ACP.** Sync for tonight, imaging progress per target, autofocus runs, meridian flips, park and unpark, safety monitor changes, and session start and end. Events are queued in memory and sent in batches every 60 seconds and when the Target Scheduler container stops. A failed batch is tried again on the next tick; an event ACP rejects is logged and not retried. The queue holds 500 events and drops plain information events first when it is full.
+- **The plugin posts what happens at the scope to ACP.** Sync for tonight, imaging progress per target, autofocus runs, meridian flips, park and unpark, safety monitor changes, and session start and end. Events are queued in memory and sent in batches every 60 seconds and when the Target Scheduler container stops. A failed batch is tried again on the next tick; an event ACP rejects is logged and not retried. The queue holds 500 events and drops plain information events first when it is full. After a NINA restart mid-night, imaging totals are rebuilt from Target Scheduler's acquired image table (read only), so the count does not fall back to zero. Autofocus totals restart at zero.
 - **It follows the "Report progress to ACP" option.** Untick it and no events are queued or sent.
 
 ### Fixed
