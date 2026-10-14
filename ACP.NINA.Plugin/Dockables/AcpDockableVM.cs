@@ -81,23 +81,35 @@ namespace ACP.NINA.Plugin.Dockables {
                 async () => await PushToFramingAsync(),
                 () => SelectedPlan != null && IsConnected
             );
+            // While an action runs its own button reads Stop, so a solve that
+            // can never succeed (the cover closed, the sky clouded) or a
+            // server that never answers can be ended without restarting NINA.
             SyncAllToTsCommand = new RelayCommand(
-                async () => await SyncAllToTsAsync(),
-                () => IsConnected && Plans.Count > 0 && !IsSyncingAllToTs && !IsSendingTs
+                async () => {
+                    if (IsSyncingAllToTs) StopRun(syncAllRun, "Sync All to TS");
+                    else await SyncAllToTsAsync();
+                },
+                () => IsSyncingAllToTs
+                    ? syncAllRun?.StopRequested == false
+                    : IsConnected && Plans.Count > 0 && !IsSendingTs
             );
-            // While a sync runs the same button reads Stop, so a solve that
-            // can never succeed (the cover closed, the sky clouded) can be
-            // ended without restarting NINA.
             SyncForTonightCommand = new RelayCommand(
                 async () => {
-                    if (IsSyncingForTonight) StopSyncForTonight();
+                    if (IsSyncingForTonight) StopRun(syncForTonightRun, "Sync for tonight");
                     else await SyncForTonightAsync();
                 },
-                () => IsSyncingForTonight ? !isStoppingSyncForTonight : IsConnected && !IsSendingTs
+                () => IsSyncingForTonight
+                    ? syncForTonightRun?.StopRequested == false
+                    : IsConnected && !IsSendingTs
             );
             SendTsToAcpCommand = new RelayCommand(
-                async () => await SendTsToAcpAsync(),
-                () => IsConnected && !IsSyncingForTonight && !IsSyncingAllToTs && !IsSendingTs
+                async () => {
+                    if (IsSendingTs) StopRun(sendTsRun, "Send TS to ACP");
+                    else await SendTsToAcpAsync();
+                },
+                () => IsSendingTs
+                    ? sendTsRun?.StopRequested == false
+                    : IsConnected && !IsSyncingForTonight && !IsSyncingAllToTs
             );
             OpenReviewCommand = new RelayCommand(
                 OpenReview,
@@ -440,34 +452,32 @@ namespace ACP.NINA.Plugin.Dockables {
 
         // -- Action: Sync for tonight ------------------------------------------
 
+        private const string StopLabel = "✕ Stop";
+
+        // The run behind each button while it is busy, so Stop can reach it.
+        private ActionRun syncForTonightRun;
+        private ActionRun syncAllRun;
+        private ActionRun sendTsRun;
+
+        private void StopRun(ActionRun run, string action) {
+            if (run == null || !run.Stop()) return;
+            LastActionResult = $"{action}: stopping...";
+            NotifyActionCommands();
+        }
+
         private bool isSyncingForTonight;
-        private bool isStoppingSyncForTonight;
-        private CancellationTokenSource syncForTonightCts;
 
         public bool IsSyncingForTonight {
             get => isSyncingForTonight;
             set {
                 isSyncingForTonight = value;
-                if (!value) isStoppingSyncForTonight = false;
                 RaisePropertyChanged(nameof(IsSyncingForTonight));
                 RaisePropertyChanged(nameof(SyncForTonightLabel));
                 NotifyActionCommands();
             }
         }
 
-        public string SyncForTonightLabel => IsSyncingForTonight ? "✕ Stop" : "Sync for tonight";
-
-        private void StopSyncForTonight() {
-            if (isStoppingSyncForTonight) return;
-            isStoppingSyncForTonight = true;
-            LastActionResult = "Sync for tonight: stopping...";
-            NotifyActionCommands();
-            try {
-                syncForTonightCts?.Cancel();
-            } catch (ObjectDisposedException) {
-                // The run finished between the click and the cancel.
-            }
-        }
+        public string SyncForTonightLabel => IsSyncingForTonight ? StopLabel : "Sync for tonight";
 
         private bool isSyncingAllToTs;
 
@@ -476,9 +486,12 @@ namespace ACP.NINA.Plugin.Dockables {
             set {
                 isSyncingAllToTs = value;
                 RaisePropertyChanged(nameof(IsSyncingAllToTs));
+                RaisePropertyChanged(nameof(SyncAllToTsLabel));
                 NotifyActionCommands();
             }
         }
+
+        public string SyncAllToTsLabel => IsSyncingAllToTs ? StopLabel : "Sync All to TS";
 
         // -- Action: Send TS to ACP --------------------------------------------
 
@@ -489,9 +502,12 @@ namespace ACP.NINA.Plugin.Dockables {
             set {
                 isSendingTs = value;
                 RaisePropertyChanged(nameof(IsSendingTs));
+                RaisePropertyChanged(nameof(SendTsToAcpLabel));
                 NotifyActionCommands();
             }
         }
+
+        public string SendTsToAcpLabel => IsSendingTs ? StopLabel : "Send TS to ACP";
 
         private string reviewUrl;
 
@@ -519,6 +535,9 @@ namespace ACP.NINA.Plugin.Dockables {
                 LastActionResult = "✗ No active NINA profile, so there is nothing to send.";
                 return;
             }
+            var run = new ActionRun();
+            sendTsRun = run;
+            var token = run.Token;
             IsSendingTs = true;
             ReviewUrl = null;
             try {
@@ -548,7 +567,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 });
                 var service = new TsUploadService(new AcpApiClient(AcpSettings.Load().ServerUrl));
                 var outcome = await service
-                    .SendAsync(activeId, profile.Name, profiles, status, CancellationToken.None)
+                    .SendAsync(activeId, profile.Name, profiles, status, token)
                     .ConfigureAwait(false);
 
                 // The upload carries plan settings for review, not frame counts;
@@ -558,9 +577,9 @@ namespace ACP.NINA.Plugin.Dockables {
                 var reporter = progressReporter;
                 if (reporter != null) {
                     try {
-                        var reported = await reporter.ReportAllAsync(CancellationToken.None).ConfigureAwait(false);
+                        var reported = await reporter.ReportAllAsync(token).ConfigureAwait(false);
                         line += $" Acquired hours sent for {reported} plan(s).";
-                    } catch (Exception ex) {
+                    } catch (Exception ex) when (!token.IsCancellationRequested) {
                         line += $" Acquired hours not sent: {ex.Message}";
                         Logger.Warning($"ACP: progress report after Send TS to ACP failed: {ex.Message}");
                     }
@@ -572,10 +591,17 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = line;
                 });
                 Logger.Info($"ACP: Send TS to ACP: {outcome.Line}");
+            } catch (OperationCanceledException) when (token.IsCancellationRequested) {
+                // Nothing on the rig was written; at worst ACP holds an
+                // upload nobody reviews, which it already tolerates.
+                SetResultOnUi(run.Why("Send TS to ACP") + " Nothing on this rig was changed.");
+                Logger.Info($"ACP: {run.Why("Send TS to ACP")}");
             } catch (Exception ex) {
                 SetResultOnUi($"✗ Send TS to ACP failed: {ex.Message}");
                 Logger.Error($"ACP: Send TS to ACP failed: {ex}");
             } finally {
+                sendTsRun = null;
+                run.Dispose();
                 Application.Current?.Dispatcher.Invoke(() => IsSendingTs = false);
             }
         }
@@ -603,9 +629,9 @@ namespace ACP.NINA.Plugin.Dockables {
         /// allowed to reuse it as long as it says so.
         private async Task SyncForTonightAsync() {
             if (IsSyncingForTonight) return;
-            var cts = new CancellationTokenSource();
-            syncForTonightCts = cts;
-            var token = cts.Token;
+            var run = new ActionRun();
+            syncForTonightRun = run;
+            var token = run.Token;
             IsSyncingForTonight = true;
             try {
                 // A solve is only taken when something needs it: the focal
@@ -663,8 +689,8 @@ namespace ACP.NINA.Plugin.Dockables {
                         : "✗ " + prefix + outcome.ShortResult
                 );
             } catch (OperationCanceledException) when (token.IsCancellationRequested) {
-                SetResultOnUi("Sync for tonight stopped. No plans were loaded into Target Scheduler.");
-                Logger.Info("ACP: Sync for tonight stopped by the user before the Target Scheduler write.");
+                SetResultOnUi(run.Why("Sync for tonight") + " No plans were loaded into Target Scheduler.");
+                Logger.Info($"ACP: {run.Why("Sync for tonight")} It ended before the Target Scheduler write.");
             } catch (AcpUnauthorizedException ex) {
                 SetResultOnUi("✗ " + ex.Message);
                 Logger.Warning($"ACP: Sync for tonight rejected: {ex.Message}");
@@ -672,8 +698,8 @@ namespace ACP.NINA.Plugin.Dockables {
                 SetResultOnUi($"✗ Sync for tonight failed: {ex.Message}");
                 Logger.Error($"ACP: Sync for tonight failed: {ex}");
             } finally {
-                syncForTonightCts = null;
-                cts.Dispose();
+                syncForTonightRun = null;
+                run.Dispose();
                 Application.Current?.Dispatcher.Invoke(() => IsSyncingForTonight = false);
             }
         }
@@ -1004,6 +1030,9 @@ namespace ACP.NINA.Plugin.Dockables {
             // both map plan filters onto the wheel's names. No solve, no match
             // and no profile write-back: that is Sync for tonight's job.
             if (IsSyncingAllToTs) return;
+            var run = new ActionRun();
+            syncAllRun = run;
+            var token = run.Token;
             IsSyncingAllToTs = true;
             try {
                 LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
@@ -1018,7 +1047,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 // TsSyncAllRunner.
                 var run = await TsSyncAllRunner
                     .RunAsync(client, fingerprintService, tsPush, profileId, profile.Name,
-                        wheelFilters, AcpSettings.Load().SyncMode)
+                        wheelFilters, AcpSettings.Load().SyncMode, token)
                     .ConfigureAwait(false);
                 var result = run.Push;
                 InvalidateProgressCaches();
@@ -1030,6 +1059,9 @@ namespace ACP.NINA.Plugin.Dockables {
                     LastActionResult = line;
                 });
                 Logger.Info($"ACP: Sync All to TS: {line}");
+            } catch (OperationCanceledException) when (token.IsCancellationRequested) {
+                SetResultOnUi(run.Why("Sync All to TS") + " Target Scheduler was not changed.");
+                Logger.Info($"ACP: {run.Why("Sync All to TS")} It ended before the Target Scheduler write.");
             } catch (AcpUnauthorizedException ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = $"✗ {ex.Message}";
@@ -1041,6 +1073,8 @@ namespace ACP.NINA.Plugin.Dockables {
                 });
                 Logger.Error($"ACP: TS sync failed: {ex}");
             } finally {
+                syncAllRun = null;
+                run.Dispose();
                 Application.Current?.Dispatcher.Invoke(() => IsSyncingAllToTs = false);
             }
         }

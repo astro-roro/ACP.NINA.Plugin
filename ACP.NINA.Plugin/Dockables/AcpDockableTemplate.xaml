@@ -143,7 +143,7 @@
                             Padding="4,0"
                             FontSize="11"
                             Command="{Binding SyncAllToTsCommand}"
-                            Content="Sync All to TS" />
+                            Content="{Binding SyncAllToTsLabel}" />
                     <Button Height="24"
                             Margin="0,3,3,0"
                             Padding="4,0"
@@ -155,7 +155,7 @@
                             Padding="4,0"
                             FontSize="11"
                             Command="{Binding SendTsToAcpCommand}"
-                            Content="Send TS to ACP"
+                            Content="{Binding SendTsToAcpLabel}"
                             ToolTip="Sends a read-only copy of Target Scheduler's database to ACP. ACP shows what would change before anything does. Nothing in TS changes." />
                 </UniformGrid>
                 <TextBlock Margin="0,6,0,0"

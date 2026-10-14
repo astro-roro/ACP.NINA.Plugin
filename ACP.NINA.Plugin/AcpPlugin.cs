@@ -97,6 +97,28 @@ namespace ACP.NINA.Plugin {
             }
         }
 
+        public int SolveAttempts {
+            get => settings.SolveAttempts;
+            set {
+                var clamped = AcpSettings.ClampSolveAttempts(value);
+                if (settings.SolveAttempts == clamped) return;
+                settings.SolveAttempts = clamped;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public int ActionTimeoutMinutes {
+            get => settings.ActionTimeoutMinutes;
+            set {
+                var clamped = AcpSettings.ClampTimeoutMinutes(value);
+                if (settings.ActionTimeoutMinutes == clamped) return;
+                settings.ActionTimeoutMinutes = clamped;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         public bool ProfileWriteBackEnabled {
             get => settings.ProfileWriteBackEnabled;
             set {
