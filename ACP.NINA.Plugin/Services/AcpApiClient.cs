@@ -1,6 +1,7 @@
 using ACP.NINA.Plugin.Models;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -44,7 +45,7 @@ namespace ACP.NINA.Plugin.Services {
     /// wants, so the token cannot live in DefaultRequestHeaders: it is set on
     /// each request instead. That also means a token changed on the Options
     /// page takes effect on the next call with no restart.
-    public class AcpApiClient : IProgressSink {
+    public class AcpApiClient : IProgressSink, IActivitySink {
 
         private static readonly HttpClient http = new HttpClient {
             // Long enough to absorb a TS sync's BEGIN IMMEDIATE + backup +
@@ -207,6 +208,21 @@ namespace ACP.NINA.Plugin.Services {
             var path = $"/api/plans/{Uri.EscapeDataString(planId)}/progress";
             var text = await SendAsync(HttpMethod.Post, path, json, ct).ConfigureAwait(false);
             return JsonConvert.DeserializeObject<ProgressResponse>(text, JsonSettings) ?? new ProgressResponse();
+        }
+
+        public const string ActivityEventsPath = "/api/activity/events";
+
+        /// POST /api/activity/events. Up to 100 events per call; the caller
+        /// splits larger sets. ACP answers with how many it stored, updated,
+        /// found unchanged or ignored as stale, and lists any it rejected.
+        /// A 404 or 403 comes back as an AcpHttpException with the status.
+        public async Task<ActivityPostResult> PostActivityEventsAsync(
+            IReadOnlyList<ActivityEvent> events, CancellationToken ct = default
+        ) {
+            if (events == null) throw new ArgumentNullException(nameof(events));
+            var json = JsonConvert.SerializeObject(new { events });
+            var text = await SendAsync(HttpMethod.Post, ActivityEventsPath, json, ct).ConfigureAwait(false);
+            return JsonConvert.DeserializeObject<ActivityPostResult>(text, JsonSettings) ?? new ActivityPostResult();
         }
 
         // -- TS upload (spec: ts-upload-import.md, Part A) -------------------
