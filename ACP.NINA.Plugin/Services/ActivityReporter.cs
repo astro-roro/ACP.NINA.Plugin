@@ -337,10 +337,13 @@ namespace ACP.NINA.Plugin.Services {
 
         private static volatile ActivityReporter current;
         private static volatile ActivityCollector collector;
+        private static readonly object shutdownLock = new object();
+        private static bool shutdownDone;
 
         public static void Attach(ActivityReporter reporter, ActivityCollector activityCollector = null) {
             current = reporter;
             collector = activityCollector;
+            lock (shutdownLock) { shutdownDone = false; }
         }
 
         public static void Detach(ActivityReporter reporter) {
@@ -356,6 +359,12 @@ namespace ACP.NINA.Plugin.Services {
         /// once, and a flush of an empty queue sends nothing. FlushAsync never
         /// resumes on the caller's thread, so waiting here cannot deadlock.
         public static void Shutdown() {
+            // Teardown and Dispose both call this. Only the first does the work,
+            // so an unreachable ACP costs one 5 second budget, not two.
+            lock (shutdownLock) {
+                if (shutdownDone) return;
+                shutdownDone = true;
+            }
             try {
                 var budget = System.Diagnostics.Stopwatch.StartNew();
                 var total = TimeSpan.FromSeconds(5);

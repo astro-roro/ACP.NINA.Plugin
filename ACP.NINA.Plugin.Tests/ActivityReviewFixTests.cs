@@ -323,5 +323,41 @@ namespace ACP.NINA.Plugin.Tests {
                 ActivityHub.Detach(reporter);
             }
         }
+
+        private class HangingAcp : System.Net.Http.HttpMessageHandler {
+            public int Requests;
+            public string Body;
+            protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(
+                System.Net.Http.HttpRequestMessage request, CancellationToken ct
+            ) {
+                Interlocked.Increment(ref Requests);
+                Body = await request.Content.ReadAsStringAsync().ConfigureAwait(false);
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                return null;
+            }
+        }
+
+        [Fact]
+        public void Two_shutdowns_with_ACP_unreachable_share_one_budget_and_send_one_session_end() {
+            var hang = new HangingAcp();
+            var reporter = new ActivityReporter(new AcpApiClient("http://localhost:5555", () => "t", hang), () => true);
+            var collector = new ActivityCollector(reporter.Post, () => "p1", () => "Rig", () => T0, null, null);
+            ActivityHub.Attach(reporter, collector);
+            try {
+                collector.OnSequenceStarting();
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                ActivityHub.Shutdown();
+                ActivityHub.Shutdown();
+                sw.Stop();
+
+                Assert.True(sw.Elapsed < TimeSpan.FromSeconds(7), sw.Elapsed.ToString());
+                Assert.Equal(1, hang.Requests);
+                var types = ((JArray)JObject.Parse(hang.Body)["events"]).Select(e => (string)e["type"]).ToArray();
+                Assert.Equal(1, types.Count(t => t == "session_end"));
+            } finally {
+                ActivityHub.Detach(reporter);
+            }
+        }
     }
 }
