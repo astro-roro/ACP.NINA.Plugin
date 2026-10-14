@@ -33,9 +33,10 @@ namespace ACP.NINA.Plugin.Services {
         /// Send acquired hours back to ACP while Target Scheduler is imaging.
         ///
         /// On by default, per the v3 spec. It is the thing that keeps ACP's
-        /// actual_hours from going stale. Nothing is lost in Target Scheduler
-        /// by turning it off: the push never writes acquired or accepted
-        /// counts into an existing row.
+        /// actual_hours from going stale. Turning it off costs Target Scheduler
+        /// nothing: ordinary pushes never change acquired or accepted on an
+        /// existing row, and the one write, AAC's accepted figures, is skipped
+        /// once Target Scheduler has saved frames since the night they cover.
         ///
         /// Reasons to turn it off are having ACP on a machine this one cannot
         /// reach, or already running the Python extension's sync-acquired

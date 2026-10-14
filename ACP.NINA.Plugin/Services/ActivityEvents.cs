@@ -53,14 +53,23 @@ namespace ACP.NINA.Plugin.Services {
             return cut < 0 ? path : path.Substring(cut + 1);
         }
 
-        private static readonly Regex WindowsPath =
-            new Regex(@"[A-Za-z]:\\[^\s""'<>|]*", RegexOptions.Compiled);
+        /// A Windows path: a drive letter or a UNC server, then folders (spaces
+        /// allowed), then a final name. The final name ends at its file
+        /// extension when it has one, so "db backup 1.sqlite" survives whole
+        /// and the prose after it is left alone; without an extension it is one
+        /// word. Only that final name is kept.
+        private static readonly Regex WindowsPath = new Regex(
+            @"(?:[A-Za-z]:\\|\\\\[^\s\\/:*?""<>|]+\\)"
+            + @"(?:[^\\/:*?""<>|\r\n]+\\)*"
+            + @"(?<base>[^\\/:*?""<>|\r\n]*?\.\w{1,5}(?=\.?(?:$|[\s,;:)'""]))|[^\s\\/:*?""<>|]+)",
+            RegexOptions.Compiled | RegexOptions.Multiline);
 
-        /// Replace every Windows path in free text with its basename, so a
-        /// failure message cannot carry a user folder to ACP.
+        /// Reduce every Windows path in free text, drive or UNC, to its
+        /// basename, so a failure message cannot carry a user or server folder
+        /// to ACP.
         public static string ScrubPaths(string text) {
             if (string.IsNullOrEmpty(text)) return text;
-            return WindowsPath.Replace(text, m => Basename(m.Value.TrimEnd('.', ',', ';', ':')));
+            return WindowsPath.Replace(text, m => m.Groups["base"].Value);
         }
 
         /// One line, cut to the limit. Titles over 200 characters are rejected
@@ -308,6 +317,10 @@ namespace ACP.NINA.Plugin.Services {
         private readonly object gate = new object();
         private readonly Dictionary<string, State> states = new Dictionary<string, State>();
 
+        /// Target Scheduler ids learned for a name tonight, so a frame whose id
+        /// lookup fails after it once worked still lands on the id key.
+        private readonly Dictionary<string, int> idByName = new Dictionary<string, int>();
+
         /// <param name="seeder">Frames already taken tonight for the frame's
         /// target, asked once per key when its first frame arrives. This is what
         /// keeps the totals right after NINA restarts mid-night, when the memory
@@ -330,6 +343,19 @@ namespace ACP.NINA.Plugin.Services {
             if (at > group.Last) group.Last = at;
         }
 
+        private static void MergeLarger(State into, State from) {
+            foreach (var pair in from.Groups) {
+                Group have;
+                if (!into.Groups.TryGetValue(pair.Key, out have)) {
+                    into.Groups[pair.Key] = pair.Value;
+                    continue;
+                }
+                have.Count = Math.Max(have.Count, pair.Value.Count);
+                if (pair.Value.First < have.First) have.First = pair.Value.First;
+                if (pair.Value.Last > have.Last) have.Last = pair.Value.Last;
+            }
+        }
+
         private void SeedFrom(State state, ImagingFrame frame) {
             if (seeder == null) return;
             try {
@@ -345,18 +371,37 @@ namespace ACP.NINA.Plugin.Services {
             if (frame == null) throw new ArgumentNullException(nameof(frame));
 
             var night = ActivityNight.For(frame.At);
-            var idPart = frame.TsTargetId.HasValue
-                ? frame.TsTargetId.Value.ToString(CultureInfo.InvariantCulture)
-                : "name-" + ActivityNight.Slug(frame.TargetName);
-            var key = $"img:{(string.IsNullOrWhiteSpace(frame.ProfileId) ? "noprofile" : frame.ProfileId)}:{idPart}:{night}";
+            var profile = string.IsNullOrWhiteSpace(frame.ProfileId) ? "noprofile" : frame.ProfileId;
+            var slug = "name-" + ActivityNight.Slug(frame.TargetName);
+            var slugKey = $"img:{profile}:{slug}:{night}";
+            var learnKey = $"{profile}|{slug}|{night}";
 
             lock (gate) {
+                var id = frame.TsTargetId;
+                int learned;
+                if (!id.HasValue && idByName.TryGetValue(learnKey, out learned)) id = learned;
+                var key = id.HasValue
+                    ? $"img:{profile}:{id.Value.ToString(CultureInfo.InvariantCulture)}:{night}"
+                    : slugKey;
+
                 State state;
                 if (!states.TryGetValue(key, out state)) {
                     state = new State();
                     states[key] = state;
                     SeedFrom(state, frame);
+
+                    // The id has just resolved for a name already counted under
+                    // its slug: fold those counts in and drop the slug key. The
+                    // seed already covers every earlier frame the database
+                    // holds, so the larger count wins per group rather than
+                    // the two being added.
+                    State slugState;
+                    if (id.HasValue && states.TryGetValue(slugKey, out slugState)) {
+                        MergeLarger(state, slugState);
+                        states.Remove(slugKey);
+                    }
                 }
+                if (id.HasValue) idByName[learnKey] = id.Value;
 
                 Tally(state, frame.Filter, frame.ExposureSeconds, frame.At);
 
@@ -414,47 +459,68 @@ namespace ACP.NINA.Plugin.Services {
             public int Runs;
             public double FirstPosition;
             public double LastPosition;
+            public bool HasTemp;
             public double TempMin;
             public double TempMax;
         }
 
         private readonly Func<DateTimeOffset> clock;
+        private readonly DateTimeOffset sessionStart;
         private readonly object gate = new object();
         private readonly Dictionary<string, State> states = new Dictionary<string, State>();
 
-        public AutofocusTracker(Func<DateTimeOffset> clock = null) {
+        /// <param name="sessionStart">When this NINA session began. It goes in
+        /// the key, so each session has its own row: the totals are in memory
+        /// and a restarted session would otherwise overwrite the earlier
+        /// session's row with a smaller count.</param>
+        public AutofocusTracker(Func<DateTimeOffset> clock = null, DateTimeOffset? sessionStart = null) {
             this.clock = clock ?? (() => DateTimeOffset.UtcNow);
+            this.sessionStart = sessionStart ?? this.clock();
+        }
+
+        private static bool IsReading(double t) {
+            return !double.IsNaN(t) && !double.IsInfinity(t);
         }
 
         public ActivityEvent AddRun(AutofocusRun run) {
             if (run == null) throw new ArgumentNullException(nameof(run));
 
             var night = ActivityNight.For(run.At);
-            var key = $"autofocus:{(string.IsNullOrWhiteSpace(run.ProfileId) ? "noprofile" : run.ProfileId)}:{night}";
+            var key = $"autofocus:{(string.IsNullOrWhiteSpace(run.ProfileId) ? "noprofile" : run.ProfileId)}:{night}:{ActivityNight.Stamp(sessionStart)}";
 
             lock (gate) {
                 State s;
                 if (!states.TryGetValue(key, out s)) {
-                    s = new State { FirstPosition = run.Position, TempMin = run.TemperatureC, TempMax = run.TemperatureC };
+                    s = new State { FirstPosition = run.Position };
                     states[key] = s;
                 }
                 s.Runs++;
                 s.LastPosition = run.Position;
-                s.TempMin = Math.Min(s.TempMin, run.TemperatureC);
-                s.TempMax = Math.Max(s.TempMax, run.TemperatureC);
+                if (IsReading(run.TemperatureC)) {
+                    if (!s.HasTemp) {
+                        s.HasTemp = true;
+                        s.TempMin = s.TempMax = run.TemperatureC;
+                    } else {
+                        s.TempMin = Math.Min(s.TempMin, run.TemperatureC);
+                        s.TempMax = Math.Max(s.TempMax, run.TemperatureC);
+                    }
+                }
                 s.Seq = Math.Max(s.Seq + 1, clock().ToUnixTimeMilliseconds());
 
                 var title = string.Format(
                     CultureInfo.InvariantCulture,
-                    "Autofocus: {0} {1}, focuser {2:0} to {3:0}, {4:0.#} to {5:0.#} C",
-                    s.Runs, s.Runs == 1 ? "run" : "runs", s.FirstPosition, s.LastPosition, s.TempMin, s.TempMax);
+                    "Autofocus: {0} {1}, focuser {2:0} to {3:0}",
+                    s.Runs, s.Runs == 1 ? "run" : "runs", s.FirstPosition, s.LastPosition);
                 var data = new Dictionary<string, object> {
                     { "runs", s.Runs },
                     { "first_position", s.FirstPosition },
                     { "last_position", s.LastPosition },
-                    { "temp_min_c", s.TempMin },
-                    { "temp_max_c", s.TempMax },
                 };
+                if (s.HasTemp) {
+                    title += string.Format(CultureInfo.InvariantCulture, ", {0:0.#} to {1:0.#} C", s.TempMin, s.TempMax);
+                    data["temp_min_c"] = s.TempMin;
+                    data["temp_max_c"] = s.TempMax;
+                }
                 return ActivityEvents.MakeTracked(
                     "autofocus_summary", key, run.At, run.ProfileId, run.ProfileName, title, data, s.Seq);
             }

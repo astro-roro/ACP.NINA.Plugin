@@ -48,6 +48,9 @@ namespace ACP.NINA.Plugin {
 
         public override Task Teardown() {
             settings.Save();
+            // End an open session and flush queued activity events before NINA
+            // goes. The dock's Dispose does the same; it is safe to do twice.
+            ActivityHub.Shutdown();
             Logger.Info("ACP plugin teardown");
             return Task.CompletedTask;
         }
@@ -124,7 +127,7 @@ namespace ACP.NINA.Plugin {
         public string ReportProgressExplanation =>
             settings.ReportProgressToAcp
                 ? "As Target Scheduler works through a target, the hours it has actually acquired are sent back to ACP so the coverage map and the hours remaining stay current. Hours only ever go up, so a report that arrives late or twice changes nothing."
-                : "ACP will not hear what tonight acquired until something else tells it, so the coverage map and the hours remaining go stale. The Target Scheduler sync never writes counts into Target Scheduler: the acquired and accepted columns are only filled in when a row is first created, so a sync cannot change or lower what Target Scheduler has counted.";
+                : "ACP will not hear what tonight acquired until something else tells it, so the coverage map and the hours remaining go stale. Syncs do not change the acquired or accepted counts on rows Target Scheduler already has. The one exception is AAC's accepted figures: a sync writes those, but only until Target Scheduler has saved frames since the night they cover.";
 
         // -- The two mode switch -----------------------------------------------
 

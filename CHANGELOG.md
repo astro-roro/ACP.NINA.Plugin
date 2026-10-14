@@ -11,7 +11,7 @@ The plugin side of ACP's Activity tab (`docs/specs/activity-tab.md` in ACP, phas
 
 ### Fixed
 
-- **The help text under "Report progress to ACP" no longer says a sync can walk Target Scheduler's counts backwards.** The sync only fills acquired and accepted when it creates a row.
+- **The help text under "Report progress to ACP" no longer says a sync can walk Target Scheduler's counts backwards.** Ordinary syncs never change acquired or accepted on a row Target Scheduler already has. The one write is AAC's accepted figures, skipped once Target Scheduler has saved frames since the night they cover.
 
 ## Unreleased: Gear templates
 
