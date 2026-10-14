@@ -94,7 +94,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public static List<Tuple<int, int>> InjectDithers(
             List<Tuple<int, int>> items, IList<string> filterOf, int ditherEvery
         ) {
-            if (ditherEvery <= 0 || items.Count == 0) return new List<Tuple<int, int>>(items);
+            if (ditherEvery <= 0) return new List<Tuple<int, int>>(items);
+            return InjectDithers(items, filterOf, _ => ditherEvery);
+        }
+
+        /// The same rule with a count per filter, for a project whose own
+        /// "dither every" is off: each filter dithers by its template's count,
+        /// as Target Scheduler does when it shoots without an override. A
+        /// filter whose count is 0 or less never calls for a dither.
+        public static List<Tuple<int, int>> InjectDithers(
+            List<Tuple<int, int>> items, IList<string> filterOf, Func<string, int> everyFor
+        ) {
+            if (items.Count == 0) return new List<Tuple<int, int>>(items);
             var work = new List<Tuple<int, int>>(items) { items[0] };
             var unique = work.Where(i => i.Item1 == Exposure).Select(i => filterOf[i.Item2]).Distinct().ToList();
             var output = new List<Tuple<int, int>>();
@@ -106,7 +117,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     if (work[i].Item1 != Exposure) continue;
                     var name = filterOf[work[i].Item2];
                     counts[name]++;
-                    if (counts[name] == ditherEvery + 1) {
+                    var every = everyFor(name);
+                    if (every > 0 && counts[name] == every + 1) {
                         found = i;
                         break;
                     }

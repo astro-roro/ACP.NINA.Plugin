@@ -1234,8 +1234,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         }
 
         /// The override rows that make TS shoot ACP's order: a block per plan
-        /// in ACP's order, then dithers by TS's own rule when the project
-        /// dithers. None when that order is the natural order. An enabled plan
+        /// in ACP's order, then dithers by TS's own rule, counted by the
+        /// project's "dither every" or, when that is off, each template's. None when that order is the natural order. An enabled plan
         /// no ACP row wrote keeps its place after ACP's rows, in natural order,
         /// so the order never stops TS shooting it. Matches _generated_rows in
         /// nina_ts_sync/upsert.py.
@@ -1255,17 +1255,24 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 "SELECT p.ditherevery FROM target t JOIN project p ON p.Id = t.projectid WHERE t.Id = $id", targetId);
             var ditherEvery = ditherRow == null || ditherRow[0] == null || ditherRow[0] == DBNull.Value
                 ? 0 : ToInt(ditherRow[0]);
-            if (ditherEvery <= 0) return items;
             var filters = new Dictionary<int, string>();
+            // A filter's template count, for a project whose own is off. Two
+            // plans on one filter with different counts take the smaller.
+            var templateEvery = new Dictionary<string, int>(StringComparer.Ordinal);
             using (var cmd = conn.CreateCommand()) {
                 cmd.CommandText =
-                    "SELECT e.Id, x.filtername FROM exposureplan e " +
+                    "SELECT e.Id, x.filtername, x.ditherevery FROM exposureplan e " +
                     "LEFT JOIN exposuretemplate x ON x.Id = e.exposureTemplateId WHERE e.targetid = $t";
                 cmd.Parameters.AddWithValue("$t", targetId);
                 using (var reader = cmd.ExecuteReader()) {
                     while (reader.Read()) {
-                        filters[Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture)] =
-                            reader.IsDBNull(1) ? string.Empty : reader.GetValue(1).ToString();
+                        var filterName = reader.IsDBNull(1) ? string.Empty : reader.GetValue(1).ToString();
+                        filters[Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture)] = filterName;
+                        var every = reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2), CultureInfo.InvariantCulture);
+                        if (every > 0) {
+                            int had;
+                            templateEvery[filterName] = templateEvery.TryGetValue(filterName, out had) ? Math.Min(had, every) : every;
+                        }
                     }
                 }
             }
@@ -1274,7 +1281,14 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 string filterName;
                 filterOf.Add(filters.TryGetValue(planId, out filterName) ? filterName : string.Empty);
             }
-            return TsOrder.InjectDithers(items, filterOf, ditherEvery);
+            // An override order is shot exactly as written, so the dithers
+            // have to be in it. The project's count wins when it is set;
+            // otherwise each filter dithers by its template's count, which is
+            // what Target Scheduler would have done with no override.
+            if (ditherEvery > 0) return TsOrder.InjectDithers(items, filterOf, ditherEvery);
+            if (templateEvery.Count == 0) return items;
+            return TsOrder.InjectDithers(items, filterOf,
+                f => templateEvery.TryGetValue(f ?? string.Empty, out var n) ? n : 0);
         }
 
         private static bool SmartOrderOn(SqliteConnection conn, int targetId) {
