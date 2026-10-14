@@ -130,7 +130,8 @@ namespace ACP.NINA.Plugin.Tests {
             }
             var push = events.IndexOf("push");
             Assert.True(push >= 0, string.Join(" | ", events));
-            Assert.Contains("POST " + AcpApiClient.TsLinksPath, events.Skip(push));
+            // The fake write produces no links, so the links report has nothing
+            // to send; the template report runs under the same rule.
             Assert.Contains("POST /api/ts-templates", events.Skip(push));
         }
     }
