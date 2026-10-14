@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: Stop buttons and time limits
+
+### Added
+
+- **Every long dock action can be stopped.** While Sync for tonight, Sync All to TS or Send TS to ACP runs, its button reads "✕ Stop". Stop ends the capture and solve, and anything else before the Target Scheduler write, and leaves Target Scheduler and the profile as they were. Once a write has started it finishes, and the reports of what it wrote still go to ACP. Push to Framing finishes at once, so it has no Stop.
+- **A time limit for ACP actions.** "Time limit for ACP actions" in the options, 10 minutes by default, 0 for none. A dock action that runs over stops as if Stop were pressed and says so. The Sync for tonight instruction fails with the same message, so the sequence's own error handling decides what happens next instead of the night hanging.
+- **Solve attempts for Sync for tonight.** 3 by default, 1 to 20, set in the options. NINA's own plate solve attempts, meant for centring, no longer apply here: a failed sync solve usually means the cover is closed or the sky is gone, and ten tries just holds the camera.
+
 ## Unreleased: Activity events
 
 The plugin side of ACP's Activity tab (`docs/specs/activity-tab.md` in ACP, phase 2). It needs an ACP with the Activity tab and an access token set, and turns itself off for the NINA session after the first 404 or 403.

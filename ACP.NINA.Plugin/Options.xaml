@@ -181,6 +181,38 @@
                            Text="Confirm before Sync to TS" />
             </Grid>
 
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding SolveAttempts}"
+                         ToolTip="Frames a Sync for tonight solve takes before giving up, 1 to 20. NINA's own plate solve setting is left alone for centring." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Solve attempts for Sync for tonight" />
+            </Grid>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding ActionTimeoutMinutes}"
+                         ToolTip="The longest any ACP action may run before it stops on its own: the dock buttons and the sequence instruction. 0 means no limit." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Time limit for ACP actions, minutes (0 for none)" />
+            </Grid>
+
         </StackPanel>
     </DataTemplate>
 

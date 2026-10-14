@@ -18,6 +18,21 @@ namespace ACP.NINA.Plugin.Services {
         public int AutoRefreshSeconds { get; set; } = 30;
         public bool ConfirmBeforeTsSync { get; set; } = false;
 
+        /// How many frames a Sync for tonight solve takes before giving up.
+        /// NINA's own count is meant for centring, where ten tries under
+        /// passing cloud is right. Here a failed solve usually means the cover
+        /// is closed or the sky is gone, and ten tries just holds the camera.
+        public int SolveAttempts { get; set; } = 3;
+
+        /// The longest any ACP action may run, in minutes, before it is
+        /// stopped as if Stop had been pressed: the dock buttons and the
+        /// sequence instruction alike. 0 means no limit.
+        public int ActionTimeoutMinutes { get; set; } = 10;
+
+        public static int ClampSolveAttempts(int value) => Math.Max(1, Math.Min(20, value));
+
+        public static int ClampTimeoutMinutes(int value) => Math.Max(0, Math.Min(240, value));
+
         /// Which plans to load into Target Scheduler. Everything by default,
         /// per the v3 spec: the fingerprint is still built and the focal length
         /// write-back still runs, nothing is filtered.
