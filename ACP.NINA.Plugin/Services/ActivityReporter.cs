@@ -20,6 +20,23 @@ namespace ACP.NINA.Plugin.Services {
         );
     }
 
+    /// Posts to whatever server URL is configured at the moment of the call, so
+    /// a URL changed on the Options page takes effect without a NINA restart.
+    public class UrlActivitySink : IActivitySink {
+
+        private readonly Func<string> serverUrl;
+
+        public UrlActivitySink(Func<string> serverUrl) {
+            this.serverUrl = serverUrl;
+        }
+
+        public Task<ActivityPostResult> PostActivityEventsAsync(
+            IReadOnlyList<ActivityEvent> events, CancellationToken ct
+        ) {
+            return new AcpApiClient(serverUrl()).PostActivityEventsAsync(events, ct);
+        }
+    }
+
     /// The events waiting to go to ACP, held in memory.
     ///
     /// Bounded: an ACP that stays unreachable for a night must not grow the
