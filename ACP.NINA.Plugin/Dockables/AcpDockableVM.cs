@@ -85,9 +85,15 @@ namespace ACP.NINA.Plugin.Dockables {
                 async () => await SyncAllToTsAsync(),
                 () => IsConnected && Plans.Count > 0 && !IsSyncingAllToTs && !IsSendingTs
             );
+            // While a sync runs the same button reads Stop, so a solve that
+            // can never succeed (the cover closed, the sky clouded) can be
+            // ended without restarting NINA.
             SyncForTonightCommand = new RelayCommand(
-                async () => await SyncForTonightAsync(),
-                () => IsConnected && !IsSyncingForTonight && !IsSendingTs
+                async () => {
+                    if (IsSyncingForTonight) StopSyncForTonight();
+                    else await SyncForTonightAsync();
+                },
+                () => IsSyncingForTonight ? !isStoppingSyncForTonight : IsConnected && !IsSendingTs
             );
             SendTsToAcpCommand = new RelayCommand(
                 async () => await SendTsToAcpAsync(),
@@ -435,13 +441,31 @@ namespace ACP.NINA.Plugin.Dockables {
         // -- Action: Sync for tonight ------------------------------------------
 
         private bool isSyncingForTonight;
+        private bool isStoppingSyncForTonight;
+        private CancellationTokenSource syncForTonightCts;
 
         public bool IsSyncingForTonight {
             get => isSyncingForTonight;
             set {
                 isSyncingForTonight = value;
+                if (!value) isStoppingSyncForTonight = false;
                 RaisePropertyChanged(nameof(IsSyncingForTonight));
+                RaisePropertyChanged(nameof(SyncForTonightLabel));
                 NotifyActionCommands();
+            }
+        }
+
+        public string SyncForTonightLabel => IsSyncingForTonight ? "✕ Stop" : "Sync for tonight";
+
+        private void StopSyncForTonight() {
+            if (isStoppingSyncForTonight) return;
+            isStoppingSyncForTonight = true;
+            LastActionResult = "Sync for tonight: stopping...";
+            NotifyActionCommands();
+            try {
+                syncForTonightCts?.Cancel();
+            } catch (ObjectDisposedException) {
+                // The run finished between the click and the cancel.
             }
         }
 
@@ -579,6 +603,9 @@ namespace ACP.NINA.Plugin.Dockables {
         /// allowed to reuse it as long as it says so.
         private async Task SyncForTonightAsync() {
             if (IsSyncingForTonight) return;
+            var cts = new CancellationTokenSource();
+            syncForTonightCts = cts;
+            var token = cts.Token;
             IsSyncingForTonight = true;
             try {
                 // A solve is only taken when something needs it: the focal
@@ -595,8 +622,9 @@ namespace ACP.NINA.Plugin.Dockables {
                     solve = reused;
                     if (solve == null) {
                         LastActionResult = "Sync for tonight: capturing and solving a frame...";
-                        solve = await plateSolver.SolveAsync(0, null, CancellationToken.None)
+                        solve = await plateSolver.SolveAsync(0, null, token)
                             .ConfigureAwait(false);
+                        token.ThrowIfCancellationRequested();
                         if (solve == null) {
                             SetResultOnUi(
                                 "✗ The plate solve failed, so ACP cannot tell what gear is connected."
@@ -613,7 +641,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 }
 
                 var outcome = await syncRunner
-                    .RunAsync(solve, live.ProfileWriteBackEnabled, CancellationToken.None)
+                    .RunAsync(solve, live.ProfileWriteBackEnabled, token)
                     .ConfigureAwait(false);
 
                 // The dock is a small box, so the one line names the plan count
@@ -634,6 +662,9 @@ namespace ACP.NINA.Plugin.Dockables {
                         ? "✓ " + prefix + outcome.ShortResult
                         : "✗ " + prefix + outcome.ShortResult
                 );
+            } catch (OperationCanceledException) when (token.IsCancellationRequested) {
+                SetResultOnUi("Sync for tonight stopped. No plans were loaded into Target Scheduler.");
+                Logger.Info("ACP: Sync for tonight stopped by the user before the Target Scheduler write.");
             } catch (AcpUnauthorizedException ex) {
                 SetResultOnUi("✗ " + ex.Message);
                 Logger.Warning($"ACP: Sync for tonight rejected: {ex.Message}");
@@ -641,6 +672,8 @@ namespace ACP.NINA.Plugin.Dockables {
                 SetResultOnUi($"✗ Sync for tonight failed: {ex.Message}");
                 Logger.Error($"ACP: Sync for tonight failed: {ex}");
             } finally {
+                syncForTonightCts = null;
+                cts.Dispose();
                 Application.Current?.Dispatcher.Invoke(() => IsSyncingForTonight = false);
             }
         }

@@ -136,8 +136,8 @@
                             Padding="4,0"
                             FontSize="11"
                             Command="{Binding SyncForTonightCommand}"
-                            Content="Sync for tonight"
-                            ToolTip="Solves a frame from where the mount is pointing, works out the connected gear from it, and asks ACP which plans fit tonight. Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out. Reuses a solve from the last hour rather than taking another one." />
+                            Content="{Binding SyncForTonightLabel}"
+                            ToolTip="Solves a frame from where the mount is pointing, works out the connected gear from it, and asks ACP which plans fit tonight. Updates the profile focal length and focal ratio when the solve says they are more than 5 percent out. Reuses a solve from the last hour rather than taking another one. While it runs, the button reads Stop and ends it before anything is written." />
                     <Button Height="24"
                             Margin="3,0,0,3"
                             Padding="4,0"

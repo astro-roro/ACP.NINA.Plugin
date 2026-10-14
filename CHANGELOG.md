@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased: Stop for Sync for tonight
+
+### Added
+
+- **Sync for tonight can be stopped from the dock.** While it runs, the button reads "✕ Stop". Stop ends the capture and solve, and anything else before the Target Scheduler write, and leaves Target Scheduler and the profile as they were. A solve that cannot succeed, with the cover closed or under cloud, no longer runs through every attempt with no way out short of restarting NINA. Once the write has started it finishes, and the reports of what it wrote still go to ACP.
+
 ## Unreleased: Activity events
 
 The plugin side of ACP's Activity tab (`docs/specs/activity-tab.md` in ACP, phase 2). It needs an ACP with the Activity tab and an access token set, and turns itself off for the NINA session after the first 404 or 403.
