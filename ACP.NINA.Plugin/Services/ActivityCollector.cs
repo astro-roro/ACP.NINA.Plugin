@@ -6,6 +6,7 @@ using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
 using System;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace ACP.NINA.Plugin.Services {
@@ -36,6 +37,13 @@ namespace ACP.NINA.Plugin.Services {
         private readonly AutofocusTracker autofocus;
         private readonly object gate = new object();
 
+        private readonly Func<bool> isActive;
+        private readonly Channel<Func<Task>> work =
+            Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(2000) {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = true,
+            });
+
         private DateTimeOffset? sessionStart;
         private bool? lastSafe;
 
@@ -49,6 +57,9 @@ namespace ACP.NINA.Plugin.Services {
         /// name, or null. Frames carry a name; the event key wants the id.</param>
         /// <param name="imagingSeeder">Frames already taken tonight, read back
         /// from Target Scheduler, so totals survive a NINA restart.</param>
+        /// <param name="isActive">False while reporting is switched off or the
+        /// reporter has disabled itself. Saved frames then cause no database
+        /// reads and no ACP calls.</param>
         /// <param name="planIdFor">The ACP plan that owns a Target Scheduler
         /// target, or null.</param>
         public ActivityCollector(
@@ -58,8 +69,10 @@ namespace ACP.NINA.Plugin.Services {
             Func<DateTimeOffset> clock,
             Func<string, int?> tsTargetIdByName,
             Func<int?, string, Task<string>> planIdFor,
-            Func<ImagingFrame, System.Collections.Generic.IEnumerable<ImagingSeed>> imagingSeeder = null
+            Func<ImagingFrame, System.Collections.Generic.IEnumerable<ImagingSeed>> imagingSeeder = null,
+            Func<bool> isActive = null
         ) {
+            this.isActive = isActive ?? (() => true);
             this.post = post ?? (e => { });
             this.profileId = profileId ?? (() => null);
             this.profileName = profileName ?? (() => null);
@@ -67,7 +80,9 @@ namespace ACP.NINA.Plugin.Services {
             this.tsTargetIdByName = tsTargetIdByName ?? (n => null);
             this.planIdFor = planIdFor ?? ((id, n) => Task.FromResult<string>(null));
             imaging = new ImagingTracker(() => this.clock(), imagingSeeder);
-            autofocus = new AutofocusTracker(() => this.clock());
+            // The session start goes in the autofocus key (see AutofocusTracker).
+            autofocus = new AutofocusTracker(() => this.clock(), this.clock());
+            _ = Task.Run(ConsumeFramesAsync);
         }
 
         // -- Decisions ---------------------------------------------------------
@@ -75,6 +90,9 @@ namespace ACP.NINA.Plugin.Services {
         /// One saved light frame. Looks up the Target Scheduler id and the ACP
         /// plan, and carries on without them when either lookup fails.
         public async Task OnLightFrameAsync(string targetName, string filter, double exposureSeconds, DateTimeOffset at) {
+            if (!isActive()) return;
+            // The Target Scheduler id is looked up before the tracker picks a
+            // key, so a frame is counted under the id whenever one resolves.
             int? tsId = null;
             string planId = null;
             try { tsId = tsTargetIdByName(targetName); } catch (Exception ex) {
@@ -94,6 +112,44 @@ namespace ACP.NINA.Plugin.Services {
                 ExposureSeconds = exposureSeconds,
                 At = at,
             }));
+        }
+
+        /// Queue a frame for the one consumer that handles frames in arrival
+        /// order. Lookups and the tracker then never run for two frames at once.
+        public void EnqueueLightFrame(string targetName, string filter, double exposureSeconds, DateTimeOffset at) {
+            work.Writer.TryWrite(() => OnLightFrameAsync(targetName, filter, exposureSeconds, at));
+        }
+
+        /// Completes when every frame queued before the call has been handled.
+        public Task FlushFramesAsync() {
+            var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!work.Writer.TryWrite(() => { done.TrySetResult(true); return Task.CompletedTask; })) {
+                done.TrySetResult(true);
+            }
+            return done.Task;
+        }
+
+        private async Task ConsumeFramesAsync() {
+            var reader = work.Reader;
+            while (await reader.WaitToReadAsync().ConfigureAwait(false)) {
+                while (reader.TryRead(out var job)) {
+                    try {
+                        await job().ConfigureAwait(false);
+                    } catch (Exception ex) {
+                        Logger.Debug($"ACP: could not record a light frame: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        /// A saved image from NINA. Returns true when it was a light frame taken
+        /// for reporting. Returns early, before any lookup, when reporting is off.
+        public bool HandleSavedImage(string imageType, string targetName, string filter, double exposureSeconds, DateTime exposureStart) {
+            if (!isActive()) return false;
+            if (!string.Equals(imageType, "LIGHT", StringComparison.OrdinalIgnoreCase)) return false;
+            var at = exposureStart.Year > 2000 ? new DateTimeOffset(exposureStart) : clock();
+            EnqueueLightFrame(targetName, filter, exposureSeconds, at);
+            return true;
         }
 
         public void OnAutofocus(double position, double temperatureC, DateTimeOffset at) {
@@ -199,23 +255,7 @@ namespace ACP.NINA.Plugin.Services {
             try {
                 var image = e?.MetaData?.Image;
                 if (image == null) return;
-                if (!string.Equals(image.ImageType, "LIGHT", StringComparison.OrdinalIgnoreCase)) return;
-
-                var target = e.MetaData.Target?.Name;
-                var filter = e.Filter;
-                var exposure = image.ExposureTime;
-                var start = image.ExposureStart;
-                var at = start.Year > 2000 ? new DateTimeOffset(start) : clock();
-
-                // Off the save path: the lookups read the Target Scheduler
-                // database and may call ACP, and a saved frame must not wait.
-                _ = Task.Run(async () => {
-                    try {
-                        await OnLightFrameAsync(target, filter, exposure, at).ConfigureAwait(false);
-                    } catch (Exception ex) {
-                        Logger.Debug($"ACP: could not record a light frame: {ex.Message}");
-                    }
-                });
+                HandleSavedImage(image.ImageType, e.MetaData.Target?.Name, e.Filter, image.ExposureTime, image.ExposureStart);
             } catch (Exception ex) {
                 Logger.Debug($"ACP: could not read a saved image: {ex.Message}");
             }
@@ -266,6 +306,7 @@ namespace ACP.NINA.Plugin.Services {
 
         public void Dispose() {
             Unsubscribe();
+            work.Writer.TryComplete();
         }
     }
 }

@@ -213,9 +213,11 @@ namespace ACP.NINA.Plugin.Dockables {
                         using (var db = TargetSchedulerDb.Open(null, readOnly: true)) {
                             return db.ReadAcquiredImages(profile, from, to);
                         }
-                    }).Seed);
+                    }).Seed,
+                    () => (AcpSettings.Current ?? settings).ReportProgressToAcp
+                        && activityReporter != null && !activityReporter.IsDisabled);
 
-                ActivityHub.Attach(activityReporter);
+                ActivityHub.Attach(activityReporter, activityCollector);
                 activityReporter.Start();
                 activityCollector.Subscribe(imageSave, telescope, safety, focuser, sequence);
             } catch (Exception ex) {
@@ -316,13 +318,10 @@ namespace ACP.NINA.Plugin.Dockables {
                 // Already gone, nothing useful to do.
             }
             try {
-                // End an open session, then give the queue one short chance to
-                // reach ACP before the reporter goes. FlushAsync never resumes
-                // on the UI thread, so waiting here cannot deadlock.
-                activityCollector?.Close();
+                // Idempotent with AcpPlugin.Teardown, which calls the same thing.
+                ActivityHub.Shutdown();
                 activityCollector?.Dispose();
                 if (activityReporter != null) {
-                    activityReporter.FlushAsync().Wait(TimeSpan.FromSeconds(5));
                     ActivityHub.Detach(activityReporter);
                     activityReporter.Dispose();
                 }

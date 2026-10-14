@@ -336,13 +336,32 @@ namespace ACP.NINA.Plugin.Services {
     public static class ActivityHub {
 
         private static volatile ActivityReporter current;
+        private static volatile ActivityCollector collector;
 
-        public static void Attach(ActivityReporter reporter) {
+        public static void Attach(ActivityReporter reporter, ActivityCollector activityCollector = null) {
             current = reporter;
+            collector = activityCollector;
         }
 
         public static void Detach(ActivityReporter reporter) {
-            if (ReferenceEquals(current, reporter)) current = null;
+            if (ReferenceEquals(current, reporter)) {
+                current = null;
+                collector = null;
+            }
+        }
+
+        /// NINA is closing: end an open session and give the queue one short
+        /// chance to reach ACP. Safe to call from more than one place (the
+        /// plugin's Teardown and the dock's Dispose both do): the session ends
+        /// once, and a flush of an empty queue sends nothing. FlushAsync never
+        /// resumes on the caller's thread, so waiting here cannot deadlock.
+        public static void Shutdown() {
+            try {
+                collector?.Close();
+                current?.FlushAsync().Wait(TimeSpan.FromSeconds(5));
+            } catch (Exception ex) {
+                Logger.Debug($"ACP: activity shutdown failed: {ex.Message}");
+            }
         }
 
         public static void Post(ActivityEvent e) {
