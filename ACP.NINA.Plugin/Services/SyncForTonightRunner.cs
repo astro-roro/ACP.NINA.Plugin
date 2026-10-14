@@ -191,10 +191,12 @@ namespace ACP.NINA.Plugin.Services {
                 gear = await client.GetGearAsync(token).ConfigureAwait(false);
             } catch (AcpUnauthorizedException) {
                 throw;
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!token.IsCancellationRequested) {
                 Logger.Warning($"ACP: could not read gear from ACP, so no focal ratio will be written: {ex.Message}");
             }
 
+            // A Stop means the profile is left alone too.
+            token.ThrowIfCancellationRequested();
             outcome.WriteBack = writeBack.Apply(outcome.Fingerprint, gear?.Telescopes, writeBackEnabled);
             outcome.Lines.Add(outcome.WriteBack.Summary);
 
@@ -206,7 +208,7 @@ namespace ACP.NINA.Plugin.Services {
                 outcome.Failure = ex.Message;
                 outcome.Lines.Add(ex.Message);
                 return outcome;
-            } catch (Exception ex) when (settings.SyncMode == SyncMode.Everything) {
+            } catch (Exception ex) when (settings.SyncMode == SyncMode.Everything && !token.IsCancellationRequested) {
                 // Everything mode loads the lot whether or not ACP can judge
                 // the fit, so a match that cannot run, most often because no
                 // camera is connected and the fingerprint has no sensor, is
@@ -221,12 +223,12 @@ namespace ACP.NINA.Plugin.Services {
                     outcome.Failure = ex2.Message;
                     outcome.Lines.Add(ex2.Message);
                     return outcome;
-                } catch (Exception ex2) {
+                } catch (Exception ex2) when (!token.IsCancellationRequested) {
                     outcome.Failure = $"ACP could not list the plans: {ex2.Message}";
                     outcome.Lines.Add(outcome.Failure);
                     return outcome;
                 }
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!token.IsCancellationRequested) {
                 outcome.Failure = $"ACP could not match the plans: {ex.Message}";
                 outcome.Lines.Add(outcome.Failure);
                 return outcome;
@@ -283,10 +285,14 @@ namespace ACP.NINA.Plugin.Services {
                 }
             } catch (AcpUnauthorizedException) {
                 throw;
-            } catch (Exception ex) {
+            } catch (Exception ex) when (!token.IsCancellationRequested) {
                 Logger.Warning($"ACP: could not refresh the template list and gear before the push: {ex.Message}");
             }
 
+            // A Stop pressed from here on is honoured only before the write
+            // takes its lock: the write is one transaction, and once it has
+            // committed the reports below always go out, so ACP's record of
+            // what Target Scheduler holds never falls behind it.
             outcome.TsPush = await tsPush
                 .PushAsync(outcome.Selected.Cast<Plan>().ToList(), gear, profileId, token, wheelFilters,
                     profile?.Name)
@@ -302,13 +308,13 @@ namespace ACP.NINA.Plugin.Services {
             // run.
             if (outcome.TsPush.Success) {
                 outcome.LinksWarning = await TsLinksReporter
-                    .PostAsync(client, outcome.TsPush, profileId, token)
+                    .PostAsync(client, outcome.TsPush, profileId, CancellationToken.None)
                     .ConfigureAwait(false);
                 if (outcome.LinksWarning != null) outcome.Lines.Add(outcome.LinksWarning);
 
                 // The template list for ACP's drop-down. Best effort, logged
                 // on failure, never a reason to warn the user.
-                await TsTemplatesReporter.PostAsync(client, outcome.TsPush, profileId, token)
+                await TsTemplatesReporter.PostAsync(client, outcome.TsPush, profileId, CancellationToken.None)
                     .ConfigureAwait(false);
             }
 

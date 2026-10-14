@@ -101,13 +101,14 @@ namespace ACP.NINA.Plugin.Services {
             );
 
             // Every value here comes from the profile's own plate solve
-            // settings, so the solve behaves exactly as NINA's does. The one
-            // thing the instruction overrides is the exposure time, because
-            // the ACP instruction runs at the start of the night when the
-            // profile's centring exposure may not be what you want.
+            // settings, so the solve behaves as NINA's does, with two
+            // exceptions. The exposure time, because the ACP instruction runs
+            // at the start of the night when the profile's centring exposure
+            // may not be what you want. And the number of attempts, which the
+            // ACP options set: see AcpSettings.SolveAttempts.
             var binning = plateSolveSettings.Binning;
             var parameter = new CaptureSolverParameter {
-                Attempts = plateSolveSettings.NumberOfAttempts,
+                Attempts = AcpSettings.ClampSolveAttempts(AcpSettings.Load().SolveAttempts),
                 Binning = binning,
                 Coordinates = telescopeMediator.GetCurrentPosition(),
                 DownSampleFactor = plateSolveSettings.DownSampleFactor,
