@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: Activity events
+
+The plugin side of ACP's Activity tab (`docs/specs/activity-tab.md` in ACP, phase 2). It needs an ACP with the Activity tab and an access token set, and turns itself off for the NINA session after the first 404 or 403.
+
+### Added
+
+- **The plugin posts what happens at the scope to ACP.** Sync for tonight, imaging progress per target, autofocus runs, meridian flips, park and unpark, safety monitor changes, and session start and end. Events are queued in memory and sent in batches every 60 seconds and when the Target Scheduler container stops. A failed batch is tried again on the next tick; an event ACP rejects is logged and not retried. The queue holds 500 events and drops plain information events first when it is full. After a NINA restart mid-night, imaging totals are rebuilt from Target Scheduler's acquired image table (read only), so the count does not fall back to zero. Autofocus totals restart at zero.
+- **It follows the "Report progress to ACP" option.** Untick it and no events are queued or sent.
+
+### Fixed
+
+- **The help text under "Report progress to ACP" no longer says a sync can walk Target Scheduler's counts backwards.** Ordinary syncs never change acquired or accepted on a row Target Scheduler already has. The one write is AAC's accepted figures, skipped once Target Scheduler has saved frames since the night they cover.
+
 ## Unreleased: Gear templates
 
 The plugin side of ACP's gear templates (`docs/specs/gear-templates.md` in ACP, phase 4). It works against today's ACP and the one that follows.

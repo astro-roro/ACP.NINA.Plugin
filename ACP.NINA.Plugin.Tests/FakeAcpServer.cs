@@ -30,6 +30,10 @@ namespace ACP.NINA.Plugin.Tests {
         public string LastBody { get; private set; }
         public int RequestCount { get; private set; }
 
+        /// Every request body in arrival order, for tests that compare a retry
+        /// with the attempt before it.
+        public List<string> Bodies { get; } = new List<string>();
+
         public FakeAcpServer Route(string path, string jsonResponse) {
             routes[path] = () => jsonResponse;
             return this;
@@ -44,6 +48,7 @@ namespace ACP.NINA.Plugin.Tests {
             LastBody = request.Content == null
                 ? null
                 : await request.Content.ReadAsStringAsync().ConfigureAwait(false);
+            Bodies.Add(LastBody);
 
             if (ForcedStatus.HasValue) {
                 return new HttpResponseMessage(ForcedStatus.Value) {

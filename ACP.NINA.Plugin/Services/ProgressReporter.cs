@@ -18,10 +18,12 @@ namespace ACP.NINA.Plugin.Services {
     /// raises actual_hours and never lowers it, so a report that arrives late
     /// or twice costs nothing.
     ///
-    /// This is the other half of the v3.1 push. That push writes ACP's view of
-    /// acquired counts into Target Scheduler, so a stale actual_hours walks the
-    /// counts backwards; this is what keeps actual_hours from going stale in
-    /// the first place.
+    /// The v3.1 push never changes acquired or accepted on a row Target
+    /// Scheduler already has (TsSchema.insertOnlyColumns). The one write is
+    /// AAC's accepted figures (TsUpsert, the AAC step), which are skipped once
+    /// Target Scheduler has saved frames since the night they cover. So this
+    /// report keeps ACP's actual_hours current; it is not a guard on the counts
+    /// Target Scheduler holds.
     ///
     /// Three things make it safe to leave running all night.
     ///
