@@ -394,6 +394,52 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return result;
         }
 
+        /// The frames Target Scheduler has recorded for a profile between two
+        /// unix times (from inclusive, to exclusive), oldest first. Read only.
+        ///
+        /// The exposure comes from the image's metadata JSON when it names one,
+        /// otherwise from the exposure plan the frame was taken for, otherwise 0.
+        public List<TsAcquiredImage> ReadAcquiredImages(string profileId, long fromUnix, long toUnix) {
+            var result = new List<TsAcquiredImage>();
+            Query(
+                "SELECT ai.Id AS id, ai.targetId AS targetid, ai.acquireddate AS acquireddate, " +
+                "       ai.filtername AS filtername, ai.metadata AS metadata, ep.exposure AS planexposure " +
+                "FROM acquiredimage ai " +
+                "LEFT JOIN exposureplan ep ON ep.Id = ai.exposureId " +
+                "WHERE ai.profileId = $p AND ai.acquireddate >= $from AND ai.acquireddate < $to " +
+                "ORDER BY ai.acquireddate, ai.Id",
+                new Dictionary<string, object> { { "$p", profileId }, { "$from", fromUnix }, { "$to", toUnix } },
+                r => {
+                    var exposure = ExposureFromMetadata(ReadString(r, "metadata"));
+                    if (exposure <= 0) exposure = ReadDouble(r, "planexposure");
+                    result.Add(new TsAcquiredImage {
+                        Id = ReadInt(r, "id"),
+                        TargetId = ReadInt(r, "targetid"),
+                        FilterName = ReadString(r, "filtername"),
+                        AcquiredUnix = Convert.ToInt64(r["acquireddate"]),
+                        ExposureSeconds = exposure < 0 ? 0 : exposure,
+                    });
+                });
+            return result;
+        }
+
+        private static double ExposureFromMetadata(string json) {
+            if (string.IsNullOrWhiteSpace(json)) return 0;
+            try {
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(json);
+                foreach (var name in new[] { "ExposureDuration", "ExposureTime", "Exposure" }) {
+                    var token = obj.GetValue(name, StringComparison.OrdinalIgnoreCase);
+                    if (token != null && (token.Type == Newtonsoft.Json.Linq.JTokenType.Float
+                        || token.Type == Newtonsoft.Json.Linq.JTokenType.Integer)) {
+                        return (double)token;
+                    }
+                }
+            } catch (Exception) {
+                // Metadata that is not JSON is simply no help.
+            }
+            return 0;
+        }
+
         private void Query(
             string sql, Dictionary<string, object> args, Action<SqliteDataReader> onRow
         ) {
@@ -499,5 +545,17 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 .OrderBy(id => id)
                 .ToList();
         }
+    }
+}
+
+namespace ACP.NINA.Plugin.Services.TargetScheduler {
+
+    /// One row of Target Scheduler's acquiredimage table.
+    public class TsAcquiredImage {
+        public int Id { get; set; }
+        public int TargetId { get; set; }
+        public string FilterName { get; set; }
+        public long AcquiredUnix { get; set; }
+        public double ExposureSeconds { get; set; }
     }
 }

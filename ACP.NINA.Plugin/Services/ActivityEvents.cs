@@ -30,6 +30,16 @@ namespace ACP.NINA.Plugin.Services {
             return local.DateTime.AddHours(-12).Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
 
+        /// The observing night an instant belongs to as a time span: local noon
+        /// to the next local noon, in the same zone the night rule uses.
+        public static void Window(DateTimeOffset when, out DateTimeOffset from, out DateTimeOffset to) {
+            var date = DateTime.ParseExact(For(when), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var noon = new DateTime(date.Year, date.Month, date.Day, 12, 0, 0, DateTimeKind.Unspecified);
+            var nextNoon = noon.AddDays(1);
+            from = new DateTimeOffset(noon, zone.Value.GetUtcOffset(noon));
+            to = new DateTimeOffset(nextNoon, zone.Value.GetUtcOffset(nextNoon));
+        }
+
         /// ISO 8601 with an offset, which is what ACP wants in "at".
         public static string Iso(DateTimeOffset when) {
             return when.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
@@ -226,11 +236,53 @@ namespace ACP.NINA.Plugin.Services {
         public DateTimeOffset At { get; set; }
     }
 
+    /// A frame taken earlier tonight, read back from Target Scheduler.
+    public class ImagingSeed {
+        public string Filter { get; set; }
+        public double ExposureSeconds { get; set; }
+        public DateTimeOffset At { get; set; }
+    }
+
+    /// Reads frames already taken tonight for a target out of Target
+    /// Scheduler's acquiredimage table, through a read function so tests can
+    /// use a scratch database. Rows at or after the frame that triggers the
+    /// seed are left out: that frame and every later one are counted live, and
+    /// Target Scheduler may already have written the triggering frame's row.
+    /// That cut-off is what stops a frame being counted twice.
+    public class ActivityImagingSeeder {
+
+        private readonly Func<string, long, long, IReadOnlyList<TargetScheduler.TsAcquiredImage>> read;
+
+        public ActivityImagingSeeder(Func<string, long, long, IReadOnlyList<TargetScheduler.TsAcquiredImage>> read) {
+            this.read = read;
+        }
+
+        public IEnumerable<ImagingSeed> Seed(ImagingFrame trigger) {
+            if (trigger == null || !trigger.TsTargetId.HasValue || string.IsNullOrWhiteSpace(trigger.ProfileId)) {
+                return new ImagingSeed[0];
+            }
+            DateTimeOffset from, to;
+            ActivityNight.Window(trigger.At, out from, out to);
+            var cutoff = trigger.At.ToUnixTimeSeconds();
+            return read(trigger.ProfileId, from.ToUnixTimeSeconds(), to.ToUnixTimeSeconds())
+                .Where(i => i.TargetId == trigger.TsTargetId.Value && i.AcquiredUnix < cutoff)
+                .Select(i => new ImagingSeed {
+                    Filter = i.FilterName,
+                    ExposureSeconds = i.ExposureSeconds,
+                    At = DateTimeOffset.FromUnixTimeSeconds(i.AcquiredUnix).ToOffset(trigger.At.Offset),
+                })
+                .ToList();
+        }
+    }
+
     /// Keeps the running totals behind the per-target imaging event.
     ///
     /// One event per profile, target and night. Each frame returns the full
     /// current picture under the same key with a higher seq, so ACP replaces
     /// the totals and a stale retry cannot lower them.
+    ///
+    /// After a restart the totals are rebuilt from Target Scheduler (see the
+    /// seeder), so they do not drop back to zero.
     ///
     /// seq is the larger of the key's previous seq plus one and the clock in
     /// milliseconds, rather than a bare counter. A counter would start again at
@@ -252,11 +304,41 @@ namespace ACP.NINA.Plugin.Services {
         }
 
         private readonly Func<DateTimeOffset> clock;
+        private readonly Func<ImagingFrame, IEnumerable<ImagingSeed>> seeder;
         private readonly object gate = new object();
         private readonly Dictionary<string, State> states = new Dictionary<string, State>();
 
-        public ImagingTracker(Func<DateTimeOffset> clock = null) {
+        /// <param name="seeder">Frames already taken tonight for the frame's
+        /// target, asked once per key when its first frame arrives. This is what
+        /// keeps the totals right after NINA restarts mid-night, when the memory
+        /// of earlier frames is gone. Null means start from zero.</param>
+        public ImagingTracker(Func<DateTimeOffset> clock = null, Func<ImagingFrame, IEnumerable<ImagingSeed>> seeder = null) {
             this.clock = clock ?? (() => DateTimeOffset.UtcNow);
+            this.seeder = seeder;
+        }
+
+        private static void Tally(State state, string filter, double exposureSeconds, DateTimeOffset at) {
+            var exposure = Math.Round(exposureSeconds, 2);
+            var groupKey = (filter ?? string.Empty).ToLowerInvariant() + "|" + exposure.ToString("R", CultureInfo.InvariantCulture);
+            Group group;
+            if (!state.Groups.TryGetValue(groupKey, out group)) {
+                group = new Group { Filter = filter ?? string.Empty, Exposure = exposure, First = at, Last = at };
+                state.Groups[groupKey] = group;
+            }
+            group.Count++;
+            if (at < group.First) group.First = at;
+            if (at > group.Last) group.Last = at;
+        }
+
+        private void SeedFrom(State state, ImagingFrame frame) {
+            if (seeder == null) return;
+            try {
+                var seeds = seeder(frame);
+                if (seeds == null) return;
+                foreach (var seed in seeds) Tally(state, seed.Filter, seed.ExposureSeconds, seed.At);
+            } catch (Exception ex) {
+                global::NINA.Core.Utility.Logger.Debug($"ACP: could not seed tonight's frame counts: {ex.Message}");
+            }
         }
 
         public ActivityEvent AddFrame(ImagingFrame frame) {
@@ -273,18 +355,10 @@ namespace ACP.NINA.Plugin.Services {
                 if (!states.TryGetValue(key, out state)) {
                     state = new State();
                     states[key] = state;
+                    SeedFrom(state, frame);
                 }
 
-                var exposure = Math.Round(frame.ExposureSeconds, 2);
-                var groupKey = (frame.Filter ?? string.Empty).ToLowerInvariant() + "|" + exposure.ToString("R", CultureInfo.InvariantCulture);
-                Group group;
-                if (!state.Groups.TryGetValue(groupKey, out group)) {
-                    group = new Group { Filter = frame.Filter ?? string.Empty, Exposure = exposure, First = frame.At, Last = frame.At };
-                    state.Groups[groupKey] = group;
-                }
-                group.Count++;
-                if (frame.At < group.First) group.First = frame.At;
-                if (frame.At > group.Last) group.Last = frame.At;
+                Tally(state, frame.Filter, frame.ExposureSeconds, frame.At);
 
                 state.Seq = Math.Max(state.Seq + 1, clock().ToUnixTimeMilliseconds());
 
@@ -330,6 +404,9 @@ namespace ACP.NINA.Plugin.Services {
     /// One autofocus summary per night, updated on each run: the run count,
     /// the first and last focuser positions and the temperature range. seq
     /// follows the same rule as the imaging tracker.
+    ///
+    /// These totals live in memory only. They restart at zero after a NINA
+    /// restart, so a restart mid-night shows the later runs alone.
     public class AutofocusTracker {
 
         private class State {

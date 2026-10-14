@@ -47,6 +47,8 @@ namespace ACP.NINA.Plugin.Services {
 
         /// <param name="tsTargetIdByName">Target Scheduler's id for a target
         /// name, or null. Frames carry a name; the event key wants the id.</param>
+        /// <param name="imagingSeeder">Frames already taken tonight, read back
+        /// from Target Scheduler, so totals survive a NINA restart.</param>
         /// <param name="planIdFor">The ACP plan that owns a Target Scheduler
         /// target, or null.</param>
         public ActivityCollector(
@@ -55,7 +57,8 @@ namespace ACP.NINA.Plugin.Services {
             Func<string> profileName,
             Func<DateTimeOffset> clock,
             Func<string, int?> tsTargetIdByName,
-            Func<int?, string, Task<string>> planIdFor
+            Func<int?, string, Task<string>> planIdFor,
+            Func<ImagingFrame, System.Collections.Generic.IEnumerable<ImagingSeed>> imagingSeeder = null
         ) {
             this.post = post ?? (e => { });
             this.profileId = profileId ?? (() => null);
@@ -63,7 +66,7 @@ namespace ACP.NINA.Plugin.Services {
             this.clock = clock ?? (() => DateTimeOffset.Now);
             this.tsTargetIdByName = tsTargetIdByName ?? (n => null);
             this.planIdFor = planIdFor ?? ((id, n) => Task.FromResult<string>(null));
-            imaging = new ImagingTracker(() => this.clock());
+            imaging = new ImagingTracker(() => this.clock(), imagingSeeder);
             autofocus = new AutofocusTracker(() => this.clock());
         }
 
