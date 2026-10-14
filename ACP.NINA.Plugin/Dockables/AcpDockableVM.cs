@@ -1030,9 +1030,9 @@ namespace ACP.NINA.Plugin.Dockables {
             // both map plan filters onto the wheel's names. No solve, no match
             // and no profile write-back: that is Sync for tonight's job.
             if (IsSyncingAllToTs) return;
-            var run = new ActionRun();
-            syncAllRun = run;
-            var token = run.Token;
+            var actionRun = new ActionRun();
+            syncAllRun = actionRun;
+            var token = actionRun.Token;
             IsSyncingAllToTs = true;
             try {
                 LastActionResult = $"Syncing {Plans.Count} plans to TS (profile: {profile.Name})...";
@@ -1060,8 +1060,8 @@ namespace ACP.NINA.Plugin.Dockables {
                 });
                 Logger.Info($"ACP: Sync All to TS: {line}");
             } catch (OperationCanceledException) when (token.IsCancellationRequested) {
-                SetResultOnUi(run.Why("Sync All to TS") + " Target Scheduler was not changed.");
-                Logger.Info($"ACP: {run.Why("Sync All to TS")} It ended before the Target Scheduler write.");
+                SetResultOnUi(actionRun.Why("Sync All to TS") + " Target Scheduler was not changed.");
+                Logger.Info($"ACP: {actionRun.Why("Sync All to TS")} It ended before the Target Scheduler write.");
             } catch (AcpUnauthorizedException ex) {
                 Application.Current?.Dispatcher.Invoke(() => {
                     LastActionResult = $"✗ {ex.Message}";
@@ -1074,7 +1074,7 @@ namespace ACP.NINA.Plugin.Dockables {
                 Logger.Error($"ACP: TS sync failed: {ex}");
             } finally {
                 syncAllRun = null;
-                run.Dispose();
+                actionRun.Dispose();
                 Application.Current?.Dispatcher.Invoke(() => IsSyncingAllToTs = false);
             }
         }
