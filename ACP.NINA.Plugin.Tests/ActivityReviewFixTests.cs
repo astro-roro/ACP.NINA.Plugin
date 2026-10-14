@@ -108,41 +108,57 @@ namespace ACP.NINA.Plugin.Tests {
 
         // -- 5. Restart double count -------------------------------------------
 
+        // ACP keeps every key it is sent, so a target is never given a second
+        // key in one night: once it posts under the name slug it stays there.
         [Fact]
-        public void When_the_id_resolves_the_name_slug_counts_fold_into_the_id_key_without_double_counting_the_seed() {
-            // Two frames were counted under the name slug, and the seed (from
-            // the database) already covers them.
+        public void A_target_that_has_posted_under_its_slug_keeps_that_key_when_the_id_resolves() {
             var seeds = new List<ImagingSeed> {
                 new ImagingSeed { Filter = "Ha", ExposureSeconds = 300, At = T0 },
                 new ImagingSeed { Filter = "Ha", ExposureSeconds = 300, At = T0.AddMinutes(6) },
             };
             var tracker = new ImagingTracker(() => T0, f => f.TsTargetId.HasValue ? seeds : new List<ImagingSeed>());
 
-            var s1 = tracker.AddFrame(Frame(T0, null));
-            var s2 = tracker.AddFrame(Frame(T0.AddMinutes(6), null));
-            Assert.StartsWith("img:p1:name-", s2.Key);
-            Assert.Equal(2, CountOf(s2));
+            var one = tracker.AddFrame(Frame(T0, null));
+            var two = tracker.AddFrame(Frame(T0.AddMinutes(6), null));
+            Assert.StartsWith("img:p1:name-", two.Key);
+            Assert.False(two.Refs.ContainsKey("plan_id"));
 
-            var folded = tracker.AddFrame(Frame(T0.AddMinutes(12), 17));
-            Assert.Equal("img:p1:17:2026-10-13", folded.Key);
-            Assert.Equal(3, CountOf(folded));
+            var withId = Frame(T0.AddMinutes(12), 17);
+            withId.PlanId = "plan-9";
+            var three = tracker.AddFrame(withId);
+            var four = tracker.AddFrame(Frame(T0.AddMinutes(18), null));
 
-            // A later frame whose lookup fails again still lands on the id key.
-            var later = tracker.AddFrame(Frame(T0.AddMinutes(18), null));
-            Assert.Equal(folded.Key, later.Key);
-            Assert.Equal(4, CountOf(later));
-            Assert.True(later.Seq > folded.Seq);
+            Assert.Equal(one.Key, three.Key);
+            Assert.Equal(one.Key, four.Key);
+            Assert.Equal(3, CountOf(three));
+            Assert.Equal(4, CountOf(four));
+            Assert.Equal("plan-9", three.Refs["plan_id"]);
+            Assert.Equal("plan-9", four.Refs["plan_id"]);
+            Assert.True(four.Seq > three.Seq && three.Seq > two.Seq);
         }
 
         [Fact]
-        public void Folding_keeps_the_slug_counts_when_there_is_no_seed() {
-            var tracker = new ImagingTracker(() => T0);
-            tracker.AddFrame(Frame(T0, null));
-            tracker.AddFrame(Frame(T0.AddMinutes(6), null));
+        public void The_id_seeds_a_slug_row_once_without_double_counting_what_the_row_already_has() {
+            // Five frames were taken before a restart, so the database holds
+            // them; two more were counted live under the slug.
+            var seeds = Enumerable.Range(0, 7)
+                .Select(i => new ImagingSeed { Filter = "Ha", ExposureSeconds = 300, At = T0.AddMinutes(i * 6) })
+                .ToList();
+            var seedCalls = 0;
+            var tracker = new ImagingTracker(() => T0, f => {
+                if (!f.TsTargetId.HasValue) return new List<ImagingSeed>();
+                seedCalls++;
+                return seeds;
+            });
 
-            var folded = tracker.AddFrame(Frame(T0.AddMinutes(12), 17));
+            tracker.AddFrame(Frame(T0.AddMinutes(30), null));
+            tracker.AddFrame(Frame(T0.AddMinutes(36), null));
+            var withId = tracker.AddFrame(Frame(T0.AddMinutes(42), 17));
+            var next = tracker.AddFrame(Frame(T0.AddMinutes(48), 17));
 
-            Assert.Equal(3, CountOf(folded));
+            Assert.Equal(1, seedCalls);
+            Assert.Equal(8, CountOf(withId));
+            Assert.Equal(9, CountOf(next));
         }
 
         [Fact]
@@ -211,6 +227,27 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.Equal("3 plans loaded: Dolphin / Sh2-240", ActivityNight.ScrubPaths("3 plans loaded: Dolphin / Sh2-240"));
         }
 
+        // -- Dropped frames -------------------------------------------------------
+
+        [Fact]
+        public async Task Frames_dropped_from_a_full_channel_are_counted_and_logged_once_a_night() {
+            var gateOpen = new TaskCompletionSource<bool>();
+            var log = new List<string>();
+            var collector = new ActivityCollector(
+                e => { }, () => "p1", () => "Rig", () => T0,
+                n => 17, async (id, n) => { await gateOpen.Task; return null; },
+                null, null, log.Add);
+
+            for (var i = 0; i < 2010; i++) collector.EnqueueLightFrame("Dolphin", "Ha", 300, T0.AddSeconds(i));
+
+            Assert.True(collector.DroppedFrames > 0);
+            Assert.Single(log);
+            Assert.Contains("2026-10-13", log[0]);
+
+            gateOpen.SetResult(true);
+            await collector.DrainFramesAsync(TimeSpan.FromSeconds(30));
+        }
+
         // -- 8. Shutdown ----------------------------------------------------------
 
         [Fact]
@@ -232,6 +269,57 @@ namespace ACP.NINA.Plugin.Tests {
                 var types = ((JArray)JObject.Parse(fake.LastBody)["events"]).Select(e => (string)e["type"]).ToArray();
                 Assert.Equal(new[] { "session_start", "session_end" }, types);
             } finally {
+                ActivityHub.Detach(reporter);
+            }
+        }
+        [Fact]
+        public void Shutdown_drains_queued_frames_before_the_final_flush() {
+            var fake = new FakeAcpServer().Route("/api/activity/events",
+                "{\"stored\":1,\"updated\":0,\"unchanged\":0,\"stale\":0,\"rejected\":[]}");
+            var reporter = new ActivityReporter(new AcpApiClient("http://localhost:5555", () => "t", fake), () => true);
+            var collector = new ActivityCollector(
+                reporter.Post, () => "p1", () => "Rig", () => T0, n => 17,
+                async (id, n) => { await Task.Delay(100); return "plan"; });
+            ActivityHub.Attach(reporter, collector);
+            try {
+                collector.OnSequenceStarting();
+                for (var i = 0; i < 3; i++) collector.EnqueueLightFrame("Dolphin", "Ha", 300, T0.AddMinutes(i));
+
+                ActivityHub.Shutdown();
+
+                var events = ((JArray)JObject.Parse(fake.LastBody)["events"]).Select(e => (string)e["type"]).ToArray();
+                Assert.Contains("imaging_target", events);
+                Assert.Contains("session_end", events);
+                var img = ((JArray)JObject.Parse(fake.LastBody)["events"]).Single(e => (string)e["type"] == "imaging_target");
+                Assert.Equal(3, (int)img["data"]["frames"][0]["count"]);
+            } finally {
+                ActivityHub.Detach(reporter);
+            }
+        }
+
+        [Fact]
+        public void A_stuck_frame_does_not_stop_shutdown_flushing_the_rest() {
+            var fake = new FakeAcpServer().Route("/api/activity/events",
+                "{\"stored\":1,\"updated\":0,\"unchanged\":0,\"stale\":0,\"rejected\":[]}");
+            var reporter = new ActivityReporter(new AcpApiClient("http://localhost:5555", () => "t", fake), () => true);
+            var collector = new ActivityCollector(
+                reporter.Post, () => "p1", () => "Rig", () => T0, n => 17,
+                (id, n) => new TaskCompletionSource<string>().Task);
+            ActivityHub.Attach(reporter, collector);
+            var saved = ActivityHub.DrainTimeout;
+            ActivityHub.DrainTimeout = TimeSpan.FromMilliseconds(300);
+            try {
+                collector.OnSequenceStarting();
+                collector.EnqueueLightFrame("Dolphin", "Ha", 300, T0);
+
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                ActivityHub.Shutdown();
+
+                Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5));
+                var events = ((JArray)JObject.Parse(fake.LastBody)["events"]).Select(e => (string)e["type"]).ToArray();
+                Assert.Contains("session_end", events);
+            } finally {
+                ActivityHub.DrainTimeout = saved;
                 ActivityHub.Detach(reporter);
             }
         }
