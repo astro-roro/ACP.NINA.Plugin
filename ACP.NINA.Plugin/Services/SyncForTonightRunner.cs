@@ -94,6 +94,7 @@ namespace ACP.NINA.Plugin.Services {
         private readonly Func<ActiveProfileView> profileReader;
         private readonly Func<AcpSettings> settingsReader;
         private readonly Func<string, AcpApiClient> clientFactory;
+        private readonly Action<ActivityEvent> activity;
 
         /// The parts of the active NINA profile the run reads.
         public class ActiveProfileView {
@@ -135,8 +136,10 @@ namespace ACP.NINA.Plugin.Services {
             ITsPushService tsPush,
             Func<ActiveProfileView> profileReader,
             Func<AcpSettings> settingsReader,
-            Func<string, AcpApiClient> clientFactory
+            Func<string, AcpApiClient> clientFactory,
+            Action<ActivityEvent> activity = null
         ) {
+            this.activity = activity ?? ActivityHub.Post;
             this.fingerprintService = fingerprintService;
             this.writeBack = writeBack;
             this.tsPush = tsPush;
@@ -146,6 +149,26 @@ namespace ACP.NINA.Plugin.Services {
         }
 
         public async Task<SyncOutcome> RunAsync(
+            SolveSnapshot solve, bool writeBackEnabled, CancellationToken token
+        ) {
+            var outcome = await RunCoreAsync(solve, writeBackEnabled, token).ConfigureAwait(false);
+            PostActivity(outcome);
+            return outcome;
+        }
+
+        /// One sync_for_tonight event per run that got an outcome, whether it
+        /// finished, was refused or failed. Posting is a courtesy to ACP's
+        /// Activity tab and never changes how the run went.
+        private void PostActivity(SyncOutcome outcome) {
+            try {
+                var profile = profileReader();
+                activity(ActivityEvents.SyncForTonight(outcome, DateTimeOffset.Now, profile?.Id, profile?.Name));
+            } catch (Exception ex) {
+                Logger.Debug($"ACP: could not record the sync as an activity event: {ex.Message}");
+            }
+        }
+
+        private async Task<SyncOutcome> RunCoreAsync(
             SolveSnapshot solve, bool writeBackEnabled, CancellationToken token
         ) {
             var settings = settingsReader();

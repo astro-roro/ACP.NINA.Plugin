@@ -4,9 +4,12 @@ using ACP.NINA.Plugin.Services.TargetScheduler;
 using NINA.Astrometry;
 using NINA.Core.MyMessageBox;
 using NINA.Core.Utility;
+using NINA.Equipment.Interfaces.Mediator;
 using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Plugin.Interfaces;
 using NINA.Profile.Interfaces;
+using NINA.Sequencer.Interfaces.Mediator;
+using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
 using System;
@@ -49,7 +52,12 @@ namespace ACP.NINA.Plugin.Dockables {
             ITsPushService tsPush,
             [Import(AllowDefault = true)] IMessageBroker messageBroker,
             [Import(AllowDefault = true)] ITsContainerWatch containerWatch,
-            [Import(AllowDefault = true)] IGearFingerprintService fingerprintService
+            [Import(AllowDefault = true)] IGearFingerprintService fingerprintService,
+            [Import(AllowDefault = true)] IImageSaveMediator imageSaveMediator,
+            [Import(AllowDefault = true)] ITelescopeMediator telescopeMediator,
+            [Import(AllowDefault = true)] ISafetyMonitorMediator safetyMonitorMediator,
+            [Import(AllowDefault = true)] IFocuserMediator focuserMediator,
+            [Import(AllowDefault = true)] ISequenceMediator sequenceMediator
         ) : base(profileService) {
             this.fingerprintService = fingerprintService;
             this.framingAssistantVM = framingAssistantVM;
@@ -101,6 +109,9 @@ namespace ACP.NINA.Plugin.Dockables {
             IsConnected = false;
 
             StartProgressReporting(messageBroker, containerWatch);
+            StartActivityEvents(
+                messageBroker, imageSaveMediator, telescopeMediator, safetyMonitorMediator,
+                focuserMediator, sequenceMediator);
 
             _ = RefreshAsync();
             _ = PollForChangesAsync(pollCts.Token);
@@ -156,6 +167,74 @@ namespace ACP.NINA.Plugin.Dockables {
                 Logger.Error($"ACP: could not start progress reporting: {ex}");
                 progressReporter = null;
             }
+        }
+
+        // -- Activity events (ACP Activity tab, phase 2) -----------------------
+
+        private ActivityReporter activityReporter;
+        private ActivityCollector activityCollector;
+
+        /// Start posting what NINA does to ACP's Activity tab.
+        ///
+        /// Follows the progress reporter's switch: untick "Report progress to
+        /// ACP" and no events are queued or sent. Needs the progress reporter's
+        /// snapshot cache and plan list to tie a frame to its plan, so it runs
+        /// after StartProgressReporting. Any failure here is logged and costs
+        /// only the activity events.
+        private void StartActivityEvents(
+            IMessageBroker messageBroker,
+            IImageSaveMediator imageSave,
+            ITelescopeMediator telescope,
+            ISafetyMonitorMediator safety,
+            IFocuserMediator focuser,
+            ISequenceMediator sequence
+        ) {
+            try {
+                Func<string> profileId = () => profileService?.ActiveProfile?.Id.ToString();
+
+                activityReporter = new ActivityReporter(
+                    new UrlActivitySink(() => (AcpSettings.Current ?? settings).ServerUrl),
+                    () => (AcpSettings.Current ?? settings).ReportProgressToAcp,
+                    messageBroker);
+
+                activityCollector = new ActivityCollector(
+                    ActivityHub.Post,
+                    profileId,
+                    () => profileService?.ActiveProfile?.Name,
+                    () => DateTimeOffset.Now,
+                    name => FindTsTargetId(profileId(), name),
+                    async (tsTargetId, name) => {
+                        if (!tsTargetId.HasValue || planRefsSource == null) return null;
+                        var all = await planRefsSource.ReadPlanRefsAsync(CancellationToken.None).ConfigureAwait(false);
+                        return ProgressMapper.FindPlanForTarget(all, tsTargetId.Value, profileId())?.AcpPlanId;
+                    },
+                    // Read only, opened and closed per seed (once per target per night).
+                    new ActivityImagingSeeder((profile, from, to) => {
+                        using (var db = TargetSchedulerDb.Open(null, readOnly: true)) {
+                            return db.ReadAcquiredImages(profile, from, to);
+                        }
+                    }).Seed,
+                    () => (AcpSettings.Current ?? settings).ReportProgressToAcp
+                        && activityReporter != null && !activityReporter.IsDisabled);
+
+                ActivityHub.Attach(activityReporter, activityCollector);
+                activityReporter.Start();
+                activityCollector.Subscribe(imageSave, telescope, safety, focuser, sequence);
+            } catch (Exception ex) {
+                Logger.Error($"ACP: could not start activity events: {ex}");
+            }
+        }
+
+        /// Target Scheduler's id for a target name in the active profile, read
+        /// from the same cached snapshot the progress reporter uses.
+        private int? FindTsTargetId(string profileId, string targetName) {
+            if (string.IsNullOrWhiteSpace(targetName) || tsSnapshotCache == null) return null;
+            var snap = tsSnapshotCache.Get(profileId);
+            if (snap == null) return null;
+            foreach (var pair in snap.TargetsById) {
+                if (string.Equals(pair.Value?.Name, targetName, StringComparison.OrdinalIgnoreCase)) return pair.Key;
+            }
+            return null;
         }
 
         /// A sync has just rewritten Target Scheduler, so the reporter's view
@@ -237,6 +316,17 @@ namespace ACP.NINA.Plugin.Dockables {
                 progressReporter?.Dispose();
             } catch (Exception) {
                 // Already gone, nothing useful to do.
+            }
+            try {
+                // Idempotent with AcpPlugin.Teardown, which calls the same thing.
+                ActivityHub.Shutdown();
+                activityCollector?.Dispose();
+                if (activityReporter != null) {
+                    ActivityHub.Detach(activityReporter);
+                    activityReporter.Dispose();
+                }
+            } catch (Exception) {
+                // Shutting down, nothing useful to do.
             }
             try {
                 pollCts.Cancel();
