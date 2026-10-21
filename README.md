@@ -28,7 +28,7 @@ The same step is available as a sequencer instruction, **ACP: Sync for tonight**
 
 ### Send TS to ACP
 
-The dock also has a **Send TS to ACP** button, which sends a read-only copy of Target Scheduler's database to ACP so you can review plans made in Target Scheduler. It needs a private ACP extension that is not publicly available yet, so it will not work on a standard ACP install. Ignore that button for now.
+The dock also has a **Send TS to ACP** button, which sends a read-only copy of Target Scheduler's database to ACP so you can review plans made in Target Scheduler. ACP shows what would change, and nothing changes until you press Apply there. The button needs the `nina-ts-sync` extension installed in ACP ([github.com/astro-roro/acp-nina-ts-sync](https://github.com/astro-roro/acp-nina-ts-sync), install steps are in its README) and the ACP API token set in the plugin options.
 
 ## Requirements
 
