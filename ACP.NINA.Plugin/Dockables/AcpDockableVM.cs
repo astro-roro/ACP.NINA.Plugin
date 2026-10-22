@@ -41,7 +41,9 @@ namespace ACP.NINA.Plugin.Dockables {
         private readonly ISyncForTonightRunner syncRunner;
         private readonly ITsPushService tsPush;
         private readonly IGearFingerprintService fingerprintService;
-        private readonly AcpSettings settings;
+        // Replaced by OnSettingsSaved, so anything long-lived must read this
+        // field at the time of use and not capture its value at startup.
+        private volatile AcpSettings settings;
 
         [ImportingConstructor]
         public AcpDockableVM(
@@ -169,7 +171,7 @@ namespace ACP.NINA.Plugin.Dockables {
                     messageBroker,
                     new TsDatabaseProgressSource(tsSnapshotCache, profileId),
                     planRefsSource,
-                    new AcpApiClient(settings.ServerUrl),
+                    new UrlProgressSink(() => settings.ServerUrl),
                     containerWatch,
                     () => (AcpSettings.Current ?? settings).ReportProgressToAcp,
                     profileId
@@ -264,8 +266,23 @@ namespace ACP.NINA.Plugin.Dockables {
             planRefsSource?.Invalidate();
         }
 
+        /// The options page saves its own copy, so adopt it here. Without
+        /// this the dock keeps calling the address it read at startup and
+        /// stays disconnected until NINA restarts.
         private void OnSettingsSaved() {
-            RaisePropertyChanged(nameof(ProgressStatusLine));
+            var previousUrl = settings?.ServerUrl;
+            var saved = AcpSettings.Current;
+            if (saved != null) {
+                settings = saved;
+            }
+            var urlChanged = saved != null && saved.ServerUrl != previousUrl;
+            Application.Current?.Dispatcher.Invoke(() => {
+                RaisePropertyChanged(nameof(ProgressStatusLine));
+                RaisePropertyChanged(nameof(ServerUrl));
+            });
+            if (urlChanged) {
+                _ = RefreshAsync();
+            }
         }
 
         /// The footer line: "Progress sent 22 s ago", or the last error.
