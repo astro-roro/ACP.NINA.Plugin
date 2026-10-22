@@ -6,10 +6,13 @@ using System.IO;
 
 namespace ACP.NINA.Plugin.Services {
 
-    /// Persistent plugin settings. Stored as JSON under
-    /// %localappdata%\NINA\Plugins\3.0.0\ACP.NINA.Plugin\settings.json — same
-    /// directory NINA deploys the plugin DLL to, so it travels with the
-    /// installation. Pure POCO + static Load/Save so we can avoid the
+    /// Persistent plugin settings. Stored as JSON at
+    /// %localappdata%\NINA\ACP.NINA.Plugin\settings.json, beside NINA's own
+    /// Profiles and Logs folders. It is deliberately outside
+    /// %localappdata%\NINA\Plugins\, because installing or updating a plugin
+    /// replaces its folder there and would wipe the file. Versions up to 3.2
+    /// kept it in the plugin folder, so Load copies that file across once if
+    /// the new one is missing. Pure POCO + static Load/Save so we can avoid the
     /// auto-generated Properties\Settings.Designer.cs dance (which requires
     /// Visual Studio's SettingsSingleFileGenerator).
     public class AcpSettings {
@@ -60,12 +63,20 @@ namespace ACP.NINA.Plugin.Services {
         public bool ReportProgressToAcp { get; set; } = true;
 
         /// Deliberately absent: the bearer token. It lives in Windows
-        /// Credential Manager, see TokenStore. Settings.json travels with the
-        /// plugin folder, so a token in here would be a token in a text file.
+        /// Credential Manager, see TokenStore. Settings.json gets copied around
+        /// when people move a NINA install between machines, so a token in here
+        /// would be a token in a text file.
+
+        private static readonly string LocalAppData =
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
         private static readonly string SettingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "NINA", "Plugins", "3.0.0", "ACP.NINA.Plugin", "settings.json"
+            LocalAppData, "NINA", "ACP.NINA.Plugin", "settings.json"
+        );
+
+        /// Where 3.2 and earlier kept the file. Read only, for migration.
+        private static readonly string LegacySettingsPath = Path.Combine(
+            LocalAppData, "NINA", "Plugins", "3.0.0", "ACP.NINA.Plugin", "settings.json"
         );
 
         /// The most recently loaded or saved instance. The options page and
@@ -83,12 +94,25 @@ namespace ACP.NINA.Plugin.Services {
             return loaded;
         }
 
-        private static AcpSettings LoadFromDisk() {
+        private static AcpSettings LoadFromDisk() => LoadFromDisk(SettingsPath, LegacySettingsPath);
+
+        /// If the new file exists it wins and the old one is ignored. If only
+        /// the old one exists it is copied (not moved, so a rollback to 3.2
+        /// still finds it) and then loaded. Any failure falls back to defaults.
+        internal static AcpSettings LoadFromDisk(string path, string legacyPath) {
             try {
-                if (!File.Exists(SettingsPath)) {
+                if (!File.Exists(path) && !string.IsNullOrEmpty(legacyPath) && File.Exists(legacyPath)) {
+                    var dir = Path.GetDirectoryName(path);
+                    if (!Directory.Exists(dir)) {
+                        Directory.CreateDirectory(dir);
+                    }
+                    File.Copy(legacyPath, path, false);
+                    Logger.Info($"ACP: copied settings from {legacyPath} to {path}");
+                }
+                if (!File.Exists(path)) {
                     return new AcpSettings();
                 }
-                var json = File.ReadAllText(SettingsPath);
+                var json = File.ReadAllText(path);
                 var loaded = JsonConvert.DeserializeObject<AcpSettings>(json);
                 return loaded ?? new AcpSettings();
             } catch (Exception ex) {
