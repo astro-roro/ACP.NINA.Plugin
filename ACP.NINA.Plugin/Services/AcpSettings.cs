@@ -32,6 +32,31 @@ namespace ACP.NINA.Plugin.Services {
         /// sequence instruction alike. 0 means no limit.
         public int ActionTimeoutMinutes { get; set; } = 10;
 
+        /// The binning plans are judged against: the pixel scale sent to ACP is
+        /// worked out at this bin factor. It is a setting, not read from the
+        /// camera, because the camera is left at whatever the last test frame
+        /// used and that says nothing about how the night will be imaged.
+        public int ImagingBinning { get; set; } = 1;
+
+        /// The frame Sync for tonight takes to measure focal length. Every
+        /// field is optional and null means unset: exposure, filter and
+        /// binning then come from NINA's plate solve settings, and gain and
+        /// offset from the camera's defaults. The Sync for tonight
+        /// instruction's own exposure still wins when it is more than 0.
+        public double? SolveExposureSeconds { get; set; }
+
+        /// A filter name from the profile's filter wheel, or null for the
+        /// plate solve setting's filter.
+        public string SolveFilter { get; set; }
+
+        public int? SolveBinning { get; set; }
+
+        public int? SolveGain { get; set; }
+
+        public int? SolveOffset { get; set; }
+
+        public static int ClampBinning(int value) => Math.Max(1, Math.Min(8, value));
+
         public static int ClampSolveAttempts(int value) => Math.Max(1, Math.Min(20, value));
 
         public static int ClampTimeoutMinutes(int value) => Math.Max(0, Math.Min(240, value));

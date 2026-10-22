@@ -33,6 +33,7 @@ namespace ACP.NINA.Plugin.Services {
         private readonly ICameraMediator cameraMediator;
         private readonly IFilterWheelMediator filterWheelMediator;
         private readonly ITelescopeMediator telescopeMediator;
+        private readonly Func<int> imagingBinningSource;
 
         [ImportingConstructor]
         public GearFingerprintService(
@@ -40,11 +41,60 @@ namespace ACP.NINA.Plugin.Services {
             ICameraMediator cameraMediator,
             IFilterWheelMediator filterWheelMediator,
             ITelescopeMediator telescopeMediator
+        ) : this(
+            profileService, cameraMediator, filterWheelMediator, telescopeMediator,
+            () => (AcpSettings.Current ?? AcpSettings.Load()).ImagingBinning
+        ) {
+        }
+
+        /// Takes the imaging binning as a delegate so a test does not read the
+        /// real settings file.
+        internal GearFingerprintService(
+            IProfileService profileService,
+            ICameraMediator cameraMediator,
+            IFilterWheelMediator filterWheelMediator,
+            ITelescopeMediator telescopeMediator,
+            Func<int> imagingBinningSource
         ) {
             this.profileService = profileService;
             this.cameraMediator = cameraMediator;
             this.filterWheelMediator = filterWheelMediator;
             this.telescopeMediator = telescopeMediator;
+            this.imagingBinningSource = imagingBinningSource;
+        }
+
+        /// The numbers that depend on binning, worked out without any NINA
+        /// plumbing. Two bin factors are in play and they must not be mixed:
+        /// the solve frame's, which turns the solved pixel scale into a focal
+        /// length, and the imaging one, which sets the pixel scale plans are
+        /// judged against. The camera's current binning is neither.
+        internal class BinningResult {
+            public int ImagingBinning { get; set; }
+            public int? SolveBinning { get; set; }
+            public double? SolvedFocalLengthMm { get; set; }
+            public double? PixelScaleArcsec { get; set; }
+        }
+
+        internal static BinningResult ResolveBinning(
+            double pixelSizeUm, double profileFocalLengthMm, SolveSnapshot solve, int imagingBinning
+        ) {
+            var imaging = AcpSettings.ClampBinning(imagingBinning);
+            var result = new BinningResult { ImagingBinning = imaging };
+            var hasSolve = solve != null && solve.PixScaleArcsec > 0;
+            if (solve != null) {
+                result.SolveBinning = Math.Max(1, solve.Binning);
+                result.SolvedFocalLengthMm = FingerprintMath.SolvedFocalLengthMm(
+                    pixelSizeUm, result.SolveBinning.Value, solve.PixScaleArcsec);
+            }
+            // With a solve, the measured scale is rescaled from the solve
+            // frame's binning to the imaging one. That needs no pixel size.
+            // Without one it comes from the profile focal length, which is
+            // the number the spec expects to be wrong, so ACP is told the
+            // source either way.
+            result.PixelScaleArcsec = hasSolve
+                ? solve.PixScaleArcsec * imaging / result.SolveBinning.Value
+                : FingerprintMath.PixelScaleArcsec(pixelSizeUm, imaging, profileFocalLengthMm);
+            return result;
         }
 
         public Fingerprint Build(SolveSnapshot solve) {
@@ -54,27 +104,18 @@ namespace ACP.NINA.Plugin.Services {
             var scopeInfo = telescopeMediator?.GetInfo();
 
             var profileFocalLength = profile?.TelescopeSettings?.FocalLength ?? 0;
-            var binning = solve?.Binning > 0
-                ? solve.Binning
-                : Math.Max(1, (int)(camInfo?.BinX ?? 1));
             var pixelSize = camInfo?.PixelSize ?? 0;
 
-            var solvedFocalLength = solve == null
-                ? null
-                : FingerprintMath.SolvedFocalLengthMm(pixelSize, binning, solve.PixScaleArcsec);
+            var resolved = ResolveBinning(pixelSize, profileFocalLength, solve, imagingBinningSource());
+            var binning = resolved.ImagingBinning;
+            var solvedFocalLength = resolved.SolvedFocalLengthMm;
+            var pixelScale = resolved.PixelScaleArcsec;
 
             var focalLength = new FingerprintFocalLength {
                 Profile = profileFocalLength,
                 Solved = solvedFocalLength,
                 Source = solvedFocalLength.HasValue ? "solved" : "profile",
             };
-
-            // With a solve, the pixel scale is measured. Without one it is
-            // derived from the profile focal length, which is the number the
-            // spec expects to be wrong, so ACP is told the source either way.
-            var pixelScale = solve != null && solve.PixScaleArcsec > 0
-                ? solve.PixScaleArcsec
-                : FingerprintMath.PixelScaleArcsec(pixelSize, binning, profileFocalLength);
 
             var fingerprint = new Fingerprint {
                 Camera = new FingerprintCamera {
@@ -90,6 +131,7 @@ namespace ACP.NINA.Plugin.Services {
                 Site = ReadSite(profile, scopeInfo),
                 FocalLengthMm = focalLength,
                 PixelScaleArcsec = pixelScale,
+                SolveBinning = resolved.SolveBinning,
                 RotationDeg = solve?.PositionAngleDeg,
                 ProfileName = profile?.Name,
                 NinaVersion = ReadNinaVersion(),
@@ -103,7 +145,8 @@ namespace ACP.NINA.Plugin.Services {
             Logger.Info(
                 $"ACP: fingerprint built - camera {fingerprint.Camera.Name} " +
                 $"{fingerprint.Camera.SensorPx[0]}x{fingerprint.Camera.SensorPx[1]} " +
-                $"at {fingerprint.Camera.PixelSizeUm} um bin {binning}, " +
+                $"at {fingerprint.Camera.PixelSizeUm} um imaging bin {binning}" +
+                $"{(resolved.SolveBinning.HasValue && resolved.SolveBinning.Value != binning ? $" (solve bin {resolved.SolveBinning.Value})" : "")}, " +
                 $"{(fingerprint.Camera.Colour ? "colour" : "mono")}, " +
                 $"filters [{string.Join(", ", fingerprint.Filters)}], " +
                 $"wheel slots [{string.Join(", ", fingerprint.WheelSlots)}], " +

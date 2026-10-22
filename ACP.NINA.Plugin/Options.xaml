@@ -213,6 +213,119 @@
                            Text="Time limit for ACP actions, minutes (0 for none)" />
             </Grid>
 
+            <TextBlock FontSize="14" FontWeight="Bold" Text="Binning" Margin="0,12,0,6" />
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding ImagingBinning}"
+                         ToolTip="The bin factor you image at, 1 to 8. Plans are judged against the pixel scale at this binning." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Imaging binning" />
+            </Grid>
+
+            <TextBlock Margin="0,0,0,12"
+                       FontSize="11"
+                       Opacity="0.7"
+                       TextWrapping="Wrap"
+                       Text="The binning plans are judged against. The camera's current binning is never used, so a test frame at another bin does not change the verdict." />
+
+            <TextBlock FontSize="14" FontWeight="Bold" Text="Focal length solve frame" Margin="0,0,0,6" />
+
+            <TextBlock Margin="0,0,0,6"
+                       FontSize="11"
+                       Opacity="0.7"
+                       TextWrapping="Wrap"
+                       Text="The frame Sync for tonight takes to measure focal length. Leave a box empty to use NINA's plate solve setting (exposure, filter, binning) or the camera's default (gain, offset). A Sync for tonight instruction with an exposure above 0 still uses its own exposure." />
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding SolveExposureText}"
+                         ToolTip="Exposure in seconds. Empty uses the plate solve setting." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Exposure, seconds" />
+            </Grid>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding SolveBinningText}"
+                         ToolTip="Bin factor of the solve frame, 1 to 8. Empty uses the plate solve setting." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Binning" />
+            </Grid>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"
+                           Text="Filter" />
+                <ComboBox Grid.Column="1"
+                          Height="24"
+                          VerticalContentAlignment="Center"
+                          ItemsSource="{Binding SolveFilterOptions}"
+                          SelectedItem="{Binding SelectedSolveFilterOption}"
+                          ToolTip="The filter for the solve frame, from the active profile's filter wheel. The first choice uses the plate solve setting." />
+            </Grid>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding SolveGainText}"
+                         ToolTip="Camera gain for the solve frame. Empty leaves the camera at its default." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Gain" />
+            </Grid>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="60" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Height="24"
+                         Margin="0,0,8,0"
+                         VerticalContentAlignment="Center"
+                         Text="{Binding SolveOffsetText}"
+                         ToolTip="Camera offset for the solve frame. Empty leaves the camera at its default." />
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Text="Offset" />
+            </Grid>
+
         </StackPanel>
     </DataTemplate>
 

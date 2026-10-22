@@ -37,6 +37,12 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("rotation_deg")]
         public double? RotationDeg { get; set; }
 
+        /// The bin factor of the solve frame, when a solve happened. Local
+        /// only: it explains the focal length in the log and the Gear line and
+        /// is not part of the spec's JSON.
+        [JsonIgnore]
+        public int? SolveBinning { get; set; }
+
         [JsonProperty("profile_name")]
         public string ProfileName { get; set; }
 
@@ -89,7 +95,9 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("colour")]
         public bool Colour { get; set; }
 
-        /// Current bin factor, 1 when unbinned.
+        /// The imaging bin factor from the ACP options, 1 when unbinned. Never
+        /// the camera's current binning, which is whatever the last test frame
+        /// used.
         [JsonProperty("binning")]
         public int Binning { get; set; } = 1;
     }

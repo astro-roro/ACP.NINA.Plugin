@@ -7,6 +7,9 @@ using NINA.WPF.Base.Interfaces.ViewModel;
 using System;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -180,6 +183,119 @@ namespace ACP.NINA.Plugin {
             settings.SyncMode == SyncMode.OnlyWhatFits
                 ? "Plans are matched against the gear the plate solve found and only the ones that fit are loaded. Plans with no gear set are always loaded. Pick this if you use more than one rig, site or computer."
                 : "Every plan in ACP is loaded and nothing is filtered out. A frame is only solved when the focal length update below is on; with it off, no camera is needed. Anything that does not suit tonight gets one warning line and you adjust in Target Scheduler.";
+
+        // -- Binning and the focal length solve frame --------------------------
+
+        public int ImagingBinning {
+            get => settings.ImagingBinning;
+            set {
+                var clamped = AcpSettings.ClampBinning(value);
+                if (settings.ImagingBinning == clamped) return;
+                settings.ImagingBinning = clamped;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        /// The solve frame boxes bind to text so that an empty box can mean
+        /// unset. Text that is not a valid number is ignored and the last
+        /// saved value stays in force.
+        public string SolveExposureText {
+            get => settings.SolveExposureSeconds?.ToString(CultureInfo.InvariantCulture) ?? "";
+            set {
+                double? parsed = null;
+                if (!string.IsNullOrWhiteSpace(value)) {
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                        || seconds <= 0 || double.IsInfinity(seconds)) return;
+                    parsed = seconds;
+                }
+                if (settings.SolveExposureSeconds == parsed) return;
+                settings.SolveExposureSeconds = parsed;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string SolveBinningText {
+            get => settings.SolveBinning?.ToString(CultureInfo.InvariantCulture) ?? "";
+            set {
+                var parsed = ParseOptionalInt(value, 1, 8, out var ok);
+                if (!ok || settings.SolveBinning == parsed) return;
+                settings.SolveBinning = parsed;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string SolveGainText {
+            get => settings.SolveGain?.ToString(CultureInfo.InvariantCulture) ?? "";
+            set {
+                var parsed = ParseOptionalInt(value, 0, int.MaxValue, out var ok);
+                if (!ok || settings.SolveGain == parsed) return;
+                settings.SolveGain = parsed;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string SolveOffsetText {
+            get => settings.SolveOffset?.ToString(CultureInfo.InvariantCulture) ?? "";
+            set {
+                var parsed = ParseOptionalInt(value, 0, int.MaxValue, out var ok);
+                if (!ok || settings.SolveOffset == parsed) return;
+                settings.SolveOffset = parsed;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        /// Blank is a valid answer and means unset. Anything else must be a
+        /// whole number in range, otherwise ok is false and nothing changes.
+        private static int? ParseOptionalInt(string text, int min, int max, out bool ok) {
+            ok = true;
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)
+                && number >= min && number <= max) {
+                return number;
+            }
+            ok = false;
+            return null;
+        }
+
+        public const string SolveFilterUnsetLabel = "(use the plate solve setting)";
+
+        /// The unset choice, then the active profile's filter wheel names. A
+        /// saved name the profile no longer has is kept in the list so the
+        /// box does not silently go blank.
+        public string[] SolveFilterOptions {
+            get {
+                var names = new List<string> { SolveFilterUnsetLabel };
+                try {
+                    var filters = profileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters;
+                    if (filters != null) {
+                        names.AddRange(filters.Select(f => f?.Name).Where(n => !string.IsNullOrWhiteSpace(n)));
+                    }
+                } catch (Exception ex) {
+                    Logger.Warning($"ACP: could not read the filter wheel names for the options page: {ex.Message}");
+                }
+                var saved = settings.SolveFilter;
+                if (!string.IsNullOrWhiteSpace(saved) && !names.Contains(saved)) names.Add(saved);
+                return names.ToArray();
+            }
+        }
+
+        public string SelectedSolveFilterOption {
+            get => string.IsNullOrWhiteSpace(settings.SolveFilter) ? SolveFilterUnsetLabel : settings.SolveFilter;
+            set {
+                // A ComboBox sends null while its list is being rebuilt.
+                if (value == null) return;
+                var filter = value == SolveFilterUnsetLabel ? null : value;
+                if (settings.SolveFilter == filter) return;
+                settings.SolveFilter = filter;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
 
         // -- API token ---------------------------------------------------------
 

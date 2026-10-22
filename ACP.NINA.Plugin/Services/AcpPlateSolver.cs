@@ -9,6 +9,7 @@ using NINA.PlateSolving.Interfaces;
 using NINA.Profile.Interfaces;
 using System;
 using System.ComponentModel.Composition;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -53,6 +54,21 @@ namespace ACP.NINA.Plugin.Services {
         }
     }
 
+    /// The settings of the focal length solve frame once the ACP options, the
+    /// instruction and NINA's plate solve settings have been reconciled.
+    public class SolveFrameSpec {
+        public double ExposureSeconds { get; set; }
+        public int Binning { get; set; }
+
+        /// Null means keep the plate solve setting's filter.
+        public string FilterName { get; set; }
+
+        /// -1 means leave it to the camera, which is what NINA's own
+        /// CaptureSequence uses for an unset value.
+        public int Gain { get; set; } = -1;
+        public int Offset { get; set; } = -1;
+    }
+
     [Export(typeof(IAcpPlateSolver))]
     public class AcpPlateSolver : IAcpPlateSolver {
 
@@ -80,6 +96,29 @@ namespace ACP.NINA.Plugin.Services {
             this.plateSolverFactory = plateSolverFactory;
         }
 
+        /// Exposure: the instruction's own value when more than 0, else the ACP
+        /// option, else the plate solve setting. Filter and binning: the ACP
+        /// option, else the plate solve setting. Gain and offset: the ACP
+        /// option, else the camera's defaults.
+        internal static SolveFrameSpec ResolveSolveFrame(
+            double instructionExposure, double profileExposure, int profileBinning, AcpSettings settings
+        ) {
+            settings = settings ?? new AcpSettings();
+            double exposure;
+            if (instructionExposure > 0) exposure = instructionExposure;
+            else if (settings.SolveExposureSeconds > 0) exposure = settings.SolveExposureSeconds.Value;
+            else exposure = profileExposure;
+            return new SolveFrameSpec {
+                ExposureSeconds = exposure,
+                Binning = settings.SolveBinning > 0
+                    ? AcpSettings.ClampBinning(settings.SolveBinning.Value)
+                    : Math.Max(1, profileBinning),
+                FilterName = string.IsNullOrWhiteSpace(settings.SolveFilter) ? null : settings.SolveFilter.Trim(),
+                Gain = settings.SolveGain >= 0 ? settings.SolveGain.Value : -1,
+                Offset = settings.SolveOffset >= 0 ? settings.SolveOffset.Value : -1,
+            };
+        }
+
         public async Task<SolveSnapshot> SolveAsync(
             double exposureSeconds, IProgress<ApplicationStatus> progress, CancellationToken token
         ) {
@@ -101,15 +140,20 @@ namespace ACP.NINA.Plugin.Services {
             );
 
             // Every value here comes from the profile's own plate solve
-            // settings, so the solve behaves as NINA's does, with two
-            // exceptions. The exposure time, because the ACP instruction runs
-            // at the start of the night when the profile's centring exposure
-            // may not be what you want. And the number of attempts, which the
-            // ACP options set: see AcpSettings.SolveAttempts.
-            var binning = plateSolveSettings.Binning;
+            // settings, so the solve behaves as NINA's does, except where the
+            // ACP options say otherwise: the frame (exposure, filter, binning,
+            // gain, offset, see ResolveSolveFrame) and the number of attempts
+            // (AcpSettings.SolveAttempts). The instruction's own exposure
+            // still wins, because the ACP instruction runs at the start of the
+            // night when the profile's centring exposure may not be what you
+            // want.
+            var acpSettings = AcpSettings.Current ?? AcpSettings.Load();
+            var frame = ResolveSolveFrame(
+                exposureSeconds, plateSolveSettings.ExposureTime, (int)plateSolveSettings.Binning, acpSettings);
+            var binning = frame.Binning;
             var parameter = new CaptureSolverParameter {
-                Attempts = AcpSettings.ClampSolveAttempts(AcpSettings.Load().SolveAttempts),
-                Binning = binning,
+                Attempts = AcpSettings.ClampSolveAttempts(acpSettings.SolveAttempts),
+                Binning = (short)binning,
                 Coordinates = telescopeMediator.GetCurrentPosition(),
                 DownSampleFactor = plateSolveSettings.DownSampleFactor,
                 FocalLength = profile.TelescopeSettings.FocalLength,
@@ -122,11 +166,19 @@ namespace ACP.NINA.Plugin.Services {
             };
 
             var sequence = new CaptureSequence(
-                exposureSeconds > 0 ? exposureSeconds : plateSolveSettings.ExposureTime,
+                frame.ExposureSeconds,
                 CaptureSequence.ImageTypes.SNAPSHOT,
-                plateSolveSettings.Filter,
-                new BinningMode(binning, binning),
+                ResolveFilter(profile, plateSolveSettings.Filter, frame.FilterName),
+                new BinningMode((short)binning, (short)binning),
                 1
+            );
+            sequence.Gain = frame.Gain;
+            sequence.Offset = frame.Offset;
+            Logger.Info(
+                $"ACP: solve frame {frame.ExposureSeconds:F1} s, bin {binning}, " +
+                $"filter {sequence.FilterType?.Name ?? "none"}, " +
+                $"gain {(frame.Gain >= 0 ? frame.Gain.ToString() : "camera default")}, " +
+                $"offset {(frame.Offset >= 0 ? frame.Offset.ToString() : "camera default")}."
             );
 
             // No window service and no status view model. The ACP instruction
@@ -145,7 +197,7 @@ namespace ACP.NINA.Plugin.Services {
             var snapshot = new SolveSnapshot {
                 PixScaleArcsec = result.Pixscale,
                 PositionAngleDeg = result.PositionAngle,
-                Binning = Math.Max(1, (int)binning),
+                Binning = Math.Max(1, binning),
                 SolvedAtUtc = DateTime.UtcNow,
             };
             LastSolve.Set(snapshot);
@@ -155,6 +207,25 @@ namespace ACP.NINA.Plugin.Services {
                 $"angle {snapshot.PositionAngleDeg:F1} degrees, bin {snapshot.Binning}."
             );
             return snapshot;
+        }
+
+        /// The wheel filter with the configured name, or the plate solve
+        /// setting's filter when none is configured or the name matches
+        /// nothing (logged, because the solve then runs on a filter the
+        /// user did not ask for).
+        private static FilterInfo ResolveFilter(IProfile profile, FilterInfo fallback, string name) {
+            if (name == null) return fallback;
+            var filters = profile?.FilterWheelSettings?.FilterWheelFilters;
+            var match = filters?.FirstOrDefault(f =>
+                string.Equals(f?.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (match == null) {
+                Logger.Warning(
+                    $"ACP: the solve frame filter \"{name}\" is not in the profile's filter wheel, " +
+                    "so the plate solve setting's filter is used instead."
+                );
+                return fallback;
+            }
+            return match;
         }
     }
 }
