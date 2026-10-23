@@ -31,6 +31,8 @@ The first release since 1.0.2. Versions 3.0 to 3.2 were built and tested but nev
 - A filter that is not on the wheel is skipped, not pushed with a warning. The rows are named in the push result ("SII is not on the wheel of Foo yet, so 3 rows were skipped"). An empty slot list means the wheel is unknown: templates Target Scheduler already has are used, and rows on a template it lacks are skipped.
 - `/api/gear` responses are read the way ACP actually sends them. Sensor size arrives as a two element `sensor_px` array, and the per filter capture settings under `cameras[].filters` are read for the first time. The Framing Assistant push was silently getting no sensor size from a real server and now gets one.
 - The connection probe uses `GET /api/version` and falls back to `/api/plans` against an older ACP.
+- Settings now live in `%LOCALAPPDATA%\NINA\ACP.NINA.Plugin`, so replacing the plugin folder no longer resets them.
+- Imaging binning defaults to 1. Anyone who images at bin 2 must set it once.
 
 ### Fixed
 

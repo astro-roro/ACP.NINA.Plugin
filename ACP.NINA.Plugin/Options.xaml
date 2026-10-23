@@ -274,7 +274,7 @@
                          ToolTip="Bin factor of the solve frame, 1 to 8. Empty uses the plate solve setting." />
                 <TextBlock Grid.Column="1"
                            VerticalAlignment="Center"
-                           Text="Binning" />
+                           Text="Solve binning" />
             </Grid>
 
             <Grid Margin="0,0,0,4">
