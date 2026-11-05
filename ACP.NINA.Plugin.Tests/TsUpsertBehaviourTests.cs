@@ -203,7 +203,7 @@ namespace ACP.NINA.Plugin.Tests {
 
         [Fact]
         public void LegacyRuleNamesAreReplacedAndTunedWeightsSurvive() {
-            // The two broken shapes seen on Voyager on 2026-10-09: the five
+            // The two broken shapes seen on RIG-A on 2026-10-09: the five
             // legacy rows alone (a bad sync's inserts), and the eight real rows
             // plus the five legacy ones (a bad sync, then a NINA restart).
             using (var tmp = new TempDir()) {
@@ -441,7 +441,7 @@ namespace ACP.NINA.Plugin.Tests {
 
     /// project.flatsHandling is Target Scheduler's own setting for whether it
     /// takes flats for a project. ACP has no control for it, so a sync must
-    /// never reset a change Rohan made by hand in Target Scheduler.
+    /// never reset a change the user made by hand in Target Scheduler.
     public class TsProjectFlatsHandlingTests {
 
         private static TsSyncPayload OnePlan() {

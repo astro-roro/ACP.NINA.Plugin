@@ -47,7 +47,7 @@ namespace ACP.NINA.Plugin.Tests {
         }
 
         [Theory]
-        [InlineData(@"C:\Users\Rohan1\AppData\Local\NINA\backups\db-1.sqlite", "db-1.sqlite")]
+        [InlineData(@"C:\Users\imager\AppData\Local\NINA\backups\db-1.sqlite", "db-1.sqlite")]
         [InlineData("/home/x/backups/db-2.sqlite", "db-2.sqlite")]
         [InlineData("plain.sqlite", "plain.sqlite")]
         [InlineData(null, null)]
@@ -121,7 +121,7 @@ namespace ACP.NINA.Plugin.Tests {
         // -- Test 46: sync for tonight -----------------------------------------
 
         private const string BackupFull =
-            @"C:\Users\Rohan1\AppData\Local\NINA\Plugins\3.0.0\ACP.NINA.Plugin\backups\schedulerdb-20261013.sqlite";
+            @"C:\Users\imager\AppData\Local\NINA\Plugins\3.0.0\ACP.NINA.Plugin\backups\schedulerdb-20261013.sqlite";
 
         private static SyncOutcome SyncedThree() {
             var outcome = new SyncOutcome { Success = true, TsPush = new TsPushResult { Success = true, BackupPath = BackupFull } };
@@ -142,7 +142,7 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.Contains("schedulerdb-20261013.sqlite", e.Detail);
 
             var wire = JsonConvert.SerializeObject(e);
-            Assert.DoesNotContain("Rohan1", wire);
+            Assert.DoesNotContain("imager", wire);
             Assert.DoesNotContain(@"C:\\Users", wire);
             Assert.DoesNotContain("AppData", wire);
         }
@@ -161,11 +161,11 @@ namespace ACP.NINA.Plugin.Tests {
         public void Paths_inside_free_text_are_cut_to_basenames() {
             var failed = new SyncOutcome {
                 Success = false,
-                Failure = @"Could not open C:\Users\Rohan1\AppData\Local\NINA\schedulerdb.sqlite for writing",
+                Failure = @"Could not open C:\Users\imager\AppData\Local\NINA\schedulerdb.sqlite for writing",
             };
             var e = ActivityEvents.SyncForTonight(failed, T0, "p1", "Rig");
             var wire = JsonConvert.SerializeObject(e);
-            Assert.DoesNotContain("Rohan1", wire);
+            Assert.DoesNotContain("imager", wire);
             Assert.Contains("schedulerdb.sqlite", wire);
         }
 

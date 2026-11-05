@@ -28,7 +28,7 @@ namespace ACP.NINA.Plugin.Tests {
             Exec(conn, $"UPDATE project SET createdate = {OlderCreateDate} WHERE Id = 1");
         }
 
-        /// Tuning Rohan does in Target Scheduler's own screens, none of which
+        /// Tuning a user does in Target Scheduler's own screens, none of which
         /// ACP has a setting for. A second push must leave every one of these
         /// alone. Matches ts_owned_columns_survive_a_second_push in
         /// golden-rows.json.

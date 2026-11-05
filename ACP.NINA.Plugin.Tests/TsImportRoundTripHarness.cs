@@ -14,8 +14,8 @@ namespace ACP.NINA.Plugin.Tests {
     /// Push a set of ACP plans into a copy of a real Target Scheduler database
     /// with the plugin's own writer, and leave the result on disk to diff.
     ///
-    /// This is how the import round trip was checked against Voyager's
-    /// database: import the TS projects into ACP plans with the Python
+    /// This is how the import round trip was checked against a real
+    /// Target Scheduler database: import the TS projects into ACP plans with the Python
     /// extension, then push those plans back with TsPushService and compare
     /// every row with the original. The diff itself is a script outside this
     /// repo; this test only does the push, so the answer comes from the real
@@ -30,9 +30,9 @@ namespace ACP.NINA.Plugin.Tests {
     ///   ACP_TS_HARNESS_OUT    a directory for pushed.sqlite and outcome.json
     public class TsImportRoundTripHarness {
 
-        private const string ProfileId = "00000000-0000-0000-0000-000000000000";
+        private const string ProfileId = "00000000-0000-4000-8000-000000000002";
 
-        /// Voyager's filter wheel.
+        /// A seven-slot LRGB and narrowband filter wheel.
         private static readonly string[] WheelFilters = { "L", "R", "G", "B", "H", "O", "S" };
 
         [Fact]
