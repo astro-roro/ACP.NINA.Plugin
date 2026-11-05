@@ -12,21 +12,22 @@ namespace ACP.NINA.Plugin.Services {
     /// from the builders so the rules ACP enforces sit in one small place.
     public static class ActivityNight {
 
-        /// The zone ACP cuts nights in by default (ACP_ACTIVITY_TZ). The plugin
-        /// always sends the night itself, so it has to agree with ACP's default
-        /// rather than with whatever zone this PC happens to be set to.
-        private static readonly Lazy<TimeZoneInfo> zone = new Lazy<TimeZoneInfo>(() => {
-            foreach (var id in new[] { "Australia/Sydney", "AUS Eastern Standard Time" }) {
-                try { return TimeZoneInfo.FindSystemTimeZoneById(id); } catch (Exception) { }
-            }
-            return TimeZoneInfo.Utc;
-        });
+        private static TimeZoneInfo zone;
+
+        /// The zone nights are cut in. Defaults to this PC's time zone, as ACP
+        /// defaults to its own system time zone (ACP_ACTIVITY_TZ), so the two
+        /// agree when the rig and the server share a zone. Set it to cut nights
+        /// in another zone; null goes back to the system zone.
+        public static TimeZoneInfo Zone {
+            get { return zone ?? TimeZoneInfo.Local; }
+            set { zone = value; }
+        }
 
         /// The observing night an instant belongs to, as the date the evening
         /// started. Local noon is the cut-over, so 10:00 on 14 Oct is 2026-10-13.
         /// Daylight saving does not matter: the rule is noon on each local day.
         public static string For(DateTimeOffset when) {
-            var local = TimeZoneInfo.ConvertTime(when, zone.Value);
+            var local = TimeZoneInfo.ConvertTime(when, Zone);
             return local.DateTime.AddHours(-12).Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
 
@@ -36,8 +37,9 @@ namespace ACP.NINA.Plugin.Services {
             var date = DateTime.ParseExact(For(when), "yyyy-MM-dd", CultureInfo.InvariantCulture);
             var noon = new DateTime(date.Year, date.Month, date.Day, 12, 0, 0, DateTimeKind.Unspecified);
             var nextNoon = noon.AddDays(1);
-            from = new DateTimeOffset(noon, zone.Value.GetUtcOffset(noon));
-            to = new DateTimeOffset(nextNoon, zone.Value.GetUtcOffset(nextNoon));
+            var z = Zone;
+            from = new DateTimeOffset(noon, z.GetUtcOffset(noon));
+            to = new DateTimeOffset(nextNoon, z.GetUtcOffset(nextNoon));
         }
 
         /// ISO 8601 with an offset, which is what ACP wants in "at".

@@ -103,8 +103,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var offWheelRows = new Dictionary<string, List<string>>(StringComparer.Ordinal);
             var offWheelOwner = new Dictionary<string, Tuple<string, string>>(StringComparer.Ordinal);
             // The moment the external grader freshness rule is judged at
-            // (docs/specs/goal-panel-and-ts-order.md section 6).
-            payload.AacNow = now ?? DateTimeOffset.FromUnixTimeSeconds(createDateUnix);
+            // (docs/specs/goal-panel-and-ts-order.md section 6), in the system
+            // time zone unless the caller gives one.
+            payload.GraderNow = now ?? TimeZoneInfo.ConvertTime(
+                DateTimeOffset.FromUnixTimeSeconds(createDateUnix), TimeZoneInfo.Local);
             var planList = (plans ?? Enumerable.Empty<Plan>()).Where(p => p != null).ToList();
 
             var telescopesById = new Dictionary<string, Telescope>(StringComparer.Ordinal);
@@ -182,8 +184,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     .Select(kv => new TsRuleWeight { ProjectId = 0, Name = kv.Key, Weight = kv.Value })
                     .ToList();
                 payload.TargetsByProjectGuid[proj.Guid] = new List<TsTarget>();
-                var graded = new TsAacProject { Name = projectName };
-                payload.AacByProjectGuid[proj.Guid] = graded;
+                var graded = new TsGraderProject { Name = projectName };
+                payload.GraderByProjectGuid[proj.Guid] = graded;
                 var watermarks = new List<string>();
 
                 foreach (var plan in group.Value) {
@@ -212,13 +214,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                     var planRows = TsRows.RowsOf(plan, camera);
                     var pushed = planRows.Where(r => TsRows.Desired(r) > 0).ToList();
-                    var planAac = TsRows.PlanAac(plan);
-                    if (planAac == null) {
-                        if (graded.Blocked == null) graded.Blocked = $"{PlanLabel(plan)} has no external grader figures yet";
+                    var planGrader = TsRows.PlanGrader(plan);
+                    if (planGrader == null) {
+                        if (graded.Blocked == null) graded.Blocked = $"{PlanLabel(plan)} has no grader figures yet";
                     } else {
-                        watermarks.Add((string)planAac["filed_through_night"]);
+                        watermarks.Add((string)planGrader["filed_through_night"]);
                     }
-                    if (plan.grader is Newtonsoft.Json.Linq.JObject || planRows.Any(r => TsRows.AacBlock(r) != null)) {
+                    if (plan.Grader is Newtonsoft.Json.Linq.JObject || planRows.Any(r => TsRows.GraderBlock(r) != null)) {
                         graded.Linked = true;
                     }
 
@@ -332,7 +334,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                     var multi = panels.Count > 1;
                     if (multi && graded.Blocked == null) {
-                        graded.Blocked = $"{PlanLabel(plan)} is a mosaic, and the external grader's counts are per row";
+                        graded.Blocked = $"{PlanLabel(plan)} is a mosaic, and the grader's counts are per row";
                     }
 
                     foreach (var panel in panels) {
@@ -423,9 +425,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                                 Acquired = acquired,
                                 Accepted = acquired,
                             });
-                            var counted = TsRows.AacAccepted(row, plan, wanted);
+                            var counted = TsRows.GraderAccepted(row, plan, wanted);
                             if (!counted.HasValue) {
-                                if (graded.Blocked == null) graded.Blocked = $"{TsRows.RowLabel(row)} has no external grader figures yet";
+                                if (graded.Blocked == null) graded.Blocked = $"{TsRows.RowLabel(row)} has no grader figures yet";
                             } else {
                                 graded.AcceptedByPlanGuid[planGuid] = counted.Value;
                             }
@@ -499,7 +501,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 graded.FiledThroughNight = watermarks.Count > 0
                     ? watermarks.OrderBy(w => w, StringComparer.Ordinal).First()
                     : null;
-                if (graded.AcceptedByPlanGuid.Count == 0 && graded.Blocked == null) graded.Blocked = "no row has external grader figures yet";
+                if (graded.AcceptedByPlanGuid.Count == 0 && graded.Blocked == null) graded.Blocked = "no row has grader figures yet";
             }
 
             // The rows a filter that is not on the wheel kept out, said once

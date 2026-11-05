@@ -35,7 +35,7 @@ namespace ACP.NINA.Plugin.Tests {
         [InlineData("2026-10-04T11:59:00+11:00", "2026-10-03")]
         [InlineData("2026-10-04T12:00:00+11:00", "2026-10-04")]
         [InlineData("2026-10-13T23:30:00+11:00", "2026-10-13")]
-        public void The_night_cuts_over_at_local_noon_in_Sydney(string at, string night) {
+        public void The_night_cuts_over_at_local_noon_in_the_site_zone(string at, string night) {
             var when = DateTimeOffset.Parse(at, System.Globalization.CultureInfo.InvariantCulture);
             Assert.Equal(night, ActivityNight.For(when));
         }

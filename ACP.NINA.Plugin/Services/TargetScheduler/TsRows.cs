@@ -51,16 +51,16 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         /// The row's external grader block, the external grader's figures, or null. Matches the Python extension's reader in
         /// nina_ts_sync/rows.py.
-        public static Newtonsoft.Json.Linq.JObject AacBlock(FilterRow row) {
-            return row?.grader as Newtonsoft.Json.Linq.JObject;
+        public static Newtonsoft.Json.Linq.JObject GraderBlock(FilterRow row) {
+            return row?.Grader as Newtonsoft.Json.Linq.JObject;
         }
 
         /// The plan's external grader block when it carries a usable watermark and floor,
         /// else null: filed_through_night has to be an ISO date and
         /// min_total_frames a whole number of at least 0, so a malformed block
-        /// can never open a write. Matches plan_aac in rows.py.
-        public static Newtonsoft.Json.Linq.JObject PlanAac(Plan plan) {
-            var block = plan?.grader as Newtonsoft.Json.Linq.JObject;
+        /// can never open a write. Matches plan_grader in rows.py.
+        public static Newtonsoft.Json.Linq.JObject PlanGrader(Plan plan) {
+            var block = plan?.Grader as Newtonsoft.Json.Linq.JObject;
             if (block == null) return null;
             var night = block["filed_through_night"];
             var floor = block["min_total_frames"];
@@ -81,8 +81,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// pushes no plan. Matches desired_for in rows.py.
         public static int DesiredFor(FilterRow row, Plan plan) {
             var d = Desired(row);
-            if (d <= 0 || AacBlock(row) == null) return d;
-            var planBlock = PlanAac(plan);
+            if (d <= 0 || GraderBlock(row) == null) return d;
+            var planBlock = PlanGrader(plan);
             if (planBlock == null) return d;
             return Math.Max(d, (int)(long)planBlock["min_total_frames"]);
         }
@@ -113,7 +113,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// block with no goal_at_send has nothing to compare and stands.
         /// Matches complete_counts in rows.py.
         public static bool CompleteCounts(FilterRow row) {
-            var block = AacBlock(row);
+            var block = GraderBlock(row);
             if (block == null) return false;
             var complete = block["complete"];
             if (complete == null || complete.Type != Newtonsoft.Json.Linq.JTokenType.Boolean || !(bool)complete) {
@@ -129,7 +129,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// goal, never a change to take; anything else is a real edit in TS.
         /// Matches unfloored_goal in rows.py.
         public static int UnflooredGoal(FilterRow row, Plan plan, int tsDesired) {
-            if (AacBlock(row) != null && Desired(row) > 0 && tsDesired == DesiredFor(row, plan)) {
+            if (GraderBlock(row) != null && Desired(row) > 0 && tsDesired == DesiredFor(row, plan)) {
                 return Desired(row);
             }
             return tsDesired;
@@ -137,10 +137,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         /// The accepted count to write for a row linked to the external grader, or null when the
         /// row has no usable figures. `wanted` is the row's desired after the
-        /// floor. Matches aac_accepted in rows.py.
-        public static int? AacAccepted(FilterRow row, Plan plan, int wanted) {
-            var block = AacBlock(row);
-            var planBlock = PlanAac(plan);
+        /// floor. Matches grader_accepted in rows.py.
+        public static int? GraderAccepted(FilterRow row, Plan plan, int wanted) {
+            var block = GraderBlock(row);
+            var planBlock = PlanGrader(plan);
             if (block == null || planBlock == null) return null;
             var seconds = JsonNumber(block["accepted_seconds"]);
             var frames = JsonNumber(block["accepted_frames"]);

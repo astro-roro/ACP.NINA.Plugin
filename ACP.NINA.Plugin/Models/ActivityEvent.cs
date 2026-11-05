@@ -35,8 +35,8 @@ namespace ACP.NINA.Plugin.Models {
         [JsonProperty("at", NullValueHandling = NullValueHandling.Ignore)]
         public string At { get; set; }
 
-        /// The observing night, YYYY-MM-DD, local noon cut-over in
-        /// Australia/Sydney. Always sent, never left for ACP to derive.
+        /// The observing night, YYYY-MM-DD, local noon cut-over in the zone
+        /// ActivityNight.Zone names. Always sent, never left for ACP to derive.
         [JsonProperty("night", NullValueHandling = NullValueHandling.Ignore)]
         public string Night { get; set; }
 
@@ -56,7 +56,7 @@ namespace ACP.NINA.Plugin.Models {
         public const string SeverityError = "error";
 
         /// Only the keys ACP allows (plan_id, project, target, bucket, filter,
-        /// ra_deg, dec_deg, aac_job, upload_id, profile, master). Others are
+        /// ra_deg, dec_deg, job, upload_id, profile, master). Others are
         /// dropped by ACP.
         [JsonProperty("refs", NullValueHandling = NullValueHandling.Ignore)]
         public Dictionary<string, object> Refs { get; set; }

@@ -106,9 +106,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         $"{string.Join(", ", Outcome.StrayTemplates)}.";
             }
             // docs/specs/goal-panel-and-ts-order.md section 6.
-            if (Outcome.AacWrittenProjects.Count > 0) {
+            if (Outcome.GraderWrittenProjects.Count > 0) {
                 line += $" The external grader's accepted counts written, and the grader turned on, for: " +
-                        $"{string.Join(", ", Outcome.AacWrittenProjects)}.";
+                        $"{string.Join(", ", Outcome.GraderWrittenProjects)}.";
             }
             foreach (var note in Outcome.Notes.Where(n => n.Contains("grader figures not written") || n.Contains("grader counts not written"))) {
                 line += " " + note;
