@@ -49,13 +49,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return Math.Max(1, (int)Math.Ceiling(hours * 3600.0 / SubS(row)));
         }
 
-        /// The row's grader block, grader's figures, or null. Matches aac_block in
+        /// The row's external grader block, the external grader's figures, or null. Matches the Python extension's reader in
         /// nina_ts_sync/rows.py.
         public static Newtonsoft.Json.Linq.JObject AacBlock(FilterRow row) {
             return row?.grader as Newtonsoft.Json.Linq.JObject;
         }
 
-        /// The plan's grader block when it carries a usable watermark and floor,
+        /// The plan's external grader block when it carries a usable watermark and floor,
         /// else null: filed_through_night has to be an ISO date and
         /// min_total_frames a whole number of at least 0, so a malformed block
         /// can never open a write. Matches plan_aac in rows.py.
@@ -76,7 +76,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return block;
         }
 
-        /// Desired with grader's floor: a row with an grader block on a plan with
+        /// Desired with the external grader's floor: a row with an external grader block on a plan with
         /// one never sits below min_total_frames. A row with a goal of 0 still
         /// pushes no plan. Matches desired_for in rows.py.
         public static int DesiredFor(FilterRow row, Plan plan) {
@@ -106,10 +106,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return row.TargetHours ?? 0.0;
         }
 
-        /// Whether the row's grader.complete still stands. grader judged it against
+        /// Whether the complete flag in the row's external grader block still stands. The external grader judged it against
         /// the goal the row had when it sent the figures (goal_at_send, in the
-        /// row's unit); a goal raised since means grader has not seen the new
-        /// goal, so the row reads as incomplete until grader reports again. A
+        /// row's unit); a goal raised since means the external grader has not seen the new
+        /// goal, so the row reads as incomplete until the external grader reports again. A
         /// block with no goal_at_send has nothing to compare and stands.
         /// Matches complete_counts in rows.py.
         public static bool CompleteCounts(FilterRow row) {
@@ -124,7 +124,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return GoalOf(row) <= sent.Value + 1e-9;
         }
 
-        /// TS's desired read as ACP's goal. grader's floor lifts what the writer
+        /// TS's desired read as ACP's goal. The external grader's floor lifts what the writer
         /// sends (DesiredFor), so a desired of exactly that is the row's own
         /// goal, never a change to take; anything else is a real edit in TS.
         /// Matches unfloored_goal in rows.py.
@@ -135,7 +135,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             return tsDesired;
         }
 
-        /// The accepted count to write for an grader-linked row, or null when the
+        /// The accepted count to write for a row linked to the external grader, or null when the
         /// row has no usable figures. `wanted` is the row's desired after the
         /// floor. Matches aac_accepted in rows.py.
         public static int? AacAccepted(FilterRow row, Plan plan, int wanted) {

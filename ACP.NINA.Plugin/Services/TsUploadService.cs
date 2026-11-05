@@ -228,7 +228,7 @@ namespace ACP.NINA.Plugin.Services {
             }
         }
 
-        /// "main profile: 32 new, 46 need a choice. Review and apply them in
+        /// "Main profile: 32 new, 46 need a choice. Review and apply them in
         /// ACP before anything changes." Names only the categories that
         /// actually have something in them, and says plainly when there is
         /// nothing to review, rather than leaving the dock silent about

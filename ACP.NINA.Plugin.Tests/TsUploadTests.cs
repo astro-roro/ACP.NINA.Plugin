@@ -156,7 +156,7 @@ namespace ACP.NINA.Plugin.Tests {
 
         private static List<TsUploadProfile> Profiles() {
             return new List<TsUploadProfile> {
-                new TsUploadProfile { Id = Profile, Name = "main profile" },
+                new TsUploadProfile { Id = Profile, Name = "Main profile" },
                 new TsUploadProfile { Id = "9a01", Name = "Travel rig" },
             };
         }
@@ -248,7 +248,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var path = TsFixtures.MakeDb(22, tmp.File("schedulerdb.sqlite"));
                 var acp = new ScriptedAcp(_ => ScriptedAcp.Json(HttpStatusCode.Accepted, Accepted));
 
-                var outcome = await Service(acp, path, tmp.Path).SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await Service(acp, path, tmp.Path).SendAsync(Profile, "Main profile", Profiles(), null);
 
                 // The token check still goes out, since it needs no copy of
                 // the database, but the schema refusal stops the send before
@@ -275,7 +275,7 @@ namespace ACP.NINA.Plugin.Tests {
                     TempDirOverride = copies,
                 };
 
-                var outcome = await service.SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await service.SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.Empty(acp.Requests);
                 Assert.False(outcome.Uploaded);
@@ -293,7 +293,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var acp = new ScriptedAcp(_ => ScriptedAcp.Json(
                     HttpStatusCode.Unauthorized, "{\"error\": \"unauthorized\"}"));
 
-                var outcome = await Service(acp, path, copies).SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await Service(acp, path, copies).SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.Single(acp.Requests);
                 Assert.Equal("/api/version", acp.Requests[0].Path);
@@ -313,7 +313,7 @@ namespace ACP.NINA.Plugin.Tests {
                     HttpStatusCode.Forbidden,
                     "{\"error\": \"ACP needs an access token set before it accepts uploads\"}"));
 
-                var outcome = await Service(acp, path, copies).SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await Service(acp, path, copies).SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.Single(acp.Requests);
                 Assert.Equal("/api/version", acp.Requests[0].Path);
@@ -342,7 +342,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var lines = new List<string>();
 
                 var outcome = await Service(acp, path, copies)
-                    .SendAsync(Profile, "main profile", Profiles(), new SyncProgress(lines));
+                    .SendAsync(Profile, "Main profile", Profiles(), new SyncProgress(lines));
 
                 // First the token check, with the bearer header, before
                 // anything is copied.
@@ -365,7 +365,7 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Equal(28, (int)meta["user_version"]);
                 Assert.Equal(Environment.MachineName, (string)meta["machine"]);
                 Assert.Equal(2, ((JArray)meta["profiles"]).Count);
-                Assert.Equal("main profile", (string)meta["profiles"][0]["name"]);
+                Assert.Equal("Main profile", (string)meta["profiles"][0]["name"]);
                 Assert.False(string.IsNullOrEmpty((string)meta["plugin_version"]));
 
                 // Then the status poll, with the same header.
@@ -374,7 +374,7 @@ namespace ACP.NINA.Plugin.Tests {
 
                 Assert.True(outcome.Uploaded);
                 Assert.Equal(
-                    "✓ main profile: 2 new, 5 updated, 1 needs a choice. Review and apply them in ACP before anything changes.",
+                    "✓ Main profile: 2 new, 5 updated, 1 needs a choice. Review and apply them in ACP before anything changes.",
                     outcome.Line);
                 Assert.Equal(Base + ReviewPath, outcome.ReviewUrl);
                 Assert.True(outcome.CopyDeleted);
@@ -421,7 +421,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var acp = new ScriptedAcp(_ => ScriptedAcp.Json(status, body));
 
                 var service = Service(acp, path, copies);
-                var outcome = await service.SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await service.SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.Equal(expectedRequestCount, acp.Requests.Count);
                 Assert.False(outcome.Uploaded);
@@ -441,7 +441,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var acp = new ScriptedAcp(_ => throw new HttpRequestException("connection reset"));
 
                 var service = Service(acp, path, copies);
-                var outcome = await service.SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await service.SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.Equal(TsUploadService.InterruptedLine, outcome.Line);
                 Assert.True(outcome.CopyDeleted);
@@ -458,7 +458,7 @@ namespace ACP.NINA.Plugin.Tests {
                     : ScriptedAcp.Json(HttpStatusCode.OK,
                         "{\"state\": \"failed\", \"error\": \"a SQLite file, but not a Target Scheduler database\"}"));
 
-                var outcome = await Service(acp, path, tmp.Path).SendAsync(Profile, "main profile", Profiles(), null);
+                var outcome = await Service(acp, path, tmp.Path).SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.Equal("✗ a SQLite file, but not a Target Scheduler database", outcome.Line);
                 Assert.Null(outcome.ReviewUrl);
@@ -475,7 +475,7 @@ namespace ACP.NINA.Plugin.Tests {
                 var waits = new List<TimeSpan>();
 
                 var outcome = await Service(acp, path, tmp.Path, waits: waits)
-                    .SendAsync(Profile, "main profile", Profiles(), null);
+                    .SendAsync(Profile, "Main profile", Profiles(), null);
 
                 Assert.StartsWith("ACP is still reading it", outcome.Line);
                 Assert.Equal(Base + ReviewPath, outcome.ReviewUrl);
@@ -512,8 +512,8 @@ namespace ACP.NINA.Plugin.Tests {
         public void RefsForReadsTheProfilesLinkFirst() {
             var plan = TsTestPlans.Plan("p1");
             plan.TsLinks = new JObject {
-                { "other", new JObject { { "machine", "imaging-pc" }, { "refs", RefsBlock("other", 9) } } },
-                { Profile, new JObject { { "machine", "VOYAGER" }, { "refs", RefsBlock(Profile, 4) } } },
+                { "other", new JObject { { "machine", "LAPTOP" }, { "refs", RefsBlock("other", 9) } } },
+                { Profile, new JObject { { "machine", "RIG-A" }, { "refs", RefsBlock(Profile, 4) } } },
             };
             plan.TsRefs = RefsBlock(Profile, 1);
 
@@ -547,7 +547,7 @@ namespace ACP.NINA.Plugin.Tests {
 
         [Fact]
         public void TsLinksDeserialiseFromAcpsPlanJson() {
-            var json = "{\"id\": \"p1\", \"ts_links\": {\"" + Profile + "\": {\"machine\": \"VOYAGER\", " +
+            var json = "{\"id\": \"p1\", \"ts_links\": {\"" + Profile + "\": {\"machine\": \"RIG-A\", " +
                        "\"refs\": {\"profile_id\": \"" + Profile + "\", \"project_id\": 12}, " +
                        "\"base_snapshot\": {}, \"updated_iso\": \"2026-09-24T10:31:00Z\"}}}";
             var plan = JsonConvert.DeserializeObject<Plan>(json);
@@ -639,13 +639,13 @@ namespace ACP.NINA.Plugin.Tests {
             // A zero category (updated, here) is left out of the line
             // entirely rather than printed as "0 updated".
             Assert.Equal(
-                "main profile: 1 new, 2 need a choice. Review and apply them in ACP before anything changes.",
-                TsUploadService.ReadyLine("main profile", s));
+                "Main profile: 1 new, 2 need a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("Main profile", s));
 
             var bare = TsUploadStatus.Parse("{\"state\": \"ready\"}");
             Assert.False(bare.HasCounts);
-            Assert.Equal("main profile: ACP has read it. Review it in ACP.",
-                TsUploadService.ReadyLine("main profile", bare));
+            Assert.Equal("Main profile: ACP has read it. Review it in ACP.",
+                TsUploadService.ReadyLine("Main profile", bare));
         }
 
         [Fact]
@@ -653,20 +653,20 @@ namespace ACP.NINA.Plugin.Tests {
             var everything = TsUploadStatus.Parse(
                 "{\"state\": \"ready\", \"counts\": {\"new\": 32, \"updated\": 5, \"conflicts\": 46}}");
             Assert.Equal(
-                "main profile: 32 new, 5 updated, 46 need a choice. Review and apply them in ACP before anything changes.",
-                TsUploadService.ReadyLine("main profile", everything));
+                "Main profile: 32 new, 5 updated, 46 need a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("Main profile", everything));
 
             var onlyOneNeedingAChoice = TsUploadStatus.Parse(
                 "{\"state\": \"ready\", \"counts\": {\"new\": 0, \"updated\": 0, \"conflicts\": 1}}");
             Assert.Equal(
-                "main profile: 1 needs a choice. Review and apply them in ACP before anything changes.",
-                TsUploadService.ReadyLine("main profile", onlyOneNeedingAChoice));
+                "Main profile: 1 needs a choice. Review and apply them in ACP before anything changes.",
+                TsUploadService.ReadyLine("Main profile", onlyOneNeedingAChoice));
 
             var nothing = TsUploadStatus.Parse(
                 "{\"state\": \"ready\", \"counts\": {\"new\": 0, \"updated\": 0, \"conflicts\": 0}}");
             Assert.Equal(
-                "main profile: ACP found nothing new or changed. Nothing to review.",
-                TsUploadService.ReadyLine("main profile", nothing));
+                "Main profile: ACP found nothing new or changed. Nothing to review.",
+                TsUploadService.ReadyLine("Main profile", nothing));
         }
 
         /// IProgress that records synchronously, so the test sees every line

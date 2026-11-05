@@ -64,15 +64,15 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// project.flatsHandling is whether Target Scheduler takes flats for a
         /// project. ACP has no setting for it and TsConvert only ever wrote the
         /// constructor default, which was 0 (flats off), so every sync reset a
-        /// project back to flats off even after Rohan turned them on in Target
+        /// project back to flats off even after the user turned them on in Target
         /// Scheduler. The constructor default is now 1 (flats on), matching
-        /// what Rohan's own projects use, and a new project still gets that
+        /// what most projects use, and a new project still gets that
         /// default on insert.
         ///
         /// The rest of the project row, per docs/specs/ts-project-settings.md
         /// section 4: custom horizon and its offset, dither, the grader,
         /// maximum altitude, flats handling (above) and the description are
-        /// all rig tuning Rohan does in Target Scheduler's own screens. ACP
+        /// all rig tuning the user does in Target Scheduler's own screens. ACP
         /// has no settings for any of them, so writing them on update reset
         /// that tuning on every push, which is the bug this list fixes. A new
         /// project still gets Target Scheduler's own defaults on insert. The
@@ -80,7 +80,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// for ConditionalProjectColumns when ACP gained settings for them.
         ///
         /// exposuretemplate's moon, twilight, humidity and dither columns are
-        /// tuning Rohan does in Target Scheduler's own screens. ACP has no
+        /// tuning the user does in Target Scheduler's own screens. ACP has no
         /// settings for them and TsConvert only ever writes the constructor
         /// defaults, so leaving them updatable meant every sync reset his
         /// tuning to those defaults. The rule: ACP owns the columns it has
