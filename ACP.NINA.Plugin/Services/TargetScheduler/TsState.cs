@@ -416,9 +416,9 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// the one update that writes exposure. template_sub_s is the sub TS
         /// uses, which ACP copies onto the row when the links post arrives.
         ///
-        /// desired is the row's goal: when the row is AAC-linked and TS holds
+        /// desired is the row's goal: when the row is linked to the external grader and TS holds
         /// exactly the floored value, the base records the unfloored goal, so
-        /// AAC's floor never reads as an edit
+        /// The external grader's floor never reads as an edit
         /// (docs/specs/goal-panel-and-ts-order.md section 6).
         /// Matches _plan_entry in nina_ts_sync/state.py.
         private static JObject PlanEntry(
@@ -426,7 +426,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         ) {
             var desired = ep.Desired;
             if (row != null) desired = TsRows.UnflooredGoal(row, plan, desired);
-            // ACP's intent, not TS's flag: 1 when the row's goal (with AAC's
+            // ACP's intent, not TS's flag: 1 when the row's goal (with the external grader's
             // floor) is above 0, so a plan the user turned off in TS stays
             // off at every later push. With no row it is TS's flag.
             var enabled = row != null ? (TsRows.DesiredFor(row, plan) > 0 ? 1 : 0) : ep.Enabled;

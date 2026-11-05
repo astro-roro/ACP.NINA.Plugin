@@ -160,7 +160,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public long? ActiveDate { get; set; }
         public long? InactiveDate { get; set; }
         public int IsMosaic { get; set; }
-        /// 1 = flats on, matching the default Rohan's own projects use.
+        /// 1 = flats on, matching the default most projects use.
         public int FlatsHandling { get; set; } = 1;
         public int MinimumTime { get; set; }
         public double MinimumAltitude { get; set; }
@@ -327,21 +327,21 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public double Weight { get; set; }
     }
 
-    /// What TsConvert knows about one project's AAC figures, so the push can
+    /// What TsConvert knows about one project's external grader figures, so the push can
     /// decide whether to write accepted and turn the grader on
     /// (docs/specs/goal-panel-and-ts-order.md section 6). Matches AacProject in
     /// nina_ts_sync/schema.py.
     ///
     /// Blocked is a reason ACP's own data rules the project out (a mosaic
-    /// panel, or a pushed row with no AAC block); null means the push still has
+    /// panel, or a pushed row with no external grader block); null means the push still has
     /// to check TS. AcceptedByPlanGuid is the count to write for every plan
     /// this push writes in the project. FiledThroughNight is the oldest
     /// watermark among the project's plans.
     public class TsAacProject {
         public string Name { get; set; }
         public string FiledThroughNight { get; set; }
-        /// Whether any plan or row in the project carries an aac block. A
-        /// project AAC has never reported on is skipped without a push note.
+        /// Whether any plan or row in the project carries an external grader block. A
+        /// project the external grader has never reported on is skipped without a push note.
         public bool Linked { get; set; }
         public string Blocked { get; set; }
         public Dictionary<string, int> AcceptedByPlanGuid { get; } =
@@ -432,13 +432,13 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         public Dictionary<string, TsTargetOrder> OrderByTargetGuid { get; } =
             new Dictionary<string, TsTargetOrder>(StringComparer.Ordinal);
 
-        /// Per project guid, the AAC figures the push may write
+        /// Per project guid, the external grader figures the push may write
         /// (docs/specs/goal-panel-and-ts-order.md section 6). A project not
         /// listed has none. Matches aac_by_project_guid in nina_ts_sync.
         public Dictionary<string, TsAacProject> AacByProjectGuid { get; } =
             new Dictionary<string, TsAacProject>(StringComparer.Ordinal);
 
-        /// The moment the AAC freshness rule is judged at. Null means no AAC
+        /// The moment the external grader freshness rule is judged at. Null means no external grader figures
         /// write is made. Set by TsConvert.BuildPayload.
         public DateTimeOffset? AacNow { get; set; }
 

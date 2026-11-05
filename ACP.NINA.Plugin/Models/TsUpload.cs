@@ -14,7 +14,7 @@ namespace ACP.NINA.Plugin.Models {
         public string ProfileId { get; set; }
 
         /// Every NINA profile on this machine, so ACP can name the profiles it
-        /// finds in the file. Brutix has no NINA profile files to read.
+        /// finds in the file. The home server has no NINA profile files to read.
         [JsonProperty("profiles")]
         public List<TsUploadProfile> Profiles { get; set; } = new List<TsUploadProfile>();
 

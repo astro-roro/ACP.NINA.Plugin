@@ -34,7 +34,7 @@ namespace ACP.NINA.Plugin.Tests {
     /// C# tests assert the spec's expected column.
     public static partial class TsRowScenarios {
 
-        public const string GearProfile = "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7";
+        public const string GearProfile = "00000000-0000-4000-8000-000000000002";
         public const string Camera6200 = "zwo-asi6200mm-pro";
         public static readonly string[] WheelSlots = { "L", "R", "G", "B", "H", "O", "S" };
 

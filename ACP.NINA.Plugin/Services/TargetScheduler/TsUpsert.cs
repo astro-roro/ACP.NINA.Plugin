@@ -252,7 +252,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 });
             }
 
-            // 4b) AAC's accepted counts and the grader, for the projects that
+            // 4b) the external grader's accepted counts and the grader, for the projects that
             // qualify (section 6). Before the order pass, because a block's
             // size follows the project's grader (BlockSize).
             WriteAac(conn, payload, projectIdByGuid, planIdByGuid, outcome);
@@ -332,8 +332,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             public List<string> WrittenRows;
         }
 
-        /// The profile grading settings AAC's write needs to be 0
-        /// (docs/specs/goal-panel-and-ts-order.md section 6). Rohan sets them
+        /// The profile grading settings the external grader's write needs to be 0
+        /// (docs/specs/goal-panel-and-ts-order.md section 6). The user sets them
         /// by hand in Target Scheduler; the sync only reads them. A column the
         /// database lacks cannot be on. Matches _AAC_PROFILE_COLUMNS.
         private static readonly string[] AacProfileColumns = {
@@ -341,7 +341,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             "enableGradeFWHM", "enableGradeEccentricity",
         };
 
-        /// Why the profile's grading settings rule out AAC's write, or null.
+        /// Why the profile's grading settings rule out the external grader's write, or null.
         /// Matches _aac_profile_problem in upsert.py.
         private static string AacProfileProblem(SqliteConnection conn, string profileId) {
             var have = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -396,16 +396,16 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             outcome.Notes.Add(message);
         }
 
-        /// Write AAC's accepted counts and turn the project's grader on, in
+        /// Write the external grader's accepted counts and turn the project's grader on, in
         /// this transaction, for each eligible project
-        /// (docs/specs/goal-panel-and-ts-order.md section 6, and AAC's
+        /// (docs/specs/goal-panel-and-ts-order.md section 6, and the external grader's
         /// incremental-master-builds.md section 7). Matches _write_aac in
         /// upsert.py.
         ///
         /// A project is eligible when ACP's data allows it (Blocked is null),
         /// the profile's grading settings are all 0, the watermark is on or
         /// after the night that ended this morning, every enabled exposure plan
-        /// in the project is one this push wrote with an AAC count, and TS
+        /// in the project is one this push wrote with an external grader count, and TS
         /// saved no frame for the project after noon on the day after the
         /// watermark night. accepted and enablegrader stay out of the generic
         /// UPDATE (insertOnlyColumns) and are written here, together or not at
@@ -414,11 +414,11 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             SqliteConnection conn, TsSyncPayload payload, Dictionary<string, int> projectIdByGuid,
             Dictionary<string, int> planIdByGuid, TsSyncOutcome outcome
         ) {
-            // A project AAC has reported on says why it is skipped; one AAC
+            // A project the external grader has reported on says why it is skipped; one the external grader
             // has never touched stays quiet.
             foreach (var kv in payload.AacByProjectGuid) {
                 if (kv.Value.Blocked != null && kv.Value.Linked && projectIdByGuid.ContainsKey(kv.Key)) {
-                    AacWarn(outcome, $"{kv.Value.Name}: AAC counts not written, {kv.Value.Blocked}.");
+                    AacWarn(outcome, $"{kv.Value.Name}: external grader counts not written, {kv.Value.Blocked}.");
                 }
             }
             var candidates = payload.AacByProjectGuid
@@ -427,7 +427,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (candidates.Count == 0) return;
             var zone = FindZone(payload.AacTimeZone);
             if (!payload.AacNow.HasValue || zone == null) {
-                AacWarn(outcome, $"AAC figures not written: no time zone data for {payload.AacTimeZone}.");
+                AacWarn(outcome, $"External grader figures not written: no time zone data for {payload.AacTimeZone}.");
                 return;
             }
             var local = TimeZoneInfo.ConvertTime(payload.AacNow.Value, zone);
@@ -438,10 +438,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             var profileWarned = false;
             foreach (var candidate in candidates) {
                 var pid = projectIdByGuid[candidate.Key];
-                var aac = candidate.Value;
-                var wm = aac.FiledThroughNight;
+                var graded = candidate.Value;
+                var wm = graded.FiledThroughNight;
                 if (wm == null || string.CompareOrdinal(wm, newestNight) < 0) {
-                    AacWarn(outcome, $"{aac.Name}: AAC figures not written: they are filed through " +
+                    AacWarn(outcome, $"{graded.Name}: external grader figures not written: they are filed through " +
                         $"{wm ?? "None"}, older than the night that ended this morning ({newestNight}).");
                     continue;
                 }
@@ -456,7 +456,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     }
                 }
                 var counts = new Dictionary<int, int>();
-                foreach (var kv in aac.AcceptedByPlanGuid) {
+                foreach (var kv in graded.AcceptedByPlanGuid) {
                     int planId;
                     if (planIdByGuid.TryGetValue(kv.Key, out planId)) counts[planId] = kv.Value;
                 }
@@ -480,7 +480,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         }
                         why = $"{string.Join(", ", names)} is enabled in Target Scheduler but is not a row in ACP";
                     }
-                    AacWarn(outcome, $"{aac.Name}: AAC counts not written, {why}.");
+                    AacWarn(outcome, $"{graded.Name}: external grader counts not written, {why}.");
                     continue;
                 }
                 if (!profileChecked) {
@@ -489,7 +489,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
                 if (profileProblem != null) {
                     if (!profileWarned) {
-                        AacWarn(outcome, $"AAC figures not written for profile {payload.ProfileId}: {profileProblem}.");
+                        AacWarn(outcome, $"External grader figures not written for profile {payload.ProfileId}: {profileProblem}.");
                         profileWarned = true;
                     }
                     continue;
@@ -507,7 +507,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                 }
                 if (imagedSince) {
                     outcome.Notes.Add(
-                        $"{aac.Name}: AAC figures not written: Target Scheduler has saved frames since the " +
+                        $"{graded.Name}: external grader figures not written: Target Scheduler has saved frames since the " +
                         "night they cover, so its own counts stand until tomorrow's sync.");
                     continue;
                 }
@@ -524,7 +524,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                     cmd.Parameters.AddWithValue("$id", pid);
                     cmd.ExecuteNonQuery();
                 }
-                outcome.AacWrittenProjects.Add(aac.Name);
+                outcome.AacWrittenProjects.Add(graded.Name);
             }
         }
 
@@ -1630,7 +1630,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         /// Targets whose override rows this push replaced with ACP's order.
         public List<string> OrderWritten { get; } = new List<string>();
 
-        /// Projects where this push wrote AAC's accepted counts and turned the
+        /// Projects where this push wrote the external grader's accepted counts and turned the
         /// grader on (docs/specs/goal-panel-and-ts-order.md section 6).
         public List<string> AacWrittenProjects { get; } = new List<string>();
 

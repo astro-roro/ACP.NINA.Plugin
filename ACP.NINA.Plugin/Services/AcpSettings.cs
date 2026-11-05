@@ -50,7 +50,7 @@ namespace ACP.NINA.Plugin.Services {
         /// On by default, per the v3 spec. It is the thing that keeps ACP's
         /// actual_hours from going stale. Turning it off costs Target Scheduler
         /// nothing: ordinary pushes never change acquired or accepted on an
-        /// existing row, and the one write, AAC's accepted figures, is skipped
+        /// existing row, and the one write, the external grader's accepted figures, is skipped
         /// once Target Scheduler has saved frames since the night they cover.
         ///
         /// Reasons to turn it off are having ACP on a machine this one cannot

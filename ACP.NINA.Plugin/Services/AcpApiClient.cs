@@ -63,7 +63,7 @@ namespace ACP.NINA.Plugin.Services {
 
         /// How every ACP reply is read. Dates stay strings: the default turns
         /// anything shaped like an ISO timestamp inside a raw JToken (the
-        /// plan's aac block, the base snapshot) into a DateTime, which then
+        /// plan's external grader block, the base snapshot) into a DateTime, which then
         /// serialises back in another form and breaks the string checks in
         /// TsRows. Dates are strings in ACP's data files.
         internal static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings {

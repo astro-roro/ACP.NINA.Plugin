@@ -20,7 +20,7 @@ namespace ACP.NINA.Plugin.Services {
     ///
     /// The v3.1 push never changes acquired or accepted on a row Target
     /// Scheduler already has (TsSchema.insertOnlyColumns). The one write is
-    /// AAC's accepted figures (TsUpsert, the AAC step), which are skipped once
+    /// The external grader's accepted figures (TsUpsert, the external grader step), which are skipped once
     /// Target Scheduler has saved frames since the night they cover. So this
     /// report keeps ACP's actual_hours current; it is not a guard on the counts
     /// Target Scheduler holds.
