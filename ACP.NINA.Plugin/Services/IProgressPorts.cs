@@ -39,4 +39,22 @@ namespace ACP.NINA.Plugin.Services {
             string planId, ProgressRequest body, CancellationToken ct
         );
     }
+
+    /// Reports to whatever server URL is configured at the moment of the
+    /// call, so a URL changed on the Options page takes effect without a
+    /// NINA restart.
+    public class UrlProgressSink : IProgressSink {
+
+        private readonly System.Func<string> serverUrl;
+
+        public UrlProgressSink(System.Func<string> serverUrl) {
+            this.serverUrl = serverUrl;
+        }
+
+        public Task<ProgressResponse> ReportProgressAsync(
+            string planId, ProgressRequest body, CancellationToken ct
+        ) {
+            return new AcpApiClient(serverUrl()).ReportProgressAsync(planId, body, ct);
+        }
+    }
 }

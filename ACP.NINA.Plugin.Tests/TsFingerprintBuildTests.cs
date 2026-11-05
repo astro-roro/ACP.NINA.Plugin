@@ -106,7 +106,8 @@ namespace ACP.NINA.Plugin.Tests {
                 profileService,
                 (ICameraMediator)FakeProxy.Make(typeof(ICameraMediator), m => null),
                 (IFilterWheelMediator)FakeProxy.Make(typeof(IFilterWheelMediator), m => null),
-                (ITelescopeMediator)FakeProxy.Make(typeof(ITelescopeMediator), m => null));
+                (ITelescopeMediator)FakeProxy.Make(typeof(ITelescopeMediator), m => null),
+                () => 1);
 
             var fingerprint = service.Build(null);
 
