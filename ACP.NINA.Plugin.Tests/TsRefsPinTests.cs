@@ -24,12 +24,11 @@ namespace ACP.NINA.Plugin.Tests {
     /// starting from zero frames, which Target Scheduler then schedules as if
     /// the night's work had never happened.
     ///
-    /// The fixture is three real projects cut from Voyager's database on
-    /// 2026-09-24: Dolphin Nebula (71 accepted), Helix Nebula (56) and Sculptor
+    /// The fixture is three projects: Dolphin Nebula (71 accepted), Helix Nebula (56) and Sculptor
     /// Galaxy (54), with the plans the Python extension's import made of them.
     public class TsRefsPinTests {
 
-        private const string ProfileId = "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7";
+        private const string ProfileId = "00000000-0000-4000-8000-000000000002";
         private static readonly string[] Wheel = { "L", "R", "G", "B", "H", "O", "S" };
         private static readonly string[] Tables = { "project", "target", "exposuretemplate", "exposureplan" };
 
@@ -123,7 +122,7 @@ namespace ACP.NINA.Plugin.Tests {
                 foreach (var plan in plans) {
                     plan.TsLinks = new JObject {
                         { ProfileId, new JObject {
-                            { "machine", "VOYAGER" },
+                            { "machine", "RIG-A" },
                             { "refs", new JObject {
                                 { "profile_id", ProfileId },
                                 { "project_id", JValue.CreateNull() },

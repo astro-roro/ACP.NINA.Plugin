@@ -8,7 +8,7 @@ namespace ACP.NINA.Plugin.Tests {
 
     /// Dithers in a generated override order when the project's own "dither
     /// every" is off. Target Scheduler shoots an override exactly as written,
-    /// so without these the PNe tiles (OIII first by override) never dithered
+    /// so without these the narrowband tiles (OIII first by override) never dithered
     /// although their templates say every 2 (14 Oct 2026).
     public class OverrideDitherTests {
 

@@ -214,7 +214,7 @@ namespace ACP.NINA.Plugin.Tests {
 
         [Theory]
         [InlineData(@"Could not open \\nas01\astro share\NINA\Backups 2026\schedulerdb.sqlite for writing", "schedulerdb.sqlite for writing", new[] { "nas01", "astro share", "Backups" })]
-        [InlineData(@"Copy failed: C:\Users\Rohan1\My Documents\Target Scheduler\db backup 1.sqlite (disk full)", "db backup 1.sqlite (disk full)", new[] { "Rohan1", "My Documents", "Target Scheduler" })]
+        [InlineData(@"Copy failed: C:\Users\imager\My Documents\Target Scheduler\db backup 1.sqlite (disk full)", "db backup 1.sqlite (disk full)", new[] { "imager", "My Documents", "Target Scheduler" })]
         [InlineData(@"Wrote C:\a\b.sqlite and \\srv\s\c.sqlite.", "Wrote b.sqlite and c.sqlite.", new[] { "C:\\a", "srv" })]
         public void Any_path_in_free_text_is_cut_to_its_basename(string text, string expected, string[] gone) {
             var scrubbed = ActivityNight.ScrubPaths(text);

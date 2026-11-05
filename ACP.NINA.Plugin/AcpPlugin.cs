@@ -149,7 +149,7 @@ namespace ACP.NINA.Plugin {
         public string ReportProgressExplanation =>
             settings.ReportProgressToAcp
                 ? "As Target Scheduler works through a target, the hours it has actually acquired are sent back to ACP so the coverage map and the hours remaining stay current. Hours only ever go up, so a report that arrives late or twice changes nothing."
-                : "ACP will not hear what tonight acquired until something else tells it, so the coverage map and the hours remaining go stale. Syncs do not change the acquired or accepted counts on rows Target Scheduler already has. The one exception is AAC's accepted figures: a sync writes those, but only until Target Scheduler has saved frames since the night they cover.";
+                : "ACP will not hear what tonight acquired until something else tells it, so the coverage map and the hours remaining go stale. Syncs do not change the acquired or accepted counts on rows Target Scheduler already has. The one exception is the external grader's accepted figures: a sync writes those, but only until Target Scheduler has saved frames since the night they cover.";
 
         // -- The two mode switch -----------------------------------------------
 

@@ -12,12 +12,12 @@ using Xunit;
 
 namespace ACP.NINA.Plugin.Tests {
 
-    /// Review fixes for the AAC link, phase 6
+    /// Review fixes for the external grader link, phase 6
     /// (docs/specs/goal-panel-and-ts-order.md section 6), mirroring
     /// tests/test_aac_review_fixes.py in the extension: the base records the
-    /// row's goal and not AAC's floor, a goal of 0 disables the plan like a
-    /// removed row, a push says why it skipped AAC's counts, a complete flag
-    /// is judged against the goal AAC saw, and ACP's JSON dates stay strings.
+    /// row's goal and not the external grader's floor, a goal of 0 disables the plan like a
+    /// removed row, a push says why it skipped the external grader's counts, a complete flag
+    /// is judged against the goal the external grader saw, and ACP's JSON dates stay strings.
     public class TsAacReviewTests {
 
         private const string Profile = TsTestPlans.ProfileId;
@@ -170,7 +170,7 @@ namespace ACP.NINA.Plugin.Tests {
                 SetPlanAac(plan, 3);
                 var outcome = PushAndLink(db, plan);
                 Assert.Empty(outcome.AacWrittenProjects);
-                Assert.Contains("M42: AAC counts not written, OIII 300 has no AAC figures yet.", outcome.Notes);
+                Assert.Contains("M42: external grader counts not written, OIII 300 has no external grader figures yet.", outcome.Notes);
             }
         }
 
@@ -179,7 +179,7 @@ namespace ACP.NINA.Plugin.Tests {
             using (var tmp = new TempDir())
             using (var db = OpenDb(tmp)) {
                 var outcome = PushAndLink(db, TwoRows(4));
-                Assert.DoesNotContain(outcome.Notes, n => n.Contains("AAC"));
+                Assert.DoesNotContain(outcome.Notes, n => n.Contains("xternal grader"));
             }
         }
 
@@ -202,7 +202,7 @@ namespace ACP.NINA.Plugin.Tests {
             }
         }
 
-        // -- Decision 4: complete is judged against the goal AAC saw ----------
+        // -- Decision 4: complete is judged against the goal the external grader saw ----------
 
         private static FilterRow CompleteRow(string unit, double goal, double? goalAtSend) {
             var aac = new JObject { { "complete", true } };

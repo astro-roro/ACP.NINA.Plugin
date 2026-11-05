@@ -133,7 +133,7 @@
         }
       },
       "ts_refs": {
-        "profile_id": "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7",
+        "profile_id": "00000000-0000-4000-8000-000000000002",
         "project_id": 2,
         "target_ids_by_panel": {
           "1,1": 5
@@ -210,7 +210,7 @@
         }
       },
       "ts_refs": {
-        "profile_id": "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7",
+        "profile_id": "00000000-0000-4000-8000-000000000002",
         "project_id": 10,
         "target_ids_by_panel": {
           "1,1": 20
@@ -284,7 +284,7 @@
         }
       },
       "ts_refs": {
-        "profile_id": "9d3a61fd-9f35-42ae-a911-bd6e4b0f76a7",
+        "profile_id": "00000000-0000-4000-8000-000000000002",
         "project_id": 11,
         "target_ids_by_panel": {
           "1,1": 21

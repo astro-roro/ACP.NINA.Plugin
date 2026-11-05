@@ -1,12 +1,12 @@
 {
- "description": "Shared cases for the accepted write to Target Scheduler: goal-panel-and-ts-order.md section 6 and AAC's incremental-master-builds.md section 7 (test T8, sync side). Run by acp-nina-ts-sync, the plugin and ACP (ACP checks only each row's expected desired). Copied from acp-nina-ts-sync/tests/fixtures into the other two repos; never edit a copy.",
+ "description": "Shared cases for the accepted write to Target Scheduler: goal-panel-and-ts-order.md section 6 (test T8, sync side). Run by acp-nina-ts-sync, the plugin and ACP (ACP checks only each row's expected desired). Copied from acp-nina-ts-sync/tests/fixtures into the other two repos; never edit a copy.",
  "format": {
   "now": "the moment the sync runs, with its offset; the site zone is Australia/Melbourne",
   "profile": "profilepreference grading columns that differ from 0 (all start at 0)",
-  "plan": "the ACP plan's aac block (filed_through_night, min_total_frames) and whether it is a 2 column mosaic",
+  "plan": "the ACP plan's external grader block (filed_through_night, min_total_frames) and whether it is a 2 column mosaic",
   "ts": "the project's enablegrader before, and UTC times of acquiredimage rows",
-  "rows": "ACP filter rows with an optional aac block (null: a row ACP has but AAC has not reported); row.ts is the exposure plan before the push; row.expected is desired and accepted after it An aac block may hold goal_at_send, the row's goal (in the row's unit) when the figures were stored: a complete flag counts only while the row's goal is not above it.",
-  "expected": "enablegrader after, a substring the push result's notes must contain (null: no note about AAC), and whether the AAC write happened"
+  "rows": "ACP filter rows with an optional external grader block (null: a row ACP has but the external grader has not reported); row.ts is the exposure plan before the push; row.expected is desired and accepted after it. An external grader block may hold goal_at_send, the row's goal (in the row's unit) when the figures were stored: a complete flag counts only while the row's goal is not above it.",
+  "expected": "enablegrader after, a substring the push result's notes must contain (null: no note about the external grader), and whether the external grader's write happened"
  },
  "default_profile": {
   "delayGrading": 0,
@@ -217,7 +217,7 @@
    ],
    "expected": {
     "enablegrader": 0,
-    "warning": "SII 300 has no AAC figures yet",
+    "warning": "SII 300 has no external grader figures yet",
     "written": false
    }
   },

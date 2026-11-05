@@ -11,11 +11,11 @@ using Xunit;
 
 namespace ACP.NINA.Plugin.Tests {
 
-    /// AAC's accepted counts reach Target Scheduler, tests A3 to A6 in
+    /// The external grader's accepted counts reach Target Scheduler, tests A3 to A6 in
     /// docs/specs/goal-panel-and-ts-order.md section 7. Every case in
     /// Fixtures/aac_accepted_cases.json runs here exactly as
     /// tests/test_aac_accepted.py runs it in the extension: seed the exposure
-    /// plans AAC would have found, push the plan with its AAC figures, then
+    /// plans the external grader would have found, push the plan with its external grader figures, then
     /// check accepted, desired, enablegrader and the push result's notes.
     /// acquired must never move. The file is copied from
     /// acp-nina-ts-sync/tests/fixtures; never edit this copy.
@@ -116,7 +116,7 @@ namespace ACP.NINA.Plugin.Tests {
                 cmd.ExecuteNonQuery();
             }
 
-            // What TS holds before: a push with no AAC figures, then the counts the case names.
+            // What TS holds before: a push with no external grader figures, then the counts the case names.
             TsRowScenarios.Push(db, PlanFor(c, false));
             foreach (JObject r in (JArray)c["rows"]) {
                 Exec(conn,
@@ -175,7 +175,7 @@ namespace ACP.NINA.Plugin.Tests {
                     if (warning != null && warning.Type == JTokenType.String) {
                         Assert.Contains(outcome.Notes, n => n.Contains((string)warning));
                     } else {
-                        Assert.DoesNotContain(outcome.Notes, n => n.Contains("AAC"));
+                        Assert.DoesNotContain(outcome.Notes, n => n.Contains("xternal grader"));
                     }
                     Assert.Equal((bool)c["expected"]["written"], outcome.AacWrittenProjects.Count > 0);
                 }

@@ -126,7 +126,7 @@ namespace ACP.NINA.Plugin.Tests {
                 Assert.Equal(3, plans14.Count(p => (double)p["exposure"] == 15.0));
                 Assert.Equal(244, list.Sum(t => ((JArray)t["plans"]).Count));
 
-                // Rohan's original and ACP's copy differ in the columns Tidy shows.
+                // The user's original and ACP's copy differ in the columns Tidy shows.
                 var one = ById(1);
                 Assert.Equal(1, (int)one["moonavoidanceenabled"]);
                 Assert.Equal(120.0, (double)one["moonavoidanceseparation"]);
