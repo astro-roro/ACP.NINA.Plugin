@@ -344,9 +344,13 @@ namespace ACP.NINA.Plugin.Services {
                 : focal.Solved.HasValue
                     ? $"{focal.Solved.Value:F0} mm from the solve"
                     : $"{focal.Profile:F0} mm from the profile, because nothing was solved";
+            var imaging = camera?.Binning ?? 1;
+            var binText = fingerprint?.SolveBinning is int solveBin && solveBin != imaging
+                ? $"imaging bin {imaging}, solve bin {solveBin}"
+                : $"bin {imaging}";
             return
                 $"Gear: {camera?.Name ?? "no camera"} " +
-                $"({(camera != null && camera.Colour ? "colour" : "mono")}, bin {camera?.Binning ?? 1}), " +
+                $"({(camera != null && camera.Colour ? "colour" : "mono")}, {binText}), " +
                 $"{filters}, {fingerprint?.Mount?.Name ?? "no mount"}, {focalText}.";
         }
     }

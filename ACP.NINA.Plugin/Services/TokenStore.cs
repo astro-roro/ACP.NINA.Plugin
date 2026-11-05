@@ -6,8 +6,8 @@ using System.Text;
 namespace ACP.NINA.Plugin.Services {
 
     /// The ACP bearer token, held in Windows Credential Manager rather than in
-    /// settings.json. Settings travel with the plugin folder and get copied
-    /// around when people move a NINA install between machines, so a token in
+    /// settings.json. Settings live in a folder beside NINA's profiles and get
+    /// copied around when people move a NINA install between machines, so a token in
     /// there is a token in a text file on a NUC at a remote site.
     ///
     /// This is a direct P/Invoke to advapi32 rather than the CredentialManagement
