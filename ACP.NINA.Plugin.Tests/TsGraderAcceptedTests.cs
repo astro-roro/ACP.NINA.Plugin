@@ -11,15 +11,15 @@ using Xunit;
 
 namespace ACP.NINA.Plugin.Tests {
 
-    /// The external grader's accepted counts reach Target Scheduler, tests A3 to A6 in
+    /// The grader's accepted counts reach Target Scheduler, tests A3 to A6 in
     /// docs/specs/goal-panel-and-ts-order.md section 7. Every case in
-    /// Fixtures/aac_accepted_cases.json runs here exactly as
-    /// tests/test_aac_accepted.py runs it in the extension: seed the exposure
-    /// plans the external grader would have found, push the plan with its external grader figures, then
+    /// Fixtures/grader_accepted_cases.json runs here exactly as
+    /// tests/ts_sync/test_grader_accepted.py runs it in ACP: seed the exposure
+    /// plans the grader would have found, push the plan with its grader figures, then
     /// check accepted, desired, enablegrader and the push result's notes.
-    /// acquired must never move. The file is copied from
-    /// acp-nina-ts-sync/tests/fixtures; never edit this copy.
-    public class TsAacAcceptedTests {
+    /// acquired must never move. The file is copied from ACP's
+    /// tests/ts_sync/fixtures; change the copies together.
+    public class TsGraderAcceptedTests {
 
         private const string Profile = TsTestPlans.ProfileId;
 
@@ -28,7 +28,7 @@ namespace ACP.NINA.Plugin.Tests {
             // DateTime, and (string) of that drops the zone, so the instants
             // moved by the test machine's offset.
             return JsonConvert.DeserializeObject<JObject>(
-                TsFixtures.ReadFixture("aac_accepted_cases.json"),
+                TsFixtures.ReadFixture("grader_accepted_cases.json"),
                 new JsonSerializerSettings { DateParseHandling = DateParseHandling.None });
         }
 
@@ -40,7 +40,7 @@ namespace ACP.NINA.Plugin.Tests {
             return (JObject)((JArray)Doc()["cases"]).First(c => (string)c["name"] == name);
         }
 
-        private static List<FilterRow> AcpRows(JObject c, bool withAac) {
+        private static List<FilterRow> AcpRows(JObject c, bool withGrader) {
             var rows = new List<FilterRow>();
             var i = 0;
             foreach (JObject r in (JArray)c["rows"]) {
@@ -53,19 +53,19 @@ namespace ACP.NINA.Plugin.Tests {
                 };
                 if (r["target_frames"] != null) row.TargetFrames = (double)r["target_frames"];
                 if (r["target_hours"] != null) row.TargetHours = (double)r["target_hours"];
-                if (withAac && r["aac"] != null && r["aac"].Type == JTokenType.Object) row.Aac = r["aac"].DeepClone();
+                if (withGrader && r[GraderKeys.Name] != null && r[GraderKeys.Name].Type == JTokenType.Object) row.Grader = r[GraderKeys.Name].DeepClone();
                 rows.Add(row);
             }
             return rows;
         }
 
-        private static Plan PlanFor(JObject c, bool withAac) {
+        private static Plan PlanFor(JObject c, bool withGrader) {
             var mosaic = (bool)c["plan"]["mosaic"];
             var plan = TsTestPlans.Plan(
                 "m42", projectName: "M42", targetName: "M42", rows: 1, cols: mosaic ? 2 : 1,
-                filterRows: AcpRows(c, withAac));
-            if (withAac) {
-                plan.Aac = new JObject {
+                filterRows: AcpRows(c, withGrader));
+            if (withGrader) {
+                plan.Grader = new JObject {
                     { "filed_through_night", c["plan"]["filed_through_night"] },
                     { "min_total_frames", c["plan"]["min_total_frames"] },
                     { "received_at", "2026-10-12T10:05:00+00:00" },
@@ -116,7 +116,7 @@ namespace ACP.NINA.Plugin.Tests {
                 cmd.ExecuteNonQuery();
             }
 
-            // What TS holds before: a push with no external grader figures, then the counts the case names.
+            // What TS holds before: a push with no grader figures, then the counts the case names.
             TsRowScenarios.Push(db, PlanFor(c, false));
             foreach (JObject r in (JArray)c["rows"]) {
                 Exec(conn,
@@ -146,7 +146,7 @@ namespace ACP.NINA.Plugin.Tests {
         public void A6TheSharedCasesWriteTheExpectedRows(string name) {
             var c = CaseNamed(name);
             using (var tmp = new TempDir()) {
-                var path = TsFixtures.MakeDb(28, tmp.File("aac.sqlite"));
+                var path = TsFixtures.MakeDb(28, tmp.File("grader.sqlite"));
                 using (var db = TargetSchedulerDb.Open(path)) {
                     Dictionary<long, long> acquiredBefore;
                     var outcome = Run(c, db, out acquiredBefore);
@@ -175,9 +175,9 @@ namespace ACP.NINA.Plugin.Tests {
                     if (warning != null && warning.Type == JTokenType.String) {
                         Assert.Contains(outcome.Notes, n => n.Contains((string)warning));
                     } else {
-                        Assert.DoesNotContain(outcome.Notes, n => n.Contains("xternal grader"));
+                        Assert.DoesNotContain(outcome.Notes, n => n.Contains("rader figures") || n.Contains("rader counts"));
                     }
-                    Assert.Equal((bool)c["expected"]["written"], outcome.AacWrittenProjects.Count > 0);
+                    Assert.Equal((bool)c["expected"]["written"], outcome.GraderWrittenProjects.Count > 0);
                 }
             }
         }
@@ -207,11 +207,11 @@ namespace ACP.NINA.Plugin.Tests {
         [Fact]
         public void A4AMalformedPlanBlockOpensNoWrite() {
             var plan = PlanFor(CaseNamed("ha_shortfall_grader_on"), true);
-            Assert.NotNull(TsRows.PlanAac(plan));
-            plan.Aac = new JObject { { "filed_through_night", "2026-10-11" }, { "min_total_frames", 10.0 } };
-            Assert.Null(TsRows.PlanAac(plan));
-            plan.Aac = new JObject { { "filed_through_night", "yesterday" }, { "min_total_frames", 10 } };
-            Assert.Null(TsRows.PlanAac(plan));
+            Assert.NotNull(TsRows.PlanGrader(plan));
+            plan.Grader = new JObject { { "filed_through_night", "2026-10-11" }, { "min_total_frames", 10.0 } };
+            Assert.Null(TsRows.PlanGrader(plan));
+            plan.Grader = new JObject { { "filed_through_night", "yesterday" }, { "min_total_frames", 10 } };
+            Assert.Null(TsRows.PlanGrader(plan));
         }
     }
 }

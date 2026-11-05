@@ -329,7 +329,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
     /// What TsConvert knows about one project's external grader figures, so the push can
     /// decide whether to write accepted and turn the grader on
-    /// (docs/specs/goal-panel-and-ts-order.md section 6). Matches AacProject in
+    /// (docs/specs/goal-panel-and-ts-order.md section 6). Matches GraderProject in
     /// nina_ts_sync/schema.py.
     ///
     /// Blocked is a reason ACP's own data rules the project out (a mosaic
@@ -337,7 +337,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
     /// to check TS. AcceptedByPlanGuid is the count to write for every plan
     /// this push writes in the project. FiledThroughNight is the oldest
     /// watermark among the project's plans.
-    public class TsAacProject {
+    public class TsGraderProject {
         public string Name { get; set; }
         public string FiledThroughNight { get; set; }
         /// Whether any plan or row in the project carries an external grader block. A
@@ -434,16 +434,18 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
 
         /// Per project guid, the external grader figures the push may write
         /// (docs/specs/goal-panel-and-ts-order.md section 6). A project not
-        /// listed has none. Matches aac_by_project_guid in nina_ts_sync.
-        public Dictionary<string, TsAacProject> AacByProjectGuid { get; } =
-            new Dictionary<string, TsAacProject>(StringComparer.Ordinal);
+        /// listed has none. Matches grader_by_project_guid in nina_ts_sync.
+        public Dictionary<string, TsGraderProject> GraderByProjectGuid { get; } =
+            new Dictionary<string, TsGraderProject>(StringComparer.Ordinal);
 
-        /// The moment the external grader freshness rule is judged at. Null means no external grader figures
-        /// write is made. Set by TsConvert.BuildPayload.
-        public DateTimeOffset? AacNow { get; set; }
+        /// The moment the grader freshness rule is judged at. Null means no grader figures
+        /// write is made. Set by TsConvert.BuildPayload, which defaults it to
+        /// now in the system time zone.
+        public DateTimeOffset? GraderNow { get; set; }
 
-        /// The IANA name of the site's time zone, for the same rule.
-        public string AacTimeZone { get; set; } = "Australia/Melbourne";
+        /// The IANA name of the site's time zone, for the same rule. Empty
+        /// means the offset GraderNow carries. Matches grader_tz in nina_ts_sync.
+        public string GraderTimeZone { get; set; } = "";
     }
 
     /// Where else a row's exposure plan may be, in the order
