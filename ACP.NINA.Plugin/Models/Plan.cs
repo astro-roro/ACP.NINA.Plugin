@@ -1,8 +1,42 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ACP.NINA.Plugin.Models {
+
+    /// How the grader block is found on a plan and on each filter row. ACP
+    /// serves it as `grader`; an older ACP serves it under a legacy name. The
+    /// legacy block is found by its fields, never by its name, exactly as
+    /// filter_rows.other_grader_keys and nina_ts_sync/rows.py do in ACP.
+    public static class GraderKeys {
+        public const string Name = "grader";
+
+        private static readonly HashSet<string> Marks = new HashSet<string>(StringComparer.Ordinal) {
+            // On a plan.
+            "filed_through_night", "min_total_frames",
+            // On a row.
+            "accepted_seconds", "accepted_frames", "seen_seconds", "seen_frames", "goal_at_send",
+        };
+
+        private static readonly HashSet<string> NotGrader = new HashSet<string>(StringComparer.Ordinal) {
+            Name, "target", "panels", "filter_goals", "ts_links", "ts_refs", "ts_base_snapshot",
+        };
+
+        /// The block to read: `grader` when it is an object, else the first
+        /// other property that is an object holding a grader field, else
+        /// whatever `grader` held. Matches grader_block in ACP.
+        public static JToken Pick(JToken grader, IDictionary<string, JToken> others) {
+            if (grader is JObject || others == null) return grader;
+            foreach (var kv in others) {
+                if (NotGrader.Contains(kv.Key)) continue;
+                var block = kv.Value as JObject;
+                if (block != null && block.Properties().Any(p => Marks.Contains(p.Name))) return block;
+            }
+            return grader;
+        }
+    }
 
     /// Plan record from ACP's GET /api/plans response. JSON shape mirrors the
     /// schema documented in docs/nina-plugin-api-audit.md (mixed int/float
@@ -88,10 +122,22 @@ namespace ACP.NINA.Plugin.Models {
         /// What the external grader last reported for the plan as a whole: filed_through_night
         /// (the ingest watermark), min_total_frames (the floor) and
         /// received_at. Written only by the external grader, through ACP's POST
-        /// /api/plans/<id>/accepted. Raw JSON, read by TsRows.PlanAac.
-        /// docs/specs/goal-panel-and-ts-order.md section 6.
-        [JsonProperty("aac")]
-        public JToken Aac { get; set; }
+        /// /api/plans/<id>/accepted. Raw JSON, read by TsRows.PlanGrader.
+        /// docs/specs/goal-panel-and-ts-order.md section 6. Read from
+        /// `grader`, or from a legacy name when ACP serves only that.
+        [JsonProperty(GraderKeys.Name)]
+        public JToken Grader {
+            get { return GraderKeys.Pick(grader, others); }
+            set { grader = value; }
+        }
+
+        private JToken grader;
+
+        /// Properties this model has no field for, where a block under a
+        /// legacy name lands. Read only, so a plan written back out carries
+        /// `grader` alone.
+        [JsonExtensionData(WriteData = false)]
+        private IDictionary<string, JToken> others = new Dictionary<string, JToken>();
 
         /// survey, deep or pretty. Absent means survey. ACP serves it for the external grader;
         /// the plugin does not read it.
@@ -164,8 +210,20 @@ namespace ACP.NINA.Plugin.Models {
         public double? ActualHours { get; set; }
 
         /// The external grader's figures for this row, or null. Raw JSON, read by TsRows.
-        [JsonProperty("aac")]
-        public JToken Aac { get; set; }
+        /// Read from `grader`, or from a legacy name when ACP serves only that.
+        [JsonProperty(GraderKeys.Name)]
+        public JToken Grader {
+            get { return GraderKeys.Pick(grader, others); }
+            set { grader = value; }
+        }
+
+        private JToken grader;
+
+        /// Properties this model has no field for, where a block under a
+        /// legacy name lands. Read only, so a row written back out carries
+        /// `grader` alone.
+        [JsonExtensionData(WriteData = false)]
+        private IDictionary<string, JToken> others = new Dictionary<string, JToken>();
     }
 
     public class FilterGoal {
