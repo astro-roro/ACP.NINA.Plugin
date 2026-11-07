@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.3.1 (2026-11-07)
+
+### Added
+
+- **Scheduling switches from ACP are honoured.** A plan can be switched off in ACP, and so can a single mosaic panel. The push now writes each Target Scheduler target's active flag from those switches, including targets already linked to a plan, so a switched-off plan or panel stays out of the night. The saved snapshot records the flag too, so ACP's review after Send TS to ACP does not show a change nobody made.
+
+### Changed
+
+- **Neutral names for the external grader.** The plugin reads the grader block from a plan or filter row by its usual name, or from any object that holds the grader fields, so it works with an ACP that serves either name. Names in the code, tests and fixtures are now generic.
+- **The system time zone is the default.** The night used for Activity events and for writing grader results follows this computer's time zone, matching ACP's own default, so the two agree when they share a zone.
+
 ## 3.3.0 (release date)
 
 The first release since 1.0.2. Versions 3.0 to 3.2 were built and tested but never published, so everything from them is in this release. ACP no longer has to run on the same machine as NINA, the Target Scheduler sync runs inside the plugin, and ACP hears about the night as it happens.
