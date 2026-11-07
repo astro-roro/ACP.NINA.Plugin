@@ -32,3 +32,60 @@ jobs:
 
       - name: Test
         run: dotnet test ACP.NINA.Plugin.sln --no-build -c Release
+
+      # Packages the plugin the way RELEASING.md section 2 describes, without
+      # the local post-build copy into NINA's plugin folder. The zip holds the
+      # contents of the folder, not the folder, and the step fails if any
+      # listed file is missing.
+      - name: Build release package
+        shell: pwsh
+        run: |
+          dotnet build ACP.NINA.Plugin/ACP.NINA.Plugin.csproj -c Release --no-restore -p:SkipAcpDeploy=true
+          if ($LASTEXITCODE -ne 0) { throw "Release build failed" }
+
+          $info = Get-Content ACP.NINA.Plugin/Properties/AssemblyInfo.cs -Raw
+          if ($info -notmatch 'AssemblyVersion\("([0-9.]+)"\)') { throw "AssemblyVersion not found" }
+          $version = $Matches[1]
+          $zipName = "ACP.NINA.Plugin-v$version.zip"
+
+          $out = Join-Path $PWD "ACP.NINA.Plugin/bin/Release/net8.0-windows7.0"
+          $stage = Join-Path $PWD "package"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $stage "runtimes/win-x64/native") | Out-Null
+
+          $rootFiles = @(
+            "ACP.NINA.Plugin.dll",
+            "Newtonsoft.Json.dll",
+            "CommunityToolkit.Mvvm.dll",
+            "Microsoft.Data.Sqlite.dll",
+            "SQLitePCLRaw.core.dll",
+            "SQLitePCLRaw.batteries_v2.dll",
+            "SQLitePCLRaw.provider.e_sqlite3.dll"
+          )
+          foreach ($f in $rootFiles) {
+            Copy-Item (Join-Path $out $f) $stage
+          }
+          $native = Join-Path $out "runtimes/win-x64/native/e_sqlite3.dll"
+          Copy-Item $native $stage
+          Copy-Item $native (Join-Path $stage "runtimes/win-x64/native")
+
+          $required = $rootFiles + @("e_sqlite3.dll", "runtimes/win-x64/native/e_sqlite3.dll")
+          foreach ($f in $required) {
+            if (-not (Test-Path (Join-Path $stage $f))) { throw "Missing from package: $f" }
+          }
+
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zipName -Force
+          $hash = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zipName" | Out-File -Encoding ascii "$zipName.sha256.txt"
+          Write-Host "$zipName  SHA256 $hash"
+          "ZIP_NAME=$zipName" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256.txt
+          if-no-files-found: error
