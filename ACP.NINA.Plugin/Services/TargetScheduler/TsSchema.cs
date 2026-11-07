@@ -180,7 +180,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
         private static readonly Dictionary<string, HashSet<string>> pinnedUpdateColumns =
             new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase) {
                 { "target", new HashSet<string>(
-                    new[] { "name", "ra", "dec", "rotation" }, StringComparer.OrdinalIgnoreCase) },
+                    new[] { "name", "ra", "dec", "rotation", "active" }, StringComparer.OrdinalIgnoreCase) },
                 { "exposureplan", new HashSet<string>(
                     new[] { "exposure", "desired" }, StringComparer.OrdinalIgnoreCase) },
             };

@@ -143,6 +143,17 @@ namespace ACP.NINA.Plugin.Models {
         /// the plugin does not read it.
         [JsonProperty("target_class")]
         public string TargetClass { get; set; }
+
+        /// False turns every Target Scheduler target of the plan off. Null or
+        /// absent means on. Matches target_active in ACP's nina_ts_sync.
+        [JsonProperty("target_active")]
+        public bool? TargetActive { get; set; }
+
+        /// One mosaic panel off, keyed "row,col" from 1 (the key
+        /// ts_refs.target_ids_by_panel uses). Only false entries matter;
+        /// absent means on. Ignored when the plan is not a mosaic.
+        [JsonProperty("panel_active")]
+        public Dictionary<string, bool> PanelActive { get; set; }
     }
 
     public class PlanTarget {

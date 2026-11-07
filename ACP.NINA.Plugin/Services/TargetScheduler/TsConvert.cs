@@ -362,9 +362,10 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         planLabelByTargetGuid[targetGuid] = PlanLabel(plan);
 
                         // ts_refs key panels as "row,col", both from 1.
+                        var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
                         int pinnedTargetId;
                         int? targetPin = refs != null && refs.TargetIdsByPanel.TryGetValue(
-                            $"{panel.Row + 1},{panel.Col + 1}", out pinnedTargetId)
+                            panelKey, out pinnedTargetId)
                             ? pinnedTargetId
                             : (int?)null;
 
@@ -376,6 +377,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             Ra = panel.RaDeg / 15.0,
                             Dec = panel.DecDeg,
                             Rotation = rotDeg,
+                            Active = TargetIsActive(plan, multi ? panelKey : null) ? 1 : 0,
                             PinnedId = targetPin,
                         });
 
@@ -385,7 +387,6 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             payload.PlansByTargetGuid[targetGuid] = targetPlans;
                         }
 
-                        var panelKey = $"{panel.Row + 1},{panel.Col + 1}";
                         // The base order is the target's, which is the anchor
                         // panel's (1,1): ACP's order has changed when it differs
                         // from that, for every panel. Each panel's base rows are
@@ -940,6 +941,22 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
             if (!string.IsNullOrEmpty(targetName)) return targetName;
             if (!string.IsNullOrEmpty(planId)) return planId;
             return "Untitled";
+        }
+
+        /// Whether a plan's target, or one panel of its mosaic, is on in Target
+        /// Scheduler. Off when target_active is false, or when panelKey
+        /// ("row,col" from 1) is set to false in panel_active. Anything else,
+        /// including a missing field, is on. Pass a null panelKey for a plan
+        /// that is not expanded into several panels. Matches target_active in
+        /// nina_ts_sync/convert.py.
+        public static bool TargetIsActive(Plan plan, string panelKey = null) {
+            if (plan == null) return true;
+            if (plan.TargetActive == false) return false;
+            if (panelKey != null && plan.PanelActive != null) {
+                bool on;
+                if (plan.PanelActive.TryGetValue(panelKey, out on) && !on) return false;
+            }
+            return true;
         }
 
         /// How to name one ACP plan in a message the user has to act on. The
