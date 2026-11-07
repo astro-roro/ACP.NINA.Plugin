@@ -314,6 +314,8 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                         { "ra", tgt.Ra },
                         { "dec", tgt.Dec },
                         { "rotation", tgt.Rotation },
+                        // 0 or 1, the last value both sides agreed on.
+                        { "active", tgt.Active },
                     };
                     if (orderTargets == null || orderTargets.Contains(tid)) {
                         var rowIdByPlan = new Dictionary<int, string>();

@@ -306,6 +306,7 @@ namespace ACP.NINA.Plugin.Services.TargetScheduler {
                             Ra = ReadDouble(r, "ra"),
                             Dec = ReadDouble(r, "dec"),
                             Rotation = ReadDouble(r, "rotation"),
+                            Active = ReadInt(r, "active", 1),
                             // Absent at user_version 23; the Target Scheduler
                             // default stands in, exactly as the Python reader's
                             // dataclass default does.
