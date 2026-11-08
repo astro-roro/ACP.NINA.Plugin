@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Equipment that drops off USB is reconnected.** If the camera, filter wheel, focuser, rotator, flat device or switch disconnects unexpectedly while a sequence is running, the plugin disconnects and connects it again through NINA every 30 seconds, the same as the Equipment tab's buttons. The camera's cooler goes back to the set point it had before the drop, and its sensor temperature and cooler power are logged on return. After 10 minutes without success it logs one error and stops. The mount, dome, safety monitor and weather unit are never touched. It is on by default and can be turned off in the options.
+- **A power and health log.** Every 5 seconds while the switch or camera is connected, one CSV row goes to `health\health-<date>.csv` beside the plugin's settings file. It records the camera's sensor temperature, cooler power and cooler state, which devices are connected, and every gauge and output the switch reports. Files are kept for 14 days. It only reads, has its own switch in the options, and is on by default.
+
 ## 3.3.1 (2026-11-07)
 
 ### Added
