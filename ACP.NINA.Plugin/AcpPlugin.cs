@@ -1,4 +1,5 @@
 using ACP.NINA.Plugin.Services;
+using ACP.NINA.Plugin.Services.EquipmentRecovery;
 using NINA.Core.Utility;
 using NINA.Plugin;
 using NINA.Plugin.Interfaces;
@@ -153,6 +154,46 @@ namespace ACP.NINA.Plugin {
             settings.ReportProgressToAcp
                 ? "As Target Scheduler works through a target, the hours it has actually acquired are sent back to ACP so the coverage map and the hours remaining stay current. Hours only ever go up, so a report that arrives late or twice changes nothing."
                 : "ACP will not hear what tonight acquired until something else tells it, so the coverage map and the hours remaining go stale. Syncs do not change the acquired or accepted counts on rows Target Scheduler already has. The one exception is the external grader's accepted figures: a sync writes those, but only until Target Scheduler has saved frames since the night they cover.";
+
+        /// "Reconnect equipment that drops off USB", on by default. Read on
+        /// every check, so switching it takes effect immediately.
+        public bool EquipmentRecoveryEnabled {
+            get => settings.EquipmentRecoveryEnabled;
+            set {
+                if (settings.EquipmentRecoveryEnabled == value) return;
+                settings.EquipmentRecoveryEnabled = value;
+                settings.Save();
+                Logger.Info($"ACP: equipment recovery turned {(value ? "on" : "off")}.");
+                RaisePropertyChanged();
+            }
+        }
+
+        /// "Log power and camera health every 5 seconds", on by default.
+        public bool HealthLogEnabled {
+            get => settings.HealthLogEnabled;
+            set {
+                if (settings.HealthLogEnabled == value) return;
+                settings.HealthLogEnabled = value;
+                settings.Save();
+                Logger.Info($"ACP: health log turned {(value ? "on" : "off")}.");
+                RaisePropertyChanged();
+            }
+        }
+
+        /// Blank turns the Pegasus Unity readings off.
+        public string UnityApiBaseUrl {
+            get => settings.UnityApiBaseUrl;
+            set {
+                var trimmed = (value ?? "").Trim();
+                if (settings.UnityApiBaseUrl == trimmed) return;
+                settings.UnityApiBaseUrl = trimmed;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
+        public string HealthLogExplanation =>
+            $"While the switch or camera is connected, one row of readings is added every 5 seconds to a CSV file in {NinaHealthLogger.LogDirectory}: the time in UTC, the camera's sensor temperature, cooler power and cooler state, which devices are connected, the Pegasus Unity power box readings when Unity answers, and every gauge and output the switch reports. One file per day, kept for 14 days.";
 
         // -- The two mode switch -----------------------------------------------
 

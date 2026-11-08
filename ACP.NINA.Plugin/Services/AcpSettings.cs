@@ -87,6 +87,24 @@ namespace ACP.NINA.Plugin.Services {
         /// higher number either way, but there is no point paying for both.
         public bool ReportProgressToAcp { get; set; } = true;
 
+        /// Reconnect the camera, filter wheel, focuser, rotator, flat device
+        /// and switch when they drop off USB while a sequence is running, and
+        /// turn the camera's cooler back on. On by default. A settings file
+        /// from before this option existed has no value for it and so loads
+        /// as on. See EquipmentRecoveryWatcher.
+        public bool EquipmentRecoveryEnabled { get; set; } = true;
+
+        /// Write a row of power and health readings every 5 seconds while the
+        /// switch or camera is connected, to health-*.csv files in the
+        /// settings folder, kept for 14 days. On by default. It only reads, so
+        /// it is a separate switch from equipment recovery.
+        public bool HealthLogEnabled { get; set; } = true;
+
+        /// The Pegasus Unity server's address, for the power box readings in
+        /// the health log and the restart check after a drop. Empty turns both
+        /// off. Unity runs on the same machine as NINA, hence localhost.
+        public string UnityApiBaseUrl { get; set; } = "http://localhost:32000";
+
         /// Deliberately absent: the bearer token. It lives in Windows
         /// Credential Manager, see TokenStore. Settings.json gets copied around
         /// when people move a NINA install between machines, so a token in here
@@ -95,9 +113,13 @@ namespace ACP.NINA.Plugin.Services {
         private static readonly string LocalAppData =
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        private static readonly string SettingsPath = Path.Combine(
-            LocalAppData, "NINA", "ACP.NINA.Plugin", "settings.json"
+        /// The folder settings.json lives in. Other files the plugin keeps
+        /// between runs, such as the health log, go beside it.
+        public static readonly string SettingsDirectory = Path.Combine(
+            LocalAppData, "NINA", "ACP.NINA.Plugin"
         );
+
+        private static readonly string SettingsPath = Path.Combine(SettingsDirectory, "settings.json");
 
         /// Where 3.2 and earlier kept the file. Read only, for migration.
         private static readonly string LegacySettingsPath = Path.Combine(

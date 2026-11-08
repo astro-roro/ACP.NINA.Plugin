@@ -1,5 +1,6 @@
 using ACP.NINA.Plugin.Models;
 using ACP.NINA.Plugin.Services;
+using ACP.NINA.Plugin.Services.EquipmentRecovery;
 using ACP.NINA.Plugin.Services.TargetScheduler;
 using NINA.Astrometry;
 using NINA.Core.MyMessageBox;
@@ -59,7 +60,12 @@ namespace ACP.NINA.Plugin.Dockables {
             [Import(AllowDefault = true)] ITelescopeMediator telescopeMediator,
             [Import(AllowDefault = true)] ISafetyMonitorMediator safetyMonitorMediator,
             [Import(AllowDefault = true)] IFocuserMediator focuserMediator,
-            [Import(AllowDefault = true)] ISequenceMediator sequenceMediator
+            [Import(AllowDefault = true)] ISequenceMediator sequenceMediator,
+            [Import(AllowDefault = true)] ICameraMediator cameraMediator,
+            [Import(AllowDefault = true)] IFilterWheelMediator filterWheelMediator,
+            [Import(AllowDefault = true)] IRotatorMediator rotatorMediator,
+            [Import(AllowDefault = true)] IFlatDeviceMediator flatDeviceMediator,
+            [Import(AllowDefault = true)] ISwitchMediator switchMediator
         ) : base(profileService) {
             this.fingerprintService = fingerprintService;
             this.framingAssistantVM = framingAssistantVM;
@@ -132,6 +138,9 @@ namespace ACP.NINA.Plugin.Dockables {
             StartActivityEvents(
                 messageBroker, imageSaveMediator, telescopeMediator, safetyMonitorMediator,
                 focuserMediator, sequenceMediator);
+            StartEquipmentRecovery(
+                cameraMediator, filterWheelMediator, focuserMediator, rotatorMediator,
+                flatDeviceMediator, switchMediator, sequenceMediator);
 
             _ = RefreshAsync();
             _ = PollForChangesAsync(pollCts.Token);
@@ -188,6 +197,50 @@ namespace ACP.NINA.Plugin.Dockables {
                 progressReporter = null;
             }
         }
+
+        // -- Equipment recovery --------------------------------------------------
+
+        private NinaEquipmentRecovery equipmentRecovery;
+
+        /// Reconnect equipment that drops off USB while a sequence runs. The
+        /// switch is read on every check, so the options toggle takes effect
+        /// at once. A failure here costs only the recovery.
+        private void StartEquipmentRecovery(
+            ICameraMediator camera,
+            IFilterWheelMediator filterWheel,
+            IFocuserMediator focuser,
+            IRotatorMediator rotator,
+            IFlatDeviceMediator flatDevice,
+            ISwitchMediator switches,
+            ISequenceMediator sequence
+        ) {
+            // Read on every request, so a new address in the options applies at once.
+            var powerBox = new PegasusUnityClient(() => (AcpSettings.Current ?? settings).UnityApiBaseUrl);
+            try {
+                equipmentRecovery = NinaEquipmentRecovery.Create(
+                    camera, filterWheel, focuser, rotator, flatDevice, switches, sequence,
+                    profileService,
+                    () => (AcpSettings.Current ?? settings).EquipmentRecoveryEnabled,
+                    powerBox);
+                equipmentRecovery.Start();
+            } catch (Exception ex) {
+                // Warning, not Error: ERROR lines become chat alerts.
+                Logger.Warning($"ACP: could not start the equipment recovery watcher: {ex.Message}");
+                equipmentRecovery = null;
+            }
+            try {
+                healthLogger = new NinaHealthLogger(
+                    camera, filterWheel, focuser, rotator, flatDevice, switches,
+                    () => (AcpSettings.Current ?? settings).HealthLogEnabled,
+                    powerBox);
+                healthLogger.Start();
+            } catch (Exception ex) {
+                Logger.Warning($"ACP: could not start the health log: {ex.Message}");
+                healthLogger = null;
+            }
+        }
+
+        private NinaHealthLogger healthLogger;
 
         // -- Activity events (ACP Activity tab, phase 2) -----------------------
 
@@ -349,6 +402,12 @@ namespace ACP.NINA.Plugin.Dockables {
             AcpSettings.Saved -= OnSettingsSaved;
             try {
                 progressReporter?.Dispose();
+            } catch (Exception) {
+                // Already gone, nothing useful to do.
+            }
+            try {
+                equipmentRecovery?.Dispose();
+                healthLogger?.Dispose();
             } catch (Exception) {
                 // Already gone, nothing useful to do.
             }
