@@ -29,6 +29,7 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.Equal(new[] {
                 "utc", "camera_temp_c", "cooler_power_pct", "cooler_on",
                 "camera_connected", "filter_wheel_connected", "focuser_connected", "switch_connected",
+                "unity_voltage", "unity_current", "unity_power", "unity_uptime_s", "unity_amp_hours", "unity_overcurrent",
                 "switch:Input Voltage", "switch:Total Current", "switch:Dew A", "switch:Dew A#2",
             }, HealthCsv.Columns(Sample()));
         }
@@ -39,6 +40,7 @@ namespace ACP.NINA.Plugin.Tests {
             Assert.Equal(new[] {
                 "2026-11-01T02:15:30Z", "-14.6", "42.25", "1",
                 "1", "1", "0", "1",
+                "", "", "", "", "", "",
                 "12.31", "3.5", "40", "0",
             }, HealthCsv.Values(s));
             Assert.Equal(HealthCsv.Columns(s).Count, HealthCsv.Values(s).Count);

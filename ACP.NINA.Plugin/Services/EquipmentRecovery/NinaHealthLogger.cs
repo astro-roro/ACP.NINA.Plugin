@@ -27,12 +27,16 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
         private readonly HealthLogWriter writer = new HealthLogWriter(LogDirectory);
         private readonly CancellationTokenSource cts = new CancellationTokenSource();
         private int errorsReported;
+        private readonly IPowerBoxSource powerBox;
+        private IReadOnlyList<string> lastPowerBoxNames = new List<string>();
 
         public NinaHealthLogger(
             ICameraMediator camera, IFilterWheelMediator filterWheel, IFocuserMediator focuser,
             IRotatorMediator rotator, IFlatDeviceMediator flatDevice, ISwitchMediator switches,
-            Func<bool> isEnabled
+            Func<bool> isEnabled,
+            IPowerBoxSource powerBox = null
         ) {
+            this.powerBox = powerBox;
             this.camera = camera;
             this.filterWheel = filterWheel;
             this.focuser = focuser;
@@ -58,7 +62,17 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
                     if (!isEnabled()) continue;
                     var snapshot = Read();
                     if (snapshot == null || !snapshot.ShouldLog) continue;
+                    IReadOnlyList<PowerBoxReport> reports = new List<PowerBoxReport>();
+                    if (powerBox != null) {
+                        // Bounded at 2 s inside the client, and never throws.
+                        reports = await powerBox.ReadAllAsync(ct).ConfigureAwait(false) ?? reports;
+                    }
+                    snapshot.PowerBoxes = reports;
+                    snapshot.PowerBoxNames = HealthCsv.KeepPowerBoxNames(reports, lastPowerBoxNames);
+                    lastPowerBoxNames = snapshot.PowerBoxNames;
                     if (!writer.TryWrite(snapshot)) ReportError();
+                } catch (OperationCanceledException) {
+                    return;
                 } catch (Exception ex) {
                     // Never Error: ERROR lines become chat alerts.
                     Logger.Debug($"ACP: health log reading failed: {ex.Message}");

@@ -43,7 +43,8 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
             ISwitchMediator switches,
             ISequenceMediator sequence,
             IProfileService profileService,
-            Func<bool> isEnabled
+            Func<bool> isEnabled,
+            IPowerBoxSource powerBox = null
         ) {
             var devices = new List<IRecoveryDevice>();
             IRecoveryDevice cameraDevice = null;
@@ -70,7 +71,8 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
                 isEnabled,
                 () => sequence?.IsAdvancedSequenceRunning() == true,
                 () => DateTimeOffset.UtcNow,
-                cameraDevice);
+                cameraDevice,
+                powerBox);
             return new NinaEquipmentRecovery(watcher);
         }
 

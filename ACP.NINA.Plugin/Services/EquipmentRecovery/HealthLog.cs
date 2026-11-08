@@ -25,6 +25,14 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
         /// so on. Empty when the switch is not connected.
         public IReadOnlyList<(string Name, double Value)> Gauges { get; set; } = new List<(string, double)>();
 
+        /// Reports from the Pegasus Unity server, one per device. Empty when it
+        /// could not be reached.
+        public IReadOnlyList<PowerBoxReport> PowerBoxes { get; set; } = new List<PowerBoxReport>();
+
+        /// The Pegasus devices to give columns to: the ones in PowerBoxes, or
+        /// the last ones seen when Unity does not answer, so the header holds.
+        public IReadOnlyList<string> PowerBoxNames { get; set; } = new List<string>();
+
         /// Rows are only worth writing while the power box or camera is there.
         public bool ShouldLog => Devices.Any(d => d.Connected && (d.Kind == "camera" || d.Kind == "switch"));
     }
@@ -42,8 +50,54 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
         public static IReadOnlyList<string> Columns(HealthSnapshot s) {
             var cols = new List<string>(FixedColumns);
             cols.AddRange(s.Devices.Select(d => d.Kind.Replace(' ', '_') + "_connected"));
+            cols.AddRange(PowerBoxColumns(s.PowerBoxNames));
             cols.AddRange(GaugeColumns(s.Gauges));
             return cols;
+        }
+
+        public static readonly string[] PowerBoxFields = {
+            "voltage", "current", "power", "uptime_s", "amp_hours", "overcurrent",
+        };
+
+        /// unity_voltage and so on for one Pegasus device, or none. With more
+        /// than one, each device's columns carry its name: unity_PPBAdvance_voltage.
+        public static IReadOnlyList<string> PowerBoxColumns(IReadOnlyList<string> names) {
+            names = names ?? new List<string>();
+            if (names.Count <= 1) return PowerBoxFields.Select(f => "unity_" + f).ToList();
+            return names.SelectMany(n => PowerBoxFields.Select(f => $"unity_{n}_{f}")).ToList();
+        }
+
+        public static IEnumerable<string> PowerBoxValues(HealthSnapshot s) {
+            var names = s.PowerBoxNames ?? new List<string>();
+            var reports = s.PowerBoxes ?? new List<PowerBoxReport>();
+            if (names.Count <= 1) {
+                var only = names.Count == 1
+                    ? reports.FirstOrDefault(r => r?.DeviceName == names[0])
+                    : reports.FirstOrDefault();
+                return PowerBoxCells(only);
+            }
+            return names.SelectMany(n => PowerBoxCells(reports.FirstOrDefault(r => r?.DeviceName == n)));
+        }
+
+        private static IEnumerable<string> PowerBoxCells(PowerBoxReport r) {
+            if (r == null) return PowerBoxFields.Select(_ => "");
+            return new[] {
+                Number(r.Voltage),
+                Number(r.Current),
+                Number(r.Power),
+                Number(r.UpTime?.TotalSeconds),
+                Number(r.AmpHours),
+                r.OverCurrent.HasValue ? (r.OverCurrent.Value ? "1" : "0") : "",
+            };
+        }
+
+        /// The device names to give columns to: this reading's when Unity
+        /// answered, otherwise the last ones seen.
+        public static IReadOnlyList<string> KeepPowerBoxNames(IReadOnlyList<PowerBoxReport> reports, IReadOnlyList<string> lastNames) {
+            if (reports != null && reports.Count > 0) {
+                return reports.Select(r => r.DeviceName ?? "device").Distinct().ToList();
+            }
+            return lastNames ?? new List<string>();
         }
 
         public static IReadOnlyList<string> Values(HealthSnapshot s) {
@@ -54,6 +108,7 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
                 s.CoolerOn.HasValue ? (s.CoolerOn.Value ? "1" : "0") : "",
             };
             vals.AddRange(s.Devices.Select(d => d.Connected ? "1" : "0"));
+            vals.AddRange(PowerBoxValues(s));
             vals.AddRange(s.Gauges.Select(g => Number(g.Value)));
             return vals;
         }

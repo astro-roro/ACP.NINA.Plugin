@@ -214,11 +214,14 @@ namespace ACP.NINA.Plugin.Dockables {
             ISwitchMediator switches,
             ISequenceMediator sequence
         ) {
+            // Read on every request, so a new address in the options applies at once.
+            var powerBox = new PegasusUnityClient(() => (AcpSettings.Current ?? settings).UnityApiBaseUrl);
             try {
                 equipmentRecovery = NinaEquipmentRecovery.Create(
                     camera, filterWheel, focuser, rotator, flatDevice, switches, sequence,
                     profileService,
-                    () => (AcpSettings.Current ?? settings).EquipmentRecoveryEnabled);
+                    () => (AcpSettings.Current ?? settings).EquipmentRecoveryEnabled,
+                    powerBox);
                 equipmentRecovery.Start();
             } catch (Exception ex) {
                 // Warning, not Error: ERROR lines become chat alerts.
@@ -228,7 +231,8 @@ namespace ACP.NINA.Plugin.Dockables {
             try {
                 healthLogger = new NinaHealthLogger(
                     camera, filterWheel, focuser, rotator, flatDevice, switches,
-                    () => (AcpSettings.Current ?? settings).HealthLogEnabled);
+                    () => (AcpSettings.Current ?? settings).HealthLogEnabled,
+                    powerBox);
                 healthLogger.Start();
             } catch (Exception ex) {
                 Logger.Warning($"ACP: could not start the health log: {ex.Message}");

@@ -100,6 +100,11 @@ namespace ACP.NINA.Plugin.Services {
         /// it is a separate switch from equipment recovery.
         public bool HealthLogEnabled { get; set; } = true;
 
+        /// The Pegasus Unity server's address, for the power box readings in
+        /// the health log and the restart check after a drop. Empty turns both
+        /// off. Unity runs on the same machine as NINA, hence localhost.
+        public string UnityApiBaseUrl { get; set; } = "http://localhost:32000";
+
         /// Deliberately absent: the bearer token. It lives in Windows
         /// Credential Manager, see TokenStore. Settings.json gets copied around
         /// when people move a NINA install between machines, so a token in here

@@ -180,8 +180,20 @@ namespace ACP.NINA.Plugin {
             }
         }
 
+        /// Blank turns the Pegasus Unity readings off.
+        public string UnityApiBaseUrl {
+            get => settings.UnityApiBaseUrl;
+            set {
+                var trimmed = (value ?? "").Trim();
+                if (settings.UnityApiBaseUrl == trimmed) return;
+                settings.UnityApiBaseUrl = trimmed;
+                settings.Save();
+                RaisePropertyChanged();
+            }
+        }
+
         public string HealthLogExplanation =>
-            $"While the switch or camera is connected, one row of readings is added every 5 seconds to a CSV file in {NinaHealthLogger.LogDirectory}: the time in UTC, the camera's sensor temperature, cooler power and cooler state, which devices are connected, and every gauge and output the switch reports. One file per day, kept for 14 days.";
+            $"While the switch or camera is connected, one row of readings is added every 5 seconds to a CSV file in {NinaHealthLogger.LogDirectory}: the time in UTC, the camera's sensor temperature, cooler power and cooler state, which devices are connected, the Pegasus Unity power box readings when Unity answers, and every gauge and output the switch reports. One file per day, kept for 14 days.";
 
         // -- The two mode switch -----------------------------------------------
 

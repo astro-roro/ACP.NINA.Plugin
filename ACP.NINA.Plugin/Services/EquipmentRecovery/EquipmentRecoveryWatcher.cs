@@ -113,6 +113,9 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
         private double? coolerSetPointAtDrop;
         private bool coolerKnownAtDrop;
         private IRecoveryDevice cameraDevice;
+        private readonly IPowerBoxSource powerBox;
+        private readonly TimeZoneInfo zone;
+        private bool powerBoxLogged;
 
         public EquipmentRecoveryWatcher(
             IEnumerable<IRecoveryDevice> devices,
@@ -121,8 +124,12 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
             Func<bool> isEnabled,
             Func<bool> isSequenceRunning,
             Func<DateTimeOffset> clock,
-            IRecoveryDevice camera = null
+            IRecoveryDevice camera = null,
+            IPowerBoxSource powerBox = null,
+            TimeZoneInfo zone = null
         ) {
+            this.powerBox = powerBox;
+            this.zone = zone ?? TimeZoneInfo.Local;
             this.devices = (devices ?? Enumerable.Empty<IRecoveryDevice>()).Where(d => d != null).ToList();
             this.cooler = cooler;
             this.log = log;
@@ -187,6 +194,7 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
             coolerSetPointAtDrop = lastCoolerSetPoint;
             coolerKnownAtDrop = coolerReadOnce;
             temperatureAtDrop = lastTemperature;
+            powerBoxLogged = false;
             foreach (var d in lost) AddDropped(d);
         }
 
@@ -213,6 +221,7 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
             foreach (var d in stillMissing.Where(connected.Contains).ToList()) {
                 await MarkBackAsync(d, ct).ConfigureAwait(false);
             }
+            await TryLogPowerBoxAsync(ct).ConfigureAwait(false);
 
             if (stillMissing.Count == 0) {
                 Finish(now);
@@ -243,7 +252,30 @@ namespace ACP.NINA.Plugin.Services.EquipmentRecovery {
                 if (ok) await MarkBackAsync(d, ct).ConfigureAwait(false);
             }
 
-            if (stillMissing.Count == 0) Finish(clock());
+            if (stillMissing.Count == 0) {
+                await TryLogPowerBoxAsync(ct).ConfigureAwait(false);
+                Finish(clock());
+            }
+        }
+
+        /// One line per drop saying when the power box was powered on, read
+        /// from the Pegasus Unity server. Waits while the switch is still
+        /// missing, since Unity may hold a stale report until the box is back.
+        private async Task TryLogPowerBoxAsync(CancellationToken ct) {
+            if (powerBox == null || powerBoxLogged) return;
+            if (stillMissing.Any(d => d.Kind == "switch")) return;
+            IReadOnlyList<PowerBoxReport> reports;
+            try {
+                reports = await powerBox.ReadAllAsync(ct).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (Exception) {
+                return;
+            }
+            var upTime = PowerBoxRestart.FirstUpTime(reports);
+            if (!upTime.HasValue) return;
+            powerBoxLogged = true;
+            log.Info(PowerBoxRestart.Describe(clock(), upTime.Value, dropAt, zone));
         }
 
         private async Task MarkBackAsync(IRecoveryDevice d, CancellationToken ct) {
